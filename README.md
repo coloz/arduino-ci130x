@@ -195,18 +195,6 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
   任意 WAV/MP3 文件，也不会把文本实时转换为语音。
 - 当前基线不提供 Wi-Fi、SD 卡或通用文件系统。
 
-### 固件与首次烧录
-
-Arduino 构建产物不是可写入地址 0 的普通裸 bin。后处理会将 sketch 与匹配
-`USE_NULL` 的第二核镜像合并成 `user_code.bin` 容器；常规“上传”只更新
-user-code 分区。
-
-首次使用前必须通过原厂 `PACK_UPDATE_TOOL.exe` 写入与目标芯片、Flash 容量、
-算法和资源文件匹配的完整固件基线，并为 User 分区预留 448 KiB（`0x70000`）。
-在完整固件布局通过实体板验证之前，不应把 Arduino 输出当作量产固件或直接写入
-地址 0。`tools/prepare_provisioning.ps1` 可生成文件哈希和分区准备清单，但不会
-替代原厂 GUI，也不会自动执行首次烧录。
-
 ### 内存报告
 
 代码、只读数据、读写数据、BSS、栈和 100 KiB FreeRTOS heap 共用一段
@@ -254,5 +242,5 @@ user-code 分区。
 
 ## 许可证
 
-Arduino 兼容 core 中继承的代码按 [LGPL-2.1 或更高版本](LICENSE-ARDUINO-CORE.md)提供。
-启英泰伦 SDK、算法库、第二核镜像、编译器和 Windows 工具仍受各自许可与再分发条款约束；
+Arduino 兼容 core 中继承的代码按 [LGPL-2.1 或更高版本]提供。  
+启英泰伦 SDK、算法库、第二核镜像、编译器和 Windows 工具仍受各自许可与再分发条款约束。  
