@@ -1,5 +1,23 @@
 # Boards Manager package
 
+## Published Arduino IDE installation
+
+Add the following stable index URL to **Arduino IDE > File > Preferences >
+Additional boards manager URLs**, then install **ChipIntelli CI13XX Arduino**
+from Boards Manager:
+
+```text
+https://raw.githubusercontent.com/coloz/arduino-chipintelli/main/package/package_chipintelli_index.json
+```
+
+The version-pinned `v0.0.1` index is also published as a GitHub Release asset:
+
+```text
+https://github.com/coloz/arduino-chipintelli/releases/download/v0.0.1/package_chipintelli_index.json
+```
+
+The current toolchain package supports Windows x64 only.
+
 ## Local Arduino IDE installation
 
 The generated package is a self-contained local Boards Manager repository for
