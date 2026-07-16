@@ -1,0 +1,25 @@
+menu.Algorithm=Algorithm profile
+
+ci_d06gt01d.name=ChipIntelli CI-D06GT01D (CI1306, 4 MB)
+
+ci_d06gt01d.upload.tool=chipintelli_upload
+ci_d06gt01d.upload.tool.default=chipintelli_upload
+# The container has a 32-byte table plus up to 15 bytes of [0] image alignment
+# and the fixed 76,128-byte BNPU image. Arduino's section sum is itself more
+# conservative than raw [0]code.bin; postbuild.ps1 enforces the exact cap.
+ci_d06gt01d.upload.maximum_size=382577
+ci_d06gt01d.upload.maximum_data_size=532480
+ci_d06gt01d.upload.use_1200bps_touch=false
+ci_d06gt01d.upload.wait_for_upload_port=false
+
+ci_d06gt01d.build.mcu=ci1306
+ci_d06gt01d.build.f_cpu=246000000L
+ci_d06gt01d.build.board=CI_D06GT01D
+ci_d06gt01d.build.core=chipintelli
+ci_d06gt01d.build.variant=ci_d06gt01d
+ci_d06gt01d.build.algorithm=null
+ci_d06gt01d.build.user_code_max=458752
+ci_d06gt01d.build.extra_flags=-DARDUINO_CI_D06GT01D -DCI_CHIP_CI1306 -DCI_BOARD_CI_D06GT01D -DNO_ASR_FLOW=0 -DUSE_NULL=1 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
+
+ci_d06gt01d.menu.Algorithm.null=Basic offline ASR (USE_NULL)
+ci_d06gt01d.menu.Algorithm.null.build.algorithm=null

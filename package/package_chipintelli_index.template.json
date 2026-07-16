@@ -1,0 +1,52 @@
+{
+  "packages": [
+    {
+      "name": "chipintelli",
+      "maintainer": "ChipIntelli",
+      "websiteURL": "https://document.chipintelli.com/",
+      "email": "__MAINTAINER_EMAIL__",
+      "help": {
+        "online": "https://document.chipintelli.com/"
+      },
+      "platforms": [
+        {
+          "name": "ChipIntelli CI13XX Arduino",
+          "architecture": "ci13xx",
+          "version": "0.1.0",
+          "category": "Contributed",
+          "url": "__PLATFORM_ARCHIVE_URL__",
+          "archiveFileName": "arduino-chipintelli-0.1.0.zip",
+          "checksum": "SHA-256:__PLATFORM_SHA256__",
+          "size": "__PLATFORM_SIZE_BYTES__",
+          "boards": [
+            {
+              "name": "ChipIntelli CI-D06GT01D (CI1306, 4 MB)"
+            }
+          ],
+          "toolsDependencies": [
+            {
+              "packager": "chipintelli",
+              "name": "riscv-gcc",
+              "version": "9.2.0"
+            }
+          ]
+        }
+      ],
+      "tools": [
+        {
+          "name": "riscv-gcc",
+          "version": "9.2.0",
+          "systems": [
+            {
+              "host": "x86_64-mingw32",
+              "url": "__AUTHORIZED_REPACKED_TOOLCHAIN_ZIP_URL__",
+              "archiveFileName": "riscv-nuclei-elf-gcc-9.2.0-windows.zip",
+              "checksum": "SHA-256:__TOOLCHAIN_SHA256__",
+              "size": "__TOOLCHAIN_SIZE_BYTES__"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

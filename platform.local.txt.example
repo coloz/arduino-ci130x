@@ -1,0 +1,3 @@
+# Copy this file to platform.local.txt for a source-tree installation.
+# Use forward slashes and keep the trailing slash.
+compiler.path=C:/path/to/riscv-nuclei-elf-gcc-9.2.0/gcc_fix_raissrc/bin/

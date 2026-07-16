@@ -1,0 +1,11 @@
+# Generated Boards Manager release archives are published as GitHub Release assets.
+package/dist/
+
+# Optional source-tree toolchain override contains machine-specific paths.
+platform.local.txt
+
+# Local editor and OS metadata.
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

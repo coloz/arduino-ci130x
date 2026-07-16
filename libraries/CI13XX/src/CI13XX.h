@@ -1,0 +1,7 @@
+#pragma once
+
+#include <Arduino.h>
+
+#define CI13XX_ARDUINO_VERSION_MAJOR 0
+#define CI13XX_ARDUINO_VERSION_MINOR 1
+#define CI13XX_ARDUINO_VERSION_PATCH 0

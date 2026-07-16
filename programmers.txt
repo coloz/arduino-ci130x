@@ -1,0 +1,6 @@
+ci13xx_user_code.name=ChipIntelli CI13XX User-code Serial Programmer
+ci13xx_user_code.communication=serial
+ci13xx_user_code.protocol=ci13xx_user_code
+ci13xx_user_code.program.tool=chipintelli_upload
+ci13xx_user_code.program.tool.default=chipintelli_upload
+

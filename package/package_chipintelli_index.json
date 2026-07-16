@@ -1,0 +1,55 @@
+{
+    "packages":  [
+                     {
+                         "name":  "chipintelli",
+                         "maintainer":  "ChipIntelli",
+                         "websiteURL":  "https://www.chipintelli.com/zh-cn/",
+                         "email":  "support@chipintelli.com",
+                         "help":  {
+                                      "online":  "https://document.chipintelli.com/"
+                                  },
+                         "platforms":  [
+                                           {
+                                               "name":  "ChipIntelli CI13XX Arduino",
+                                               "architecture":  "ci13xx",
+                                               "version":  "0.1.0",
+                                               "category":  "Contributed",
+                                               "help":  {
+                                                            "online":  "https://document.chipintelli.com/"
+                                                        },
+                                               "url":  "http://127.0.0.1:8765/dist/arduino-chipintelli-0.1.0.zip",
+                                               "archiveFileName":  "arduino-chipintelli-0.1.0.zip",
+                                               "checksum":  "SHA-256:f203359868a91bfbacc83f9b95848e143f4589a29dcbfa4fbd4871c961a70619",
+                                               "size":  "15131766",
+                                               "boards":  [
+                                                              {
+                                                                  "name":  "ChipIntelli CI-D06GT01D (CI1306, 4 MB)"
+                                                              }
+                                                          ],
+                                               "toolsDependencies":  [
+                                                                         {
+                                                                             "packager":  "chipintelli",
+                                                                             "name":  "riscv-gcc",
+                                                                             "version":  "9.2.0"
+                                                                         }
+                                                                     ]
+                                           }
+                                       ],
+                         "tools":  [
+                                       {
+                                           "name":  "riscv-gcc",
+                                           "version":  "9.2.0",
+                                           "systems":  [
+                                                           {
+                                                               "host":  "x86_64-mingw32",
+                                                               "url":  "http://127.0.0.1:8765/dist/riscv-nuclei-elf-gcc-9.2.0-windows.zip",
+                                                               "archiveFileName":  "riscv-nuclei-elf-gcc-9.2.0-windows.zip",
+                                                               "checksum":  "SHA-256:96292a0a6cb21c39221443d3e5af43414d6cfa2b5503c93f2df18319a2e62253",
+                                                               "size":  "139799059"
+                                                           }
+                                                       ]
+                                       }
+                                   ]
+                     }
+                 ]
+}
