@@ -13,10 +13,10 @@ Validated flow:
 
 1. Serve `package/` on `http://127.0.0.1:8765/`.
 2. Download and parse `package_chipintelli_index.json`.
-3. Discover `chipintelli:ci13xx@0.1.0`.
+3. Discover `chipintelli:ci13xx@0.0.1`.
 4. Download and checksum the 133.32 MiB `chipintelli:riscv-gcc@9.2.0` tool.
-5. Download and checksum the 14.43 MiB `chipintelli:ci13xx@0.1.0` platform.
-6. Install both packages and resolve `chipintelli:ci13xx:ci_d06gt01d`.
+5. Download and checksum the 14.43 MiB `chipintelli:ci13xx@0.0.1` platform.
+6. Install both packages and resolve `chipintelli:ci13xx:ci1306`.
 7. Compile, link and run the CI13XX dual-image post-build step for all 14
    installed platform and library examples.
 
@@ -36,3 +36,20 @@ installation, and the legacy GCC failing when its C++ header path reaches about
 
 This validation covers Boards Manager installation and compilation. It does not
 claim physical-board upload or runtime hardware validation.
+
+## CI1302 and CI1303 variant validation
+
+The source-tree platform was additionally resolved as
+`chipintelli:ci13xx:ci1302` and `chipintelli:ci13xx:ci1303` with Arduino CLI
+1.3.1. For each FQBN, `CI13XXSmoke`, `PWMFade`, `Blink`,
+`DigitalInputPullup`, and `GPIOInterrupt` compiled, linked, and completed the
+dual-image post-build step: 10 compiled, 10 passed, 0 failed. `CI13XXSmoke`
+used 137,083 bytes for both variants.
+
+The link maps resolve `libci13xx_sdk.a` from `tools/sdk/lib/ci1302/` and
+`tools/sdk/lib/ci1303/`, respectively. The rebuilt Boards Manager platform ZIP
+contains both variant directories and both SDK archives under a single top-level
+directory; the generated index parses as BOM-free JSON and lists all three
+boards. This additional check used the source-tree platform through a temporary
+local link; it does not claim a fresh package-manager install or physical-board
+runtime validation for CI1302/CI1303.

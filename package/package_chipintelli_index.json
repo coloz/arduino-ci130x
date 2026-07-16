@@ -12,18 +12,24 @@
                                            {
                                                "name":  "ChipIntelli CI13XX Arduino",
                                                "architecture":  "ci13xx",
-                                               "version":  "0.1.0",
+                                               "version":  "0.0.1",
                                                "category":  "Contributed",
                                                "help":  {
                                                             "online":  "https://document.chipintelli.com/"
                                                         },
-                                               "url":  "http://127.0.0.1:8765/dist/arduino-chipintelli-0.1.0.zip",
-                                               "archiveFileName":  "arduino-chipintelli-0.1.0.zip",
-                                               "checksum":  "SHA-256:f203359868a91bfbacc83f9b95848e143f4589a29dcbfa4fbd4871c961a70619",
-                                               "size":  "15131766",
+                                               "url":  "https://github.com/coloz/arduino-chipintelli/releases/download/v0.0.1/arduino-chipintelli-0.0.1.zip",
+                                               "archiveFileName":  "arduino-chipintelli-0.0.1.zip",
+                                               "checksum":  "SHA-256:16c0d14fe8d302a3cce72a7ba72e75d0347e3c9c318b8a76a5c39c8e53dccb06",
+                                               "size":  "19794213",
                                                "boards":  [
                                                               {
-                                                                  "name":  "ChipIntelli CI-D06GT01D (CI1306, 4 MB)"
+                                                                  "name":  "ChipIntelli CI1302 (SSOP24, 2 MB)"
+                                                              },
+                                                              {
+                                                                  "name":  "ChipIntelli CI1303 (SSOP24, 4 MB)"
+                                                              },
+                                                              {
+                                                                  "name":  "ChipIntelli CI1306 (QFN40, 4 MB)"
                                                               }
                                                           ],
                                                "toolsDependencies":  [
@@ -42,9 +48,9 @@
                                            "systems":  [
                                                            {
                                                                "host":  "x86_64-mingw32",
-                                                               "url":  "http://127.0.0.1:8765/dist/riscv-nuclei-elf-gcc-9.2.0-windows.zip",
+                                                               "url":  "https://github.com/coloz/arduino-chipintelli/releases/download/v0.0.1/riscv-nuclei-elf-gcc-9.2.0-windows.zip",
                                                                "archiveFileName":  "riscv-nuclei-elf-gcc-9.2.0-windows.zip",
-                                                               "checksum":  "SHA-256:96292a0a6cb21c39221443d3e5af43414d6cfa2b5503c93f2df18319a2e62253",
+                                                               "checksum":  "SHA-256:2c0a40ee3d59e9269746c719e6dc9539a2d7182792a024cf54b66b1ee0c73b92",
                                                                "size":  "139799059"
                                                            }
                                                        ]

@@ -33,6 +33,7 @@ if ($Port -notmatch '^COM[0-9]+$') {
 }
 
 Write-Host "Uploading CI13XX user-code image to $Port ..."
+
 & $programmer $imagePath $Port
 if ($LASTEXITCODE -ne 0) {
     throw "code_program.exe failed with exit code $LASTEXITCODE"

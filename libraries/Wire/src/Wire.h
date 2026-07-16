@@ -12,9 +12,8 @@ class TwoWire : public Stream {
 public:
   TwoWire();
 
-  // CI13XX exposes one IIC controller. On CI-D06GT01D it is routed to
-  // SDA=PB7 (Arduino 15) and SCL=PC0 (Arduino 16); alternate pins are not
-  // supported. These pads are shared with Serial1.
+  // CI13XX exposes one IIC controller. Its default route comes from the
+  // selected variant; alternate pins are not supported by this wrapper.
   bool begin();
   bool begin(int sda, int scl, uint32_t frequency = 0);
   void end();

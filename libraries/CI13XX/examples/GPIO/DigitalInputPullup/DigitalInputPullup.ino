@@ -1,7 +1,12 @@
 #include <CI13XX.h>
 
+#if defined(CI_CHIP_CI1302) || defined(CI_CHIP_CI1303)
+// Connect a push button between Arduino pin 20 (PC4) and GND.
+constexpr uint8_t kButtonPin = 20;
+#else
 // Connect a push button between Arduino pin 12 (PB4) and GND.
 constexpr uint8_t kButtonPin = 12;
+#endif
 
 void setup() {
   Serial.begin(921600);

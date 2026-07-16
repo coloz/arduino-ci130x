@@ -1,11 +1,12 @@
 # SPI for CI13XX
 
-CI1306 does not expose a general-purpose hardware SPI controller. `QSPI0` is
+These CI13XX profiles do not expose a general-purpose hardware SPI controller.
+`QSPI0` is
 the boot/model/user Flash interface and must not be repurposed. This library is
 therefore an explicit GPIO software SPI master, not a wrapper around the
 on-chip Flash bus.
 
-The default CI-D06GT01D route is:
+The default route for all three variants is:
 
 | Signal | Arduino pin | Chip PAD |
 | --- | ---: | --- |
@@ -18,7 +19,7 @@ These pads share the board's IIS header and are free in the packaged
 `USE_NULL=1`, `USE_IIS1_OUT_PRE_RSLT_AUDIO=0` profile. They cannot be shared
 with IIS capture/record output if that SDK profile is changed. PA4 is sampled
 as `PG_EN` during reset, so an attached peripheral must not drive PA4 while the
-CI1306 is resetting; using it as master MOSI with a normal slave input is safe
+CI13XX is resetting; using it as master MOSI with a normal slave input is safe
 after startup.
 
 `SPI.begin(sck, miso, mosi, ss)` can select other GPIO pins. Passing `-1` omits

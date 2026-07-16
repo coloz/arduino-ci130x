@@ -10,8 +10,6 @@ namespace {
 constexpr uint32_t kDefaultClock = 100000;
 constexpr uint32_t kMinClock = 10000;
 constexpr uint32_t kMaxClock = 400000;
-constexpr int kDefaultSda = 15;  // PB7
-constexpr int kDefaultScl = 16;  // PC0
 }
 
 TwoWire Wire;
@@ -35,10 +33,14 @@ bool TwoWire::configure(uint32_t frequency) {
     return false;
   }
 
-  // This matches CI-D06GT01D::pad_config_for_i2c(). The SDK's default
-  // USE_IIC_PAD setting is zero, so Wire performs the mux setup itself.
-  dpmu_set_io_reuse(PB7, THIRD_FUNCTION);  // IIC0_SDA
-  dpmu_set_io_reuse(PC0, THIRD_FUNCTION);  // IIC0_SCL
+  // The selected variant owns the physical IIC0 route. CI1302/CI1303 use
+  // PA2/PA3, while the CI1306 development board uses PB7/PC0.
+  dpmu_set_io_reuse(
+      static_cast<PinPad_Name>(g_APinDescription[SDA].pad),
+      static_cast<IOResue_FUNCTION>(SDA_MUX));
+  dpmu_set_io_reuse(
+      static_cast<PinPad_Name>(g_APinDescription[SCL].pad),
+      static_cast<IOResue_FUNCTION>(SCL_MUX));
   iic_polling_init(IIC0, frequency / 1000U, 0, LONG_TIME_OUT);
 
   _frequency = frequency;
@@ -52,8 +54,8 @@ bool TwoWire::begin() {
 }
 
 bool TwoWire::begin(int sda, int scl, uint32_t frequency) {
-  if ((sda >= 0 && sda != kDefaultSda) ||
-      (scl >= 0 && scl != kDefaultScl)) {
+  if ((sda >= 0 && sda != SDA) ||
+      (scl >= 0 && scl != SCL)) {
     _lastError = 4;
     return false;
   }

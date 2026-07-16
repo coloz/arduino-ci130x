@@ -12,15 +12,21 @@
         {
           "name": "ChipIntelli CI13XX Arduino",
           "architecture": "ci13xx",
-          "version": "0.1.0",
+          "version": "0.0.1",
           "category": "Contributed",
           "url": "__PLATFORM_ARCHIVE_URL__",
-          "archiveFileName": "arduino-chipintelli-0.1.0.zip",
+          "archiveFileName": "arduino-chipintelli-0.0.1.zip",
           "checksum": "SHA-256:__PLATFORM_SHA256__",
           "size": "__PLATFORM_SIZE_BYTES__",
           "boards": [
             {
-              "name": "ChipIntelli CI-D06GT01D (CI1306, 4 MB)"
+              "name": "ChipIntelli CI1302 (SSOP24, 2 MB)"
+            },
+            {
+              "name": "ChipIntelli CI1303 (SSOP24, 4 MB)"
+            },
+            {
+              "name": "ChipIntelli CI1306 (QFN40, 4 MB)"
             }
           ],
           "toolsDependencies": [

@@ -11,6 +11,11 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$OutputDirectory,
 
+    [ValidateSet('ci1306', 'ci1302', 'ci1303')]
+    [string]$Variant = 'ci1306',
+
+    [string]$HardwareVersion,
+
     [switch]$LaunchTool
 )
 
@@ -57,6 +62,21 @@ if ($userCodeSize -gt $userCodePartitionSize) {
     throw "User-code container is $userCodeSize bytes; the Arduino baseline maximum is $userCodePartitionSize bytes."
 }
 
+$profiles = @{
+    ci1302 = [ordered]@{ board = 'CI-D02GS02S'; chip = 'CI1302'; flashSize = 2MB }
+    ci1303 = [ordered]@{ board = 'CI-D03GS02S'; chip = 'CI1303'; flashSize = 4MB }
+    ci1306 = [ordered]@{ board = 'CI-D06GT01D'; chip = 'CI1306'; flashSize = 4MB }
+}
+$profile = $profiles[$Variant]
+if ([string]::IsNullOrWhiteSpace($HardwareVersion)) {
+    if ($Variant -eq 'ci1306') {
+        $HardwareVersion = '2.0.0'
+    }
+    else {
+        throw "Pass -HardwareVersion with the actual $($profile.board) hardware version from the product definition."
+    }
+}
+
 $partitionFiles = @()
 foreach ($entry in $files.GetEnumerator()) {
     $item = Get-Item -LiteralPath $entry.Value
@@ -75,16 +95,17 @@ foreach ($entry in $files.GetEnumerator()) {
 
 $manifest = [ordered]@{
     sdk = 'CI13XX_SDK_ASR_ALG_V2.7.12'
-    board = 'CI-D06GT01D'
-    chip = 'CI1306'
-    flashSize = 4MB
+    arduinoVariant = $Variant
+    board = $profile.board
+    chip = $profile.chip
+    flashSize = $profile.flashSize
     firmwareFormat = 'FW_V2'
     factoryId = 100
     productId = 100
-    hardwareName = 'CI-D06GT01D'
-    hardwareVersion = '2.0.0'
+    hardwareName = $profile.board
+    hardwareVersion = $HardwareVersion
     firmwareName = 'CI13XX_Arduino'
-    firmwareVersion = '0.1.0'
+    firmwareVersion = '0.0.1'
     partitionVersion = 100
     userCodePartitionSize = $userCodePartitionSize
     code2Enabled = $false
@@ -99,8 +120,8 @@ $manifestPath = Join-Path $outputRoot 'provisioning-manifest.json'
 $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
 Write-Host "Provisioning manifest: $manifestPath"
-Write-Host 'Open PACK_UPDATE_TOOL and select: CI130X series -> CI1306 -> Firmware packaging.'
-Write-Host 'Use every metadata value from the manifest, FW_V2, 4 MB flash, Code2 disabled, and these inputs/reservations:'
+Write-Host "Open PACK_UPDATE_TOOL and select: CI130X series -> $($profile.chip) -> Firmware packaging."
+Write-Host "Use every metadata value from the manifest, FW_V2, $($profile.flashSize / 1MB) MB flash, Code2 disabled, and these inputs/reservations:"
 foreach ($entry in $partitionFiles) {
     Write-Host ("  {0,-8} 0x{1:X} bytes reserved  {2}" -f $entry.role, $entry.reservedSize, $entry.path)
 }

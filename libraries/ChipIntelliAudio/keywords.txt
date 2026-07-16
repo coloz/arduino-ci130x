@@ -1,0 +1,9 @@
+ChipIntelliAudio	KEYWORD1
+ChipIntelliAudioClass	KEYWORD1
+playVoice	KEYWORD2
+playCommand	KEYWORD2
+playSemantic	KEYWORD2
+isPlaying	KEYWORD2
+setVolume	KEYWORD2
+volume	KEYWORD2
+onFinished	KEYWORD2

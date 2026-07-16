@@ -1,8 +1,13 @@
 #include <CI13XX.h>
 
+#if defined(CI_CHIP_CI1302) || defined(CI_CHIP_CI1303)
+// Connect a push button between Arduino pin 20 (PC4) and GND.
+constexpr uint8_t kButtonPin = 20;
+#else
 // Connect a push button between Arduino pin 12 (PB4) and GND. PA/PB/PC GPIOs
 // support interrupts; PD0-PD5 do not.
 constexpr uint8_t kButtonPin = 12;
+#endif
 volatile bool gButtonPressed = false;
 volatile uint32_t gPressCount = 0;
 
@@ -16,7 +21,8 @@ void setup() {
   Serial.begin(921600);
   pinMode(kButtonPin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(kButtonPin), onButtonPressed, FALLING);
-  Serial.println("Press the button on pin 12");
+  Serial.print("Press the button on pin ");
+  Serial.println(kButtonPin);
 }
 
 void loop() {

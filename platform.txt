@@ -1,5 +1,5 @@
 name=ChipIntelli CI13XX Arduino
-version=0.1.0
+version=0.0.1
 
 # CI13XX SDK ASR ALG V2.7.12 is ABI-locked to the vendor Nuclei GCC 9.2.0
 # distribution. Boards Manager removes the archive's single gcc_fix_raissrc/
@@ -17,7 +17,7 @@ compiler.size.cmd={compiler.prefix}size
 
 compiler.common.flags=-march=rv32imafc -mabi=ilp32f -mcmodel=medlow -msmall-data-limit=8 -msave-restore -mfdiv -Os -flto -fsigned-char -ffunction-sections -fdata-sections -fno-common -fno-delete-null-pointer-checks -fno-unroll-loops -fshort-enums
 compiler.sdk.defines=-DASR_CODE_VERSION=2 -DCORE_ID=0
-compiler.sdk.includes="-I{runtime.platform.path}/tools/sdk/include" "-I{runtime.platform.path}/tools/sdk/include/sdk"
+compiler.sdk.includes="-I{build.variant.path}" "-I{runtime.platform.path}/tools/sdk/include" "-I{runtime.platform.path}/tools/sdk/include/sdk"
 
 compiler.c.flags={compiler.common.flags} -g -std=gnu11 -MMD
 compiler.cpp.flags={compiler.common.flags} -g -std=gnu++17 -MMD -fno-exceptions -fno-rtti -fno-use-cxa-atexit -fno-threadsafe-statics
@@ -32,7 +32,7 @@ compiler.ar.extra_flags=
 compiler.objcopy.extra_flags=
 compiler.libraries.ldflags=
 
-compiler.c.elf.flags={compiler.common.flags} -g -nostartfiles --specs=nano.specs -Wl,--gc-sections -Wl,-u,_start -Wl,-u,main "-Wl,--Map={build.path}/{build.project_name}.map" "-L{runtime.platform.path}/tools/sdk/lib" "-L{runtime.platform.path}/tools/sdk/ld" "-T{runtime.platform.path}/tools/sdk/ld/ci130x_alg_pro_null.lds"
+compiler.c.elf.flags={compiler.common.flags} -g -nostartfiles --specs=nano.specs -Wl,--gc-sections -Wl,-u,_start -Wl,-u,main "-Wl,--Map={build.path}/{build.project_name}.map" "-L{runtime.platform.path}/tools/sdk/lib/{build.variant}" "-L{runtime.platform.path}/tools/sdk/lib" "-L{runtime.platform.path}/tools/sdk/ld" "-T{runtime.platform.path}/tools/sdk/ld/ci130x_alg_pro_null.lds"
 compiler.c.elf.wrap=-Wl,--wrap,memcmp -Wl,--wrap,memcpy -Wl,--wrap,memmove -Wl,--wrap,memset -Wl,--wrap,strcat -Wl,--wrap,strcmp -Wl,--wrap,strcpy -Wl,--wrap,strlen -Wl,--wrap,strncat -Wl,--wrap,strncmp -Wl,--wrap,strncpy -Wl,--wrap,strstr -Wl,--wrap,stpcpy -Wl,--wrap,stpncpy -Wl,--wrap,strnlen -Wl,--wrap,strtoul -Wl,--wrap,atol -Wl,--wrap,qsort -Wl,--wrap,malloc -Wl,--wrap,free -Wl,--wrap,vsnprintf -Wl,--wrap,sprintf -Wl,--wrap,sscanf -Wl,--wrap,abs -Wl,--wrap,isnan -Wl,--wrap,isinf -Wl,--wrap,cosf -Wl,--wrap,sinf -Wl,--wrap,tanf -Wl,--wrap,expf -Wl,--wrap,sqrtf -Wl,--wrap,fabsf -Wl,--wrap,logf -Wl,--wrap,log10f -Wl,--wrap,atoi -Wl,--wrap,vTaskStartScheduler -Wl,--wrap,deal_asr_msg_by_cmd_id -Wl,--wrap,sys_asr_result_hook -Wl,--wrap,ADC_IRQHandler
 compiler.c.elf.libs=-lci13xx_sdk -lasr_dis_deepse_v2 -lir_data -lnlp -lnewlib_port -lfreertos_port -ldsu -lflash_encrypt -lcwsl_v2 -ltts -lOnMicroBLE -lcias_crypto -lcikd_pro_cwsl_dis_frm -lm
 

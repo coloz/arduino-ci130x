@@ -3,7 +3,11 @@
 #include <EEPROM.h>
 #include <ChipIntelliASR.h>
 
+#if defined(CI_CHIP_CI1302) || defined(CI_CHIP_CI1303)
+static constexpr uint8_t kLedPin = 20;  // PC4; connect an external LED.
+#else
 static constexpr uint8_t kLedPin = 11;  // PB3; connect an external LED.
+#endif
 static const char kBanner[] PROGMEM = "CI13XX Arduino smoke test";
 
 void setup() {

@@ -1,0 +1,10 @@
+Generated from: CI13XX_SDK_ASR_ALG_V2.7.12
+Project: projects/offline_asr_alg_pro_sample
+Arduino variant: ci1303
+Board: CI-D03GS02S / CI1303 / 4 MB
+Algorithm profile: USE_NULL=1, NO_ASR_FLOW=0
+Compiler: riscv-nuclei-elf-gcc 9.2.0
+Compiler executable SHA256: 84B0FFB1FB194CC41FCFA96FB01D65B3A6289147041CF8BC76DB60BD05FBCB6D
+SDK object count: 138
+Open SDK objects: non-LTO
+libci13xx_sdk.a SHA256=646DE7BC1B5722DEE658588B1A889A899B06227AA661E41E487362435E001EF6

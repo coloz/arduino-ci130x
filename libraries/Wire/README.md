@@ -1,10 +1,17 @@
 # Wire for CI13XX
 
 This implementation exposes the CI13XX `IIC0` peripheral as an
-Arduino-compatible, polling master. On CI-D06GT01D the only supported route is
-PB7/SDA (Arduino pin 15) and PC0/SCL (Arduino pin 16). Those pads are shared
-with `Serial1`; a sketch must choose one peripheral at a time and provide
-external I2C pull-up resistors.
+Arduino-compatible, polling master. The selected variant supplies the only
+supported route:
+
+| Chip/profile | SDA | SCL | Shared peripheral |
+| --- | --- | --- | --- |
+| CI1302 / CI-D02GS02S | pin 2 / PA2 | pin 3 / PA3 | `Serial1` |
+| CI1303 / CI-D03GS02S | pin 2 / PA2 | pin 3 / PA3 | `Serial1` |
+| CI1306 / CI-D06GT01D | pin 15 / PB7 | pin 16 / PC0 | `Serial1` |
+
+A sketch must choose one peripheral at a time and provide external I2C pull-up
+resistors.
 
 The common register-read sequence is supported:
 

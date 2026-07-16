@@ -42,6 +42,17 @@ the index with the public base URL:
   -BaseUrl https://downloads.example.com/chipintelli-arduino
 ```
 
+For GitHub Release assets, which are stored directly under the tag URL rather
+than a `dist/` subdirectory, add `-FlatAssetUrls`:
+
+```powershell
+.\package\build_package.ps1 `
+  -ToolchainRoot C:\path\to\riscv-nuclei-elf-gcc-9.2.0 `
+  -Version 0.0.1 `
+  -BaseUrl https://github.com/OWNER/REPOSITORY/releases/download/v0.0.1 `
+  -FlatAssetUrls
+```
+
 The official compiler source is documented at
 <https://document.chipintelli.com/en/%E8%BD%AF%E4%BB%B6%E5%BC%80%E5%8F%91/SDK/CI130X%E8%8A%AF%E7%89%87SDK/CI-SDK-Offline/CI130X_SDK_ASR_Offline_V2.2.0/%E8%B5%84%E6%BA%90/gcc/>.
 Confirm redistribution permission for the SDK, vendor libraries, tools and
@@ -54,7 +65,7 @@ index. Replace every `__...__` value after release artifacts are hosted and
 redistribution permission has been confirmed.
 
 The platform archive must have exactly one top-level directory, for example
-`arduino-chipintelli-0.1.0/`. Put the contents of `arduino-chipintelli`
+`arduino-chipintelli-0.0.1/`. Put the contents of `arduino-chipintelli`
 directly inside that directory (including `boards.txt`, `platform.txt`,
 `cores/` and the generated `tools/sdk/`); do not add another architecture
 directory. Arduino's package manager ignores files placed directly at the ZIP
@@ -76,12 +87,13 @@ Before publishing:
    `package_chipintelli_index.json` (the `_index.json` suffix is required), and
    validate it with Arduino CLI on Windows x64.
 
-The release must also publish an exact, hardware-validated CI-D06GT01D full
-firmware baseline. The preview policy proposes a 448 KiB (`0x70000`) user-code
-partition; confirm it on hardware, then publish the selected layout, its SHA-256,
-and the one-time `PACK_UPDATE_TOOL.exe` provisioning instructions. The
-platform's normal upload only replaces that partition; it cannot repair a
-smaller factory layout. Do not publish the unverified CLI `make-firmware` path:
-the V2.7.12 executable rejects CI1306/CI130X.
+The release must also publish an exact, hardware-validated full-firmware
+baseline for every exposed chip/profile. The preview policy proposes a 448 KiB
+(`0x70000`) user-code partition; confirm it on CI1302, CI1303 and CI1306
+hardware, then publish each selected layout, its SHA-256, and the one-time
+`PACK_UPDATE_TOOL.exe` provisioning instructions. The platform's normal upload
+only replaces that partition; it cannot repair a smaller factory layout. Do not
+publish the unverified CLI `make-firmware` path: the V2.7.12 executable rejects
+CI1306/CI130X.
 Keep provisioning manifests and full firmware artifacts outside the platform
 archive; publish them separately only after hardware validation and permission.

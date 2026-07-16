@@ -1,6 +1,6 @@
 #include <SPI.h>
 
-// CI-D06GT01D wiring for this self-test:
+// Default CI1302/CI1303/CI1306 wiring for this self-test:
 //   PA4 / Arduino 4 / MOSI ---- PA2 / Arduino 2 / MISO
 // SCK (PA5 / 5) and SS (PA3 / 3) may be observed with a logic analyzer.
 // PA4 is a boot strap input during reset, so only make this connection to a

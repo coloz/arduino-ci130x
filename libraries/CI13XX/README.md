@@ -5,6 +5,8 @@ under **File > Examples > CI13XX**. `CI13XX.h` only publishes the package
 version; GPIO, analog, PWM, interrupt, and serial APIs remain part of the
 Arduino core.
 
-All examples target the current CI-D06GT01D / CI1306 profile. The board has no
-Arduino-controlled built-in LED, so LED examples require an external LED and
-current-limiting resistor. See each sketch for wiring and resource conflicts.
+The examples support the CI1302 / CI-D02GS02S, CI1303 / CI-D03GS02S and CI1306
+/ CI-D06GT01D profiles. These boards have no Arduino-controlled built-in LED,
+so LED examples require an external LED and current-limiting resistor. The
+SSOP24 variants use PC4 where the CI1306 examples use PB3/PB4; see each sketch
+for wiring and resource conflicts.

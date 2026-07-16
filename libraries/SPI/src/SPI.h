@@ -32,8 +32,8 @@ private:
 
 class SPIClass {
 public:
-  // The bus argument is accepted for source compatibility. CI1306 exposes no
-  // second user SPI bus; every instance is a GPIO software master.
+  // The bus argument is accepted for source compatibility. These CI13XX
+  // profiles expose no second user SPI bus; every instance is a GPIO master.
   explicit SPIClass(uint8_t bus = 0);
 
   // With no arguments, uses SCK=PA5(5), MISO=PA2(2), MOSI=PA4(4), SS=PA3(3).

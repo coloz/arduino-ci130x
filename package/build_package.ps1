@@ -3,7 +3,8 @@ param(
     [string]$PlatformRoot = (Split-Path -Parent $PSScriptRoot),
     [string]$ToolchainRoot,
     [string]$BaseUrl = 'http://127.0.0.1:8765',
-    [string]$Version = '0.1.0',
+    [switch]$FlatAssetUrls,
+    [string]$Version = '0.0.1',
     [string]$OutputDirectory = (Join-Path $PSScriptRoot 'dist')
 )
 
@@ -48,6 +49,10 @@ function Copy-PlatformTree {
 
     New-Item -ItemType Directory -Path $Destination | Out-Null
     foreach ($item in Get-ChildItem -LiteralPath $Source -Force) {
+        if ($item.Name -eq '.git') {
+            continue
+        }
+
         if ($item.Name -eq 'package') {
             $packageTarget = Join-Path $Destination 'package'
             New-Item -ItemType Directory -Path $packageTarget | Out-Null
@@ -68,6 +73,7 @@ $PlatformRoot = (Resolve-Path -LiteralPath $PlatformRoot).Path
 $ToolchainRoot = Resolve-ToolchainRoot -RequestedRoot $ToolchainRoot
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 $BaseUrl = $BaseUrl.TrimEnd('/')
+$AssetBaseUrl = if ($FlatAssetUrls) { $BaseUrl } else { "$BaseUrl/dist" }
 
 $platformVersion = (Select-String -LiteralPath (Join-Path $PlatformRoot 'platform.txt') -Pattern '^version=(.+)$').Matches.Groups[1].Value
 if ($platformVersion -ne $Version) {
@@ -149,13 +155,19 @@ try {
                         help = [ordered]@{
                             online = 'https://document.chipintelli.com/'
                         }
-                        url = "$BaseUrl/dist/$platformArchiveName"
+                        url = "$AssetBaseUrl/$platformArchiveName"
                         archiveFileName = $platformArchiveName
                         checksum = "SHA-256:$platformHash"
                         size = $platformFile.Length.ToString()
                         boards = @(
                             [ordered]@{
-                                name = 'ChipIntelli CI-D06GT01D (CI1306, 4 MB)'
+                                name = 'ChipIntelli CI1302 (SSOP24, 2 MB)'
+                            }
+                            [ordered]@{
+                                name = 'ChipIntelli CI1303 (SSOP24, 4 MB)'
+                            }
+                            [ordered]@{
+                                name = 'ChipIntelli CI1306 (QFN40, 4 MB)'
                             }
                         )
                         toolsDependencies = @(
@@ -174,7 +186,7 @@ try {
                         systems = @(
                             [ordered]@{
                                 host = 'x86_64-mingw32'
-                                url = "$BaseUrl/dist/$toolchainArchiveName"
+                                url = "$AssetBaseUrl/$toolchainArchiveName"
                                 archiveFileName = $toolchainArchiveName
                                 checksum = "SHA-256:$toolchainHash"
                                 size = $toolchainFile.Length.ToString()
