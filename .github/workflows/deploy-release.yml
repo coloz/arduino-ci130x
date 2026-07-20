@@ -1,0 +1,75 @@
+name: Deploy release
+
+on:
+  push:
+    branches:
+      - deploy
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Package and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check out deploy branch
+        uses: actions/checkout@v6
+
+      - name: Prepare release metadata
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="$(sed -n 's/^version=//p' platform.txt | head -n 1)"
+          if [[ -z "$version" ]]; then
+            echo 'platform.txt does not contain a version entry.' >&2
+            exit 1
+          fi
+
+          short_sha="${GITHUB_SHA::7}"
+          tag="deploy-v${version}-${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}-${short_sha}"
+          asset="arduino-ci130x-${version}-${short_sha}.zip"
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: Build release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p dist
+          git archive \
+            --format=zip \
+            --prefix="arduino-ci130x-${{ steps.release.outputs.version }}/" \
+            --output="dist/${{ steps.release.outputs.asset }}" \
+            "$GITHUB_SHA"
+
+          cd dist
+          sha256sum '${{ steps.release.outputs.asset }}' > SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh release create '${{ steps.release.outputs.tag }}' \
+            "dist/${{ steps.release.outputs.asset }}" \
+            dist/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Deploy ${{ steps.release.outputs.version }} ($GITHUB_RUN_NUMBER)" \
+            --notes "Automated release from deploy branch commit $GITHUB_SHA." \
+            --latest

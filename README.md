@@ -58,8 +58,6 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 
 ## 安装
 
-### 使用 Boards Manager 安装
-
 在 **Arduino IDE > 文件 > 首选项 > 其他开发板管理器地址** 中添加：
 
 ```text
@@ -74,65 +72,6 @@ https://raw.githubusercontent.com/coloz/arduino-ci130x/main/package/package_chip
 ```text
 https://github.com/coloz/arduino-ci130x/releases/download/v1.0.0/package_chipintelli_index.json
 ```
-
-### 使用本地 Boards Manager 仓库
-
-如需验证本地修改，可在 Windows PowerShell 中生成并启动本地 Boards Manager
-仓库：
-
-```powershell
-cd citool-cli
-.\package\build_release.ps1
-
-cd ..\arduino-ci130x
-
-.\package\build_package.ps1 `
-  -ToolchainRoot C:\path\to\riscv-nuclei-elf-gcc-9.2.0
-
-.\package\serve_package.ps1
-```
-
-在 **Arduino IDE > 文件 > 首选项 > 其他开发板管理器地址** 中临时添加：
-
-```text
-http://127.0.0.1:8765/package_chipintelli_index.json
-```
-
-随后打开开发板管理器，搜索并安装 **ChipIntelli CI130X Arduino**。安装期间需保持
-本地服务器运行；安装完成后可关闭服务器。
-
-`citool-cli` 与 `arduino-ci130x` 是同级独立项目，Arduino 仓库不包含其源码。
-`package/build_package.ps1` 默认读取 `..\citool-cli\dist\citool-cli-1.0.0-windows-x86_64.zip`；
-也可通过 `-CitoolCliArchive` 指定其他已经发布或构建完成的工具 ZIP。
-
-> [!NOTE]
-> `package/package_chipintelli_index.json` 只有在对应 Release ZIP 已发布且 URL、
-> 大小和 SHA-256 均匹配时才能作为公共索引使用。不要把指向本机地址或未发布
-> Release 的索引当作可公开安装的版本。
-
-### 从源码开发
-
-将本仓库放到 Arduino sketchbook 的
-`hardware/chipintelli/ci13xx` 目录，复制
-`platform.local.txt.example` 为 `platform.local.txt`，并填写本机编译器路径。
-
-如果需要从原厂 SDK 重新生成各芯片的静态库：
-
-```powershell
-.\tools\rebuild_sdk.ps1 -Variant ci1306 `
-  -SdkPath ..\CI13XX_SDK_ASR_ALG_V2.7.12 `
-  -ToolchainBin C:\path\to\gcc_fix_raissrc\bin
-
-.\tools\rebuild_sdk.ps1 -Variant ci1302 `
-  -SdkPath ..\CI13XX_SDK_ASR_ALG_V2.7.12 `
-  -ToolchainBin C:\path\to\gcc_fix_raissrc\bin
-
-.\tools\rebuild_sdk.ps1 -Variant ci1303 `
-  -SdkPath ..\CI13XX_SDK_ASR_ALG_V2.7.12 `
-  -ToolchainBin C:\path\to\gcc_fix_raissrc\bin
-```
-
-每个 variant 的 SDK 静态库与芯片和算法 profile 严格绑定，不能交叉复用。
 
 ## 快速开始
 
