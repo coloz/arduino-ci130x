@@ -1,14 +1,24 @@
 [CmdletBinding()]
 param(
-    [string]$PlatformRoot = (Split-Path -Parent $PSScriptRoot),
+    [string]$PlatformRoot,
     [string]$ToolchainRoot,
+    [string]$CitoolCliArchive,
+    [string]$CitoolCliVersion = '1.0.0',
+    [string]$CitoolCliBaseUrl,
     [string]$BaseUrl = 'http://127.0.0.1:8765',
     [switch]$FlatAssetUrls,
-    [string]$Version = '0.0.1',
-    [string]$OutputDirectory = (Join-Path $PSScriptRoot 'dist')
+    [string]$Version = '1.0.0',
+    [string]$OutputDirectory
 )
 
 $ErrorActionPreference = 'Stop'
+
+if (-not $PlatformRoot) {
+    $PlatformRoot = Split-Path -Parent $PSScriptRoot
+}
+if (-not $OutputDirectory) {
+    $OutputDirectory = Join-Path $PSScriptRoot 'dist'
+}
 
 function Resolve-ToolchainRoot {
     param([string]$RequestedRoot)
@@ -41,6 +51,26 @@ function Resolve-ToolchainRoot {
     throw 'GCC 9.2.0 was not found. Extract the official riscv-nuclei-elf-gcc-9.2.0 archive and pass -ToolchainRoot.'
 }
 
+function Resolve-CitoolCliArchive {
+    param(
+        [string]$PlatformPath,
+        [string]$RequestedArchive,
+        [string]$Version
+    )
+
+    $candidate = if ($RequestedArchive) {
+        $RequestedArchive
+    }
+    else {
+        $workspacePath = Split-Path -Parent $PlatformPath
+        Join-Path $workspacePath "citool-cli\dist\citool-cli-$Version-windows-x86_64.zip"
+    }
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+        throw "Prebuilt citool-cli release archive was not found: $candidate. Build the sibling project first with ..\citool-cli\package\build_release.ps1, or pass -CitoolCliArchive."
+    }
+    return (Resolve-Path -LiteralPath $candidate).Path
+}
+
 function Copy-PlatformTree {
     param(
         [string]$Source,
@@ -57,10 +87,22 @@ function Copy-PlatformTree {
             $packageTarget = Join-Path $Destination 'package'
             New-Item -ItemType Directory -Path $packageTarget | Out-Null
             foreach ($packageItem in Get-ChildItem -LiteralPath $item.FullName -Force) {
-                if ($packageItem.Name -in @('dist', 'package_chipintelli_index.json')) {
+                if ($packageItem.Name -like 'dist*' -or $packageItem.Name -eq 'package_chipintelli_index.json') {
                     continue
                 }
                 Copy-Item -LiteralPath $packageItem.FullName -Destination $packageTarget -Recurse -Force
+            }
+            continue
+        }
+
+        if ($item.Name -eq 'recursos') {
+            $resourcesTarget = Join-Path $Destination 'recursos'
+            New-Item -ItemType Directory -Path $resourcesTarget | Out-Null
+            foreach ($resourceItem in Get-ChildItem -LiteralPath $item.FullName -Force) {
+                if ($resourceItem.Name -eq 'Firmware_V2.0.0.bin') {
+                    continue
+                }
+                Copy-Item -LiteralPath $resourceItem.FullName -Destination $resourcesTarget -Recurse -Force
             }
             continue
         }
@@ -71,13 +113,49 @@ function Copy-PlatformTree {
 
 $PlatformRoot = (Resolve-Path -LiteralPath $PlatformRoot).Path
 $ToolchainRoot = Resolve-ToolchainRoot -RequestedRoot $ToolchainRoot
+$CitoolCliArchive = Resolve-CitoolCliArchive -PlatformPath $PlatformRoot -RequestedArchive $CitoolCliArchive -Version $CitoolCliVersion
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 $BaseUrl = $BaseUrl.TrimEnd('/')
 $AssetBaseUrl = if ($FlatAssetUrls) { $BaseUrl } else { "$BaseUrl/dist" }
+$CitoolCliAssetBaseUrl = if ($CitoolCliBaseUrl) { $CitoolCliBaseUrl.TrimEnd('/') } else { $AssetBaseUrl }
+
+$resourceRoot = Join-Path $PlatformRoot 'recursos'
+$requiredResources = @(
+    'asr.bin',
+    'dnn.bin',
+    'voice.bin',
+    'user_file.bin'
+)
+foreach ($resourceName in $requiredResources) {
+    $resourcePath = Join-Path $resourceRoot $resourceName
+    if (-not (Test-Path -LiteralPath $resourcePath -PathType Leaf)) {
+        throw "Missing Arduino package firmware resource: $resourcePath"
+    }
+}
 
 $platformVersion = (Select-String -LiteralPath (Join-Path $PlatformRoot 'platform.txt') -Pattern '^version=(.+)$').Matches.Groups[1].Value
 if ($platformVersion -ne $Version) {
     throw "platform.txt version '$platformVersion' does not match package version '$Version'."
+}
+
+$citoolVersion = $CitoolCliVersion
+$citoolArchiveName = "citool-cli-$citoolVersion-windows-x86_64.zip"
+if ((Split-Path -Leaf $CitoolCliArchive) -ne $citoolArchiveName) {
+    throw "citool-cli archive must be named '$citoolArchiveName': $CitoolCliArchive"
+}
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$citoolZip = [System.IO.Compression.ZipFile]::OpenRead($CitoolCliArchive)
+try {
+    $citoolExecutableEntry = $citoolZip.Entries | Where-Object {
+        $_.FullName.Replace('\', '/') -eq 'citool-cli/citool-cli.exe'
+    }
+    if ($null -eq $citoolExecutableEntry) {
+        throw "citool-cli archive must contain citool-cli/citool-cli.exe: $CitoolCliArchive"
+    }
+}
+finally {
+    $citoolZip.Dispose()
 }
 
 $compiler = Join-Path $ToolchainRoot 'bin\riscv-nuclei-elf-gcc.exe'
@@ -98,7 +176,7 @@ if (-not $fullStageRoot.StartsWith($tempRoot, [System.StringComparison]::Ordinal
 
 try {
     $platformStageParent = Join-Path $stageRoot 'platform'
-    $platformTopDirectory = Join-Path $platformStageParent "arduino-chipintelli-$Version"
+    $platformTopDirectory = Join-Path $platformStageParent "arduino-ci130x-$Version"
     New-Item -ItemType Directory -Path $platformStageParent -Force | Out-Null
     Copy-PlatformTree -Source $PlatformRoot -Destination $platformTopDirectory
 
@@ -106,16 +184,19 @@ try {
     New-Item -ItemType Directory -Path $toolStageParent -Force | Out-Null
     Copy-Item -LiteralPath $ToolchainRoot -Destination $toolStageParent -Recurse -Force
 
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $platformArchiveName = "arduino-chipintelli-$Version.zip"
+    $platformArchiveName = "arduino-ci130x-$Version.zip"
     $toolchainArchiveName = 'riscv-nuclei-elf-gcc-9.2.0-windows.zip'
     $platformArchive = Join-Path $OutputDirectory $platformArchiveName
     $toolchainArchive = Join-Path $OutputDirectory $toolchainArchiveName
+    $citoolArchive = Join-Path $OutputDirectory $citoolArchiveName
 
     foreach ($archive in @($platformArchive, $toolchainArchive)) {
         if (Test-Path -LiteralPath $archive) {
             Remove-Item -LiteralPath $archive -Force
         }
+    }
+    if ([System.IO.Path]::GetFullPath($CitoolCliArchive) -ne [System.IO.Path]::GetFullPath($citoolArchive)) {
+        Copy-Item -LiteralPath $CitoolCliArchive -Destination $citoolArchive -Force
     }
 
     [System.IO.Compression.ZipFile]::CreateFromDirectory(
@@ -130,11 +211,12 @@ try {
         [System.IO.Compression.CompressionLevel]::Optimal,
         $false
     )
-
     $platformFile = Get-Item -LiteralPath $platformArchive
     $toolchainFile = Get-Item -LiteralPath $toolchainArchive
+    $citoolFile = Get-Item -LiteralPath $citoolArchive
     $platformHash = (Get-FileHash -LiteralPath $platformArchive -Algorithm SHA256).Hash.ToLowerInvariant()
     $toolchainHash = (Get-FileHash -LiteralPath $toolchainArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+    $citoolHash = (Get-FileHash -LiteralPath $citoolArchive -Algorithm SHA256).Hash.ToLowerInvariant()
 
     $index = [ordered]@{
         packages = @(
@@ -148,7 +230,7 @@ try {
                 }
                 platforms = @(
                     [ordered]@{
-                        name = 'ChipIntelli CI13XX Arduino'
+                        name = 'ChipIntelli CI130X Arduino'
                         architecture = 'ci13xx'
                         version = $Version
                         category = 'Contributed'
@@ -175,6 +257,11 @@ try {
                                 packager = 'chipintelli'
                                 name = 'riscv-gcc'
                                 version = '9.2.0'
+                            },
+                            [ordered]@{
+                                packager = 'chipintelli'
+                                name = 'citool-cli'
+                                version = $citoolVersion
                             }
                         )
                     }
@@ -190,6 +277,19 @@ try {
                                 archiveFileName = $toolchainArchiveName
                                 checksum = "SHA-256:$toolchainHash"
                                 size = $toolchainFile.Length.ToString()
+                            }
+                        )
+                    },
+                    [ordered]@{
+                        name = 'citool-cli'
+                        version = $citoolVersion
+                        systems = @(
+                            [ordered]@{
+                                host = 'x86_64-mingw32'
+                                url = "$CitoolCliAssetBaseUrl/$citoolArchiveName"
+                                archiveFileName = $citoolArchiveName
+                                checksum = "SHA-256:$citoolHash"
+                                size = $citoolFile.Length.ToString()
                             }
                         )
                     }
@@ -211,6 +311,9 @@ try {
         ToolchainArchive = $toolchainArchive
         ToolchainSize = $toolchainFile.Length
         ToolchainSha256 = $toolchainHash
+        CitoolCliArchive = $citoolArchive
+        CitoolCliSize = $citoolFile.Length
+        CitoolCliSha256 = $citoolHash
     } | Format-List
 }
 finally {

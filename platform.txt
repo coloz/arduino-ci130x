@@ -1,5 +1,5 @@
-name=ChipIntelli CI13XX Arduino
-version=0.0.1
+name=ChipIntelli CI130X Arduino
+version=1.0.0
 
 # CI13XX SDK ASR ALG V2.7.12 is ABI-locked to the vendor Nuclei GCC 9.2.0
 # distribution. Boards Manager removes the archive's single gcc_fix_raissrc/
@@ -36,6 +36,8 @@ compiler.c.elf.flags={compiler.common.flags} -g -nostartfiles --specs=nano.specs
 compiler.c.elf.wrap=-Wl,--wrap,memcmp -Wl,--wrap,memcpy -Wl,--wrap,memmove -Wl,--wrap,memset -Wl,--wrap,strcat -Wl,--wrap,strcmp -Wl,--wrap,strcpy -Wl,--wrap,strlen -Wl,--wrap,strncat -Wl,--wrap,strncmp -Wl,--wrap,strncpy -Wl,--wrap,strstr -Wl,--wrap,stpcpy -Wl,--wrap,stpncpy -Wl,--wrap,strnlen -Wl,--wrap,strtoul -Wl,--wrap,atol -Wl,--wrap,qsort -Wl,--wrap,malloc -Wl,--wrap,free -Wl,--wrap,vsnprintf -Wl,--wrap,sprintf -Wl,--wrap,sscanf -Wl,--wrap,abs -Wl,--wrap,isnan -Wl,--wrap,isinf -Wl,--wrap,cosf -Wl,--wrap,sinf -Wl,--wrap,tanf -Wl,--wrap,expf -Wl,--wrap,sqrtf -Wl,--wrap,fabsf -Wl,--wrap,logf -Wl,--wrap,log10f -Wl,--wrap,atoi -Wl,--wrap,vTaskStartScheduler -Wl,--wrap,deal_asr_msg_by_cmd_id -Wl,--wrap,sys_asr_result_hook -Wl,--wrap,ADC_IRQHandler
 compiler.c.elf.libs=-lci13xx_sdk -lasr_dis_deepse_v2 -lir_data -lnlp -lnewlib_port -lfreertos_port -ldsu -lflash_encrypt -lcwsl_v2 -ltts -lOnMicroBLE -lcias_crypto -lcikd_pro_cwsl_dis_frm -lm
 
+recipe.hooks.prebuild.1.pattern=powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{runtime.platform.path}/tools/prepare_resources.ps1" -ProjectPath "{build.source.path}" -PackageResources "{runtime.platform.path}/recursos"
+
 recipe.c.o.pattern="{compiler.path}{compiler.c.cmd}" {compiler.c.flags} {compiler.c.extra_flags} -DF_CPU={build.f_cpu} -DARDUINO={runtime.ide.version} -DARDUINO_{build.board} -DARDUINO_ARCH_CI13XX {compiler.sdk.defines} {build.extra_flags} {compiler.sdk.includes} {includes} -c "{source_file}" -o "{object_file}"
 recipe.cpp.o.pattern="{compiler.path}{compiler.cpp.cmd}" {compiler.cpp.flags} {compiler.cpp.extra_flags} -DF_CPU={build.f_cpu} -DARDUINO={runtime.ide.version} -DARDUINO_{build.board} -DARDUINO_ARCH_CI13XX {compiler.sdk.defines} {build.extra_flags} {compiler.sdk.includes} {includes} -c "{source_file}" -o "{object_file}"
 recipe.S.o.pattern="{compiler.path}{compiler.S.cmd}" {compiler.S.flags} {compiler.S.extra_flags} -DF_CPU={build.f_cpu} -DARDUINO={runtime.ide.version} -DARDUINO_{build.board} -DARDUINO_ARCH_CI13XX {compiler.sdk.defines} {build.extra_flags} {compiler.sdk.includes} {includes} -c "{source_file}" -o "{object_file}"
@@ -46,15 +48,23 @@ recipe.ar.pattern="{compiler.path}{compiler.ar.cmd}" {compiler.ar.flags} {compil
 # setup()/loop() without replacing the validated SDK boot sequence.
 recipe.c.combine.pattern="{compiler.path}{compiler.c.elf.cmd}" {compiler.c.elf.flags} {compiler.c.elf.wrap} {compiler.c.elf.extra_flags} -o "{build.path}/{build.project_name}.elf" -Wl,--start-group {object_files} "{archive_file_path}" {compiler.libraries.ldflags} {compiler.c.elf.libs} -Wl,--end-group -Wl,-EL
 
-# CI13XX user-code is a two-image container, not a raw ELF image at flash address 0.
-recipe.objcopy.bin.pattern=powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{runtime.platform.path}/tools/postbuild.ps1" -Elf "{build.path}/{build.project_name}.elf" -Output "{build.path}/{build.project_name}.bin" -Objcopy "{compiler.path}{compiler.objcopy.cmd}" -PlatformPath "{runtime.platform.path}" -MaxUserCodeSize {build.user_code_max}
+# First build the CI13XX two-image user-code container, then compose and inspect
+# the complete firmware that the upload recipe writes from Flash address 0.
+recipe.objcopy.bin.pattern=powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{runtime.platform.path}/tools/postbuild.ps1" -Elf "{build.path}/{build.project_name}.elf" -Output "{build.path}/{build.project_name}.user_code.bin" -FirmwareOutput "{build.path}/{build.project_name}.bin" -Objcopy "{compiler.path}{compiler.objcopy.cmd}" -PlatformPath "{runtime.platform.path}" -CitoolCli "{runtime.tools.citool-cli.path}/citool-cli.exe" -ProjectResources "{build.source.path}/recursos" -Chip "{build.chip}" -MaxUserCodeSize {build.user_code_max}
 
 recipe.output.tmp_file={build.project_name}.bin
-recipe.output.save_file={build.project_name}.{build.variant}.user_code.bin
+recipe.output.save_file={build.project_name}.{build.variant}.firmware.bin
 
 recipe.size.pattern="{compiler.path}{compiler.size.cmd}" -A "{build.path}/{build.project_name}.elf"
 recipe.size.regex=^(?:\.boot_parameter|\.init|\.ilalign|\.text|\.ro_data|\.data|\.preinit_array|\.init_array|\.fini_array|\.ctors|\.dtors|\.gcc_except_table\S*)\s+([0-9]+).*
 recipe.size.regex.data=^(?:\.data|\.bss|\.no_init|\.stack|\.sys_heap)\s+([0-9]+).*
 
-tools.chipintelli_upload.upload.pattern=powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{runtime.platform.path}/tools/upload.ps1" -Image "{build.path}/{build.project_name}.bin" -Port "{serial.port}" -PlatformPath "{runtime.platform.path}"
-tools.chipintelli_upload.program.pattern=powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{runtime.platform.path}/tools/upload.ps1" -Image "{build.path}/{build.project_name}.bin" -Port "{serial.port}" -PlatformPath "{runtime.platform.path}"
+tools.citool-cli.path={runtime.tools.citool-cli.path}
+tools.citool-cli.cmd=citool-cli
+tools.citool-cli.cmd.windows=citool-cli.exe
+tools.citool-cli.upload.params.verbose=
+tools.citool-cli.upload.params.quiet=
+tools.citool-cli.upload.pattern="{path}/{cmd}" flash --port "{serial.port}" "{build.path}/{build.project_name}.bin"
+tools.citool-cli.program.params.verbose=
+tools.citool-cli.program.params.quiet=
+tools.citool-cli.program.pattern="{path}/{cmd}" flash --port "{serial.port}" "{build.path}/{build.project_name}.bin"

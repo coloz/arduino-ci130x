@@ -1,5 +1,9 @@
 # Generated Boards Manager release archives are published as GitHub Release assets.
-package/dist/
+package/dist*/
+
+# The full reference firmware is only an extraction source. Runtime compose
+# embeds the validated 8 KiB Bootloader and does not ship this template.
+recursos/Firmware_V2.0.0.bin
 
 # Optional source-tree toolchain override contains machine-specific paths.
 platform.local.txt

@@ -10,12 +10,12 @@
       },
       "platforms": [
         {
-          "name": "ChipIntelli CI13XX Arduino",
+          "name": "ChipIntelli CI130X Arduino",
           "architecture": "ci13xx",
-          "version": "0.0.1",
+          "version": "1.0.0",
           "category": "Contributed",
           "url": "__PLATFORM_ARCHIVE_URL__",
-          "archiveFileName": "arduino-chipintelli-0.0.1.zip",
+          "archiveFileName": "arduino-ci130x-1.0.0.zip",
           "checksum": "SHA-256:__PLATFORM_SHA256__",
           "size": "__PLATFORM_SIZE_BYTES__",
           "boards": [
@@ -34,6 +34,11 @@
               "packager": "chipintelli",
               "name": "riscv-gcc",
               "version": "9.2.0"
+            },
+            {
+              "packager": "chipintelli",
+              "name": "citool-cli",
+              "version": "1.0.0"
             }
           ]
         }
@@ -49,6 +54,19 @@
               "archiveFileName": "riscv-nuclei-elf-gcc-9.2.0-windows.zip",
               "checksum": "SHA-256:__TOOLCHAIN_SHA256__",
               "size": "__TOOLCHAIN_SIZE_BYTES__"
+            }
+          ]
+        },
+        {
+          "name": "citool-cli",
+          "version": "1.0.0",
+          "systems": [
+            {
+              "host": "x86_64-mingw32",
+              "url": "__CITOOL_CLI_ZIP_URL__",
+              "archiveFileName": "citool-cli-1.0.0-windows-x86_64.zip",
+              "checksum": "SHA-256:__CITOOL_CLI_SHA256__",
+              "size": "__CITOOL_CLI_SIZE_BYTES__"
             }
           ]
         }

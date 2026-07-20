@@ -2,8 +2,8 @@ menu.Algorithm=Algorithm profile
 
 ci1302.name=ChipIntelli CI1302 (SSOP24, 2 MB)
 
-ci1302.upload.tool=chipintelli_upload
-ci1302.upload.tool.default=chipintelli_upload
+ci1302.upload.tool=citool-cli
+ci1302.upload.tool.default=citool-cli
 ci1302.upload.maximum_size=382577
 ci1302.upload.maximum_data_size=532480
 ci1302.upload.use_1200bps_touch=false
@@ -16,6 +16,8 @@ ci1302.build.core=chipintelli
 ci1302.build.variant=ci1302
 ci1302.build.algorithm=null
 ci1302.build.user_code_max=458752
+ci1302.build.flash_size=2097152
+ci1302.build.chip=ci1302
 ci1302.build.extra_flags=-DCI_CHIP_CI1302 -DNO_ASR_FLOW=0 -DUSE_NULL=1 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
 
 ci1302.menu.Algorithm.null=Basic offline ASR (USE_NULL)
@@ -23,8 +25,8 @@ ci1302.menu.Algorithm.null.build.algorithm=null
 
 ci1303.name=ChipIntelli CI1303 (SSOP24, 4 MB)
 
-ci1303.upload.tool=chipintelli_upload
-ci1303.upload.tool.default=chipintelli_upload
+ci1303.upload.tool=citool-cli
+ci1303.upload.tool.default=citool-cli
 ci1303.upload.maximum_size=382577
 ci1303.upload.maximum_data_size=532480
 ci1303.upload.use_1200bps_touch=false
@@ -37,6 +39,8 @@ ci1303.build.core=chipintelli
 ci1303.build.variant=ci1303
 ci1303.build.algorithm=null
 ci1303.build.user_code_max=458752
+ci1303.build.flash_size=4194304
+ci1303.build.chip=ci1303
 ci1303.build.extra_flags=-DCI_CHIP_CI1303 -DNO_ASR_FLOW=0 -DUSE_NULL=1 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
 
 ci1303.menu.Algorithm.null=Basic offline ASR (USE_NULL)
@@ -44,8 +48,8 @@ ci1303.menu.Algorithm.null.build.algorithm=null
 
 ci1306.name=ChipIntelli CI1306 (QFN40, 4 MB)
 
-ci1306.upload.tool=chipintelli_upload
-ci1306.upload.tool.default=chipintelli_upload
+ci1306.upload.tool=citool-cli
+ci1306.upload.tool.default=citool-cli
 # The container has a 32-byte table plus up to 15 bytes of [0] image alignment
 # and the fixed 76,128-byte BNPU image. Arduino's section sum is itself more
 # conservative than raw [0]code.bin; postbuild.ps1 enforces the exact cap.
@@ -61,6 +65,8 @@ ci1306.build.core=chipintelli
 ci1306.build.variant=ci1306
 ci1306.build.algorithm=null
 ci1306.build.user_code_max=458752
+ci1306.build.flash_size=4194304
+ci1306.build.chip=ci1306
 ci1306.build.extra_flags=-DARDUINO_CI1306 -DCI_CHIP_CI1306 -DNO_ASR_FLOW=0 -DUSE_NULL=1 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
 
 ci1306.menu.Algorithm.null=Basic offline ASR (USE_NULL)
