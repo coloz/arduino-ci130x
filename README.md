@@ -52,6 +52,7 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 - [Boards Manager 验证记录](package/VALIDATION.md)
 - [Wire / I2C 说明](libraries/Wire/README.md)
 - [SPI 说明](libraries/SPI/README.md)
+- [Servo 说明](libraries/Servo/README.md)
 - [EEPROM 说明](libraries/EEPROM/README.md)
 - [离线语音识别结果接口](libraries/ChipIntelliASR/README.md)
 - [提示音播放接口](libraries/ChipIntelliAudio/README.md)
@@ -119,8 +120,9 @@ arduino-cli compile --fqbn chipintelli:ci13xx:ci1303 `
 | 中断 | `attachInterrupt()`、`attachInterruptArg()`、`detachInterrupt()` | PA/PB/PC 支持；PD 不支持 GPIO IRQ |
 | ADC | `analogRead()`、读取分辨率 | 12 位；CI1302/1303 为 AIN2，CI1306 为 AIN2–AIN5 |
 | PWM / Tone | `analogWrite()`、写分辨率/频率、`tone()`、`noTone()` | 6 个硬件通道 |
+| 舵机 | [`Servo`](libraries/Servo/README.md) | 50 Hz 硬件 PWM、角度/微秒接口；CI1302/CI1303 最多 5 个通道，CI1306 最多 6 个通道 |
 | 串口 | `Serial`、`Serial1`、`Serial2` | polling、8N1、原厂支持的固定波特率 |
-| I2C | [`Wire`](libraries/Wire/README.md) | IIC0 master、32 B、10–400 kHz、支持 repeated start |
+| I2C | [`Wire`](libraries/Wire/README.md) | IIC0 master、32 B、10–400 kHz、支持安全地址探测和 repeated start |
 | SPI | [`SPI`](libraries/SPI/README.md)、`SPISettings` | GPIO software master、模式 0–3、MSB/LSB，最高 500 kHz |
 | 持久化 | [`EEPROM`](libraries/EEPROM/README.md) | 基于 NVDM，单实例 1–240 B，需要 `commit()` |
 | 语音识别 | [`ChipIntelliASR`](libraries/ChipIntelliASR/README.md) | 命令 ID、语义 ID、得分、帧数、文本队列与回调 |
@@ -137,7 +139,8 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 | `CI13XX > Analog` | `AnalogReadSerial`、`PWMFade` | 12 位 ADC 和硬件 PWM |
 | `CI13XX > Serial` | `SerialEcho`、`Serial1Bridge` | UART0 回显和 UART0/UART1 桥接 |
 | `SPI` | `SoftwareSPILoopback` | GPIO software SPI 回环 |
-| `Wire` | `MasterWrite`、`RegisterRead` | IIC0 写入和 repeated-start 寄存器读取 |
+| `Servo` | `Sweep` | 硬件 PWM 舵机角度扫描 |
+| `Wire` | `MasterWrite`、`RegisterRead`、`Scanner` | IIC0 写入、repeated-start 寄存器读取和安全地址扫描 |
 | `EEPROM` | `PersistentCounter` | NVDM 持久化计数器 |
 | `ChipIntelliASR` | `ASRResults` | 读取离线语音识别结果 |
 | `ChipIntelliAudio` | `PlayVoiceId`、`PromptControl` | 播放与控制已配置提示音 |
@@ -151,12 +154,24 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 - CI1302、CI1303、CI1306 均没有可供 Arduino 用户复用的通用硬件 SPI；片内
   `QSPI0` 用于启动、模型和用户 Flash，因此 `SPI` 是 GPIO software SPI，
   不支持 DMA、硬件片选或从机模式。
-- `Wire` 只支持 IIC0 master。项目不提供传统 I2C Scanner，以避免原厂 polling
-  API 对未知设备执行不安全的探测写入。
+- `Servo`、`analogWrite()` 和 `tone()` 共用 PWM0–PWM5。Servo 只能连接具有
+  PWM 能力的引脚；同一硬件通道不能被多个功能同时占用。
+- CI-D03GS02S（CI1303）的原厂板级初始化使用 PC4 控制功放使能；当前 CI1303
+  variant 同时将该管脚公开为 Arduino pin 20、`A0` 和 PC4 上的 PWM0 输出。
+  使用原厂模块及音频基线时，不要把 pin 20 用作普通 GPIO、`analogRead(A0)`、
+  `analogWrite()` 或 Servo，否则会改写功放控制状态并影响音频播放。只有确认
+  自定义硬件未连接该功放控制电路且固件已释放 PC4 后，才能复用该管脚。
+- `Wire` 只支持 IIC0 master。`Wire.probe()` 及空数据的 `endTransmission()` 使用
+  专用地址探测事务：只发送 START 和地址、读取 ACK/NACK，并在 START 后的所有
+  完成及错误路径发送 STOP；不会用可能改写未知设备寄存器的虚拟数据字节。
 - `Serial` 使用 SDK 日志口 UART0（PB5/PB6），默认日志波特率为 921600；
   `Serial.begin()` 会重新初始化该端口。
+- `HardwareSerial` 当前仅提供 polling 方式的 8N1；`Serial.begin(baud, config)`
+  的 `config` 参数尚未生效。波特率必须使用原厂驱动支持的固定值，其他值会
+  静默回退到 115200。
 - `Wire` 与 `Serial1` 共用 PAD：CI1302/CI1303 为 PA2/PA3，CI1306 为 PB7/PC0，
-  不能同时使用。
+  不能同时使用。当前 SDK profile 还将 UART1 TX 配置为开漏输出，使用
+  `Serial1` 时必须提供与目标电平匹配的外部上拉电阻。
 - `Serial2` 默认用于 SDK 语音模块协议：CI1302/CI1303 为 PA5/PA6，CI1306 为
   PB1/PB2。重新初始化会接管该协议端口。
 - software SPI 默认使用 `SCK=PA5`、`MISO=PA2`、`MOSI=PA4`、`SS=PA3`。

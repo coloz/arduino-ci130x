@@ -30,6 +30,44 @@ bool ChipIntelliAudioClass::playVoice(uint16_t voiceId,
              interruptCurrent) == 0U;
 }
 
+bool ChipIntelliAudioClass::playCommand(unsigned long commandId,
+                                       int optionIndex,
+                                       bool interruptCurrent) {
+  if (commandId > UINT16_MAX) {
+    return false;
+  }
+  return playCommand(static_cast<uint16_t>(commandId), optionIndex,
+                     interruptCurrent);
+}
+
+bool ChipIntelliAudioClass::playCommand(long commandId, int optionIndex,
+                                       bool interruptCurrent) {
+  if (commandId < 0 || commandId > UINT16_MAX) {
+    return false;
+  }
+  return playCommand(static_cast<uint16_t>(commandId), optionIndex,
+                     interruptCurrent);
+}
+
+bool ChipIntelliAudioClass::playCommand(unsigned int commandId,
+                                       int optionIndex,
+                                       bool interruptCurrent) {
+  if (commandId > UINT16_MAX) {
+    return false;
+  }
+  return playCommand(static_cast<uint16_t>(commandId), optionIndex,
+                     interruptCurrent);
+}
+
+bool ChipIntelliAudioClass::playCommand(int commandId, int optionIndex,
+                                       bool interruptCurrent) {
+  if (commandId < 0 || commandId > UINT16_MAX) {
+    return false;
+  }
+  return playCommand(static_cast<uint16_t>(commandId), optionIndex,
+                     interruptCurrent);
+}
+
 bool ChipIntelliAudioClass::playCommand(uint16_t commandId, int optionIndex,
                                        bool interruptCurrent) {
   return prompt_play_by_cmd_id(

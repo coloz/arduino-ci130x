@@ -15,6 +15,10 @@ public:
     void flush() override;
     size_t write(uint8_t value) override;
     size_t write(const uint8_t *buffer, size_t size) override;
+    inline size_t write(unsigned long value) { return write(static_cast<uint8_t>(value)); }
+    inline size_t write(long value) { return write(static_cast<uint8_t>(value)); }
+    inline size_t write(unsigned int value) { return write(static_cast<uint8_t>(value)); }
+    inline size_t write(int value) { return write(static_cast<uint8_t>(value)); }
     using Print::write;
     operator bool() const { return _started; }
     uint8_t uartNumber() const { return _uartNumber; }

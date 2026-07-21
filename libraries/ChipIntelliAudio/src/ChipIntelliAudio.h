@@ -17,6 +17,14 @@ public:
   // Play audio already provisioned in the board's voice.bin partition.
   // Set interruptCurrent to false to append to the SDK prompt queue.
   bool playVoice(uint16_t voiceId, bool interruptCurrent = true);
+  bool playCommand(unsigned long commandId, int optionIndex = -1,
+                   bool interruptCurrent = true);
+  bool playCommand(long commandId, int optionIndex = -1,
+                   bool interruptCurrent = true);
+  bool playCommand(unsigned int commandId, int optionIndex = -1,
+                   bool interruptCurrent = true);
+  bool playCommand(int commandId, int optionIndex = -1,
+                   bool interruptCurrent = true);
   bool playCommand(uint16_t commandId, int optionIndex = -1,
                    bool interruptCurrent = true);
   bool playSemantic(uint32_t semanticId, int optionIndex = -1,

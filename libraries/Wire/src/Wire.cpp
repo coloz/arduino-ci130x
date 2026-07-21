@@ -10,6 +10,52 @@ namespace {
 constexpr uint32_t kDefaultClock = 100000;
 constexpr uint32_t kMinClock = 10000;
 constexpr uint32_t kMaxClock = 400000;
+constexpr uint32_t kProbeTimeout = static_cast<uint32_t>(LONG_TIME_OUT);
+
+constexpr uint32_t kCommandTransfer = 1U << 0;
+constexpr uint32_t kCommandStop = 1U << 3;
+constexpr uint32_t kCommandStart = 1U << 4;
+constexpr uint32_t kInterruptClearAll = 0x7fU;
+constexpr uint32_t kStopInterrupt = 1U << 4;
+constexpr uint32_t kStatusTransferError = 1U << 3;
+constexpr uint32_t kStatusArbitrationLost = 1U << 5;
+constexpr uint32_t kStatusInterrupt = 1U << 12;
+constexpr uint32_t kStatusNack = 1U << 14;
+constexpr uint32_t kStatusBusy = 1U << 15;
+
+struct IicRegisters {
+  volatile uint32_t sclDivider;
+  volatile uint32_t startHold;
+  volatile uint32_t dataHold;
+  volatile uint32_t globalControl;
+  volatile uint32_t command;
+  volatile uint32_t interruptEnable;
+  volatile uint32_t interruptClear;
+  volatile uint32_t slaveAddress;
+  volatile uint32_t transmitData;
+  volatile uint32_t receiveData;
+  volatile uint32_t timeout;
+  volatile uint32_t status;
+  volatile uint32_t busMonitor;
+  volatile uint32_t interruptStatus;
+};
+
+static_assert(offsetof(IicRegisters, command) == 0x10,
+              "CI130X IIC command register offset mismatch");
+static_assert(offsetof(IicRegisters, transmitData) == 0x20,
+              "CI130X IIC TX register offset mismatch");
+static_assert(offsetof(IicRegisters, status) == 0x2c,
+              "CI130X IIC status register offset mismatch");
+
+bool waitForMask(volatile uint32_t *value, uint32_t mask, bool set) {
+  uint32_t remaining = kProbeTimeout;
+  while (remaining-- != 0U) {
+    if (((*value & mask) != 0U) == set) {
+      return true;
+    }
+  }
+  return false;
+}
 }
 
 TwoWire Wire;
@@ -83,6 +129,53 @@ uint32_t TwoWire::getClock() const {
   return _frequency;
 }
 
+bool TwoWire::probe(uint8_t address) {
+  if (address > 0x7fU || _transmitting || _pendingWrite) {
+    _lastError = 4;
+    return false;
+  }
+  if (!_begun && !begin()) {
+    return false;
+  }
+
+  IicRegisters *registers =
+      reinterpret_cast<IicRegisters *>(static_cast<uintptr_t>(IIC0));
+  if (!waitForMask(&registers->status, kStatusBusy, false)) {
+    _lastError = 4;
+    return false;
+  }
+
+  registers->transmitData = static_cast<uint32_t>(address) << 1U;
+  registers->interruptClear = kStopInterrupt;
+  registers->command = kCommandStart | kCommandTransfer;
+
+  const bool startCompleted =
+      waitForMask(&registers->status, kStatusInterrupt, true);
+  const uint32_t status = registers->status;
+
+  // Once START has been requested, every result path must issue STOP. This
+  // includes ACK, NACK, transfer error, arbitration loss, and local timeout.
+  registers->command = kCommandStop | kCommandTransfer;
+  registers->interruptClear = kInterruptClearAll;
+  const bool stopCompleted =
+      waitForMask(&registers->status, kStatusInterrupt, true);
+  registers->interruptClear = kInterruptClearAll;
+  const bool busReleased =
+      waitForMask(&registers->status, kStatusBusy, false);
+
+  if (!startCompleted || !stopCompleted || !busReleased) {
+    _lastError = 4;
+  } else if ((status &
+              (kStatusTransferError | kStatusArbitrationLost)) != 0U) {
+    _lastError = 4;
+  } else if ((status & kStatusNack) != 0U) {
+    _lastError = 2;
+  } else {
+    _lastError = 0;
+  }
+  return _lastError == 0;
+}
+
 void TwoWire::beginTransmission(uint8_t address) {
   if (!_begun && !begin()) {
     return;
@@ -141,18 +234,20 @@ uint8_t TwoWire::endTransmission(bool sendStop) {
     return _lastError;
   }
 
+  if (_txLength == 0) {
+    if (!sendStop) {
+      _lastError = 4;
+      return _lastError;
+    }
+    (void)probe(_txAddress);
+    return _lastError;
+  }
+
   if (!sendStop) {
     _pendingAddress = _txAddress;
     _pendingWrite = true;
     _lastError = 0;
     return 0;
-  }
-
-  // The vendor polling API does not terminate an address-only (zero-byte)
-  // write. Reject it instead of leaving IIC0 busy indefinitely.
-  if (_txLength == 0) {
-    _lastError = 4;
-    return _lastError;
   }
 
   uint8_t lastAck = 0;

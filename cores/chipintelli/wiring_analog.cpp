@@ -100,6 +100,18 @@ extern "C" void analogWrite(uint8_t pin, int value) {
     uint32_t duty = value < 0 ? 0U : static_cast<uint32_t>(value);
     if (duty > dutyMax) duty = dutyMax;
 
+    // CI130X PWM hardware cannot generate a true 100% duty cycle. Handle
+    // both constant-output endpoints as GPIO levels and reserve PWM for the
+    // open interval (0, dutyMax).
+    pwm_base_t pwm = pwmBase(desc.pwmChannel);
+    if (duty == 0U || duty == dutyMax) {
+        scu_set_device_gate(static_cast<uint32_t>(pwm), ENABLE);
+        pwm_stop(pwm);
+        pinMode(pin, OUTPUT);
+        digitalWrite(pin, duty == dutyMax ? HIGH : LOW);
+        return;
+    }
+
     uint32_t frequency = s_writeFrequency;
     const uint32_t apbClock = get_apb_clk();
     if (frequency > apbClock) frequency = apbClock;
@@ -118,7 +130,6 @@ extern "C" void analogWrite(uint8_t pin, int value) {
         if (safeDuty > safeDutyMax) safeDuty = safeDutyMax;
     }
 
-    pwm_base_t pwm = pwmBase(desc.pwmChannel);
     scu_set_device_gate(static_cast<uint32_t>(pwm), ENABLE);
     dpmu_set_adio_reuse(static_cast<PinPad_Name>(desc.pad), DIGITAL_MODE);
     dpmu_set_io_reuse(static_cast<PinPad_Name>(desc.pad), static_cast<IOResue_FUNCTION>(desc.pwmMux));

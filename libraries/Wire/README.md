@@ -23,10 +23,13 @@ Wire.requestFrom(address, count);
 ```
 
 The no-STOP write is deferred and submitted with the read through the SDK's
-`iic_master_multi_transmission()` API. The SDK cannot safely issue a standalone
-zero-byte polling write, so address-only `endTransmission()` (the pattern used
-by many I2C scanner sketches) returns status 4. The SDK polling receiver also
-always sends STOP after a read; `requestFrom(..., false)` cannot retain the bus.
+`iic_master_multi_transmission()` API. `Wire.probe(address)` performs a dedicated
+address-only transaction: it sends START and the 7-bit write address, reads the
+ACK/NACK result, and issues STOP on every completion and error path after START.
+It never sends a dummy data byte. The common scanner pattern
+`beginTransmission(address); endTransmission();` uses the same probe transaction.
+The SDK polling receiver always sends STOP after a read;
+`requestFrom(..., false)` cannot retain the bus.
 
 Transfers are buffered to 32 bytes and clocks from 10 kHz through 400 kHz are
 accepted. Wire does not arbitrate IIC0 access with SDK components configured to
@@ -36,8 +39,5 @@ Examples:
 
 - `MasterWrite` sends a register/value pair and reports the Arduino Wire status.
 - `RegisterRead` demonstrates a write followed by a repeated START read.
-
-An I2C scanner example is intentionally not included: the vendor polling API
-does not terminate an address-only write, while substituting a dummy data byte
-could modify an unknown device. Use a known address/register from the device
-data sheet instead.
+- `Scanner` safely scans 7-bit addresses with `Wire.probe()` and never writes a
+  register or dummy data byte.

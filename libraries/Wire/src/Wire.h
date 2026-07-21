@@ -21,6 +21,9 @@ public:
   bool setClock(uint32_t frequency);
   uint32_t getClock() const;
 
+  // Send only the 7-bit address and always finish with STOP.
+  bool probe(uint8_t address);
+
   void beginTransmission(uint8_t address);
   uint8_t endTransmission(bool sendStop);
   uint8_t endTransmission();
@@ -29,6 +32,10 @@ public:
 
   size_t write(uint8_t data) override;
   size_t write(const uint8_t *data, size_t quantity) override;
+  inline size_t write(unsigned long value) { return write(static_cast<uint8_t>(value)); }
+  inline size_t write(long value) { return write(static_cast<uint8_t>(value)); }
+  inline size_t write(unsigned int value) { return write(static_cast<uint8_t>(value)); }
+  inline size_t write(int value) { return write(static_cast<uint8_t>(value)); }
   using Print::write;
 
   int available() override;
