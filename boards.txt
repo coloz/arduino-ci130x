@@ -4,6 +4,7 @@ ci1302.name=ChipIntelli CI1302 (SSOP24, 2 MB)
 
 ci1302.upload.tool=citool-cli
 ci1302.upload.tool.default=citool-cli
+ci1302.upload.protocol=ci13xx_firmware
 ci1302.upload.maximum_size=382577
 ci1302.upload.maximum_data_size=532480
 ci1302.upload.use_1200bps_touch=false
@@ -27,6 +28,7 @@ ci1303.name=ChipIntelli CI1303 (SSOP24, 4 MB)
 
 ci1303.upload.tool=citool-cli
 ci1303.upload.tool.default=citool-cli
+ci1303.upload.protocol=ci13xx_firmware
 ci1303.upload.maximum_size=382577
 ci1303.upload.maximum_data_size=532480
 ci1303.upload.use_1200bps_touch=false
@@ -50,6 +52,7 @@ ci1306.name=ChipIntelli CI1306 (QFN40, 4 MB)
 
 ci1306.upload.tool=citool-cli
 ci1306.upload.tool.default=citool-cli
+ci1306.upload.protocol=ci13xx_firmware
 # The container has a 32-byte table plus up to 15 bytes of [0] image alignment
 # and the fixed 76,128-byte BNPU image. Arduino's section sum is itself more
 # conservative than raw [0]code.bin; postbuild.ps1 enforces the exact cap.

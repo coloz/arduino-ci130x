@@ -19,8 +19,8 @@
                                                         },
                                                "url":  "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.0/arduino-ci130x-1.0.0.zip",
                                                "archiveFileName":  "arduino-ci130x-1.0.0.zip",
-                                               "checksum":  "SHA-256:236b73e4fcbe325205b333aa22fc6b64444b4923edcfef8543a14d92c2b5a24c",
-                                               "size":  "20912103",
+                                               "checksum":  "SHA-256:55ed07110ceafd3dfc943d0d3ed8d205a945bc2b9107959f5cbd51da2ea3d205",
+                                               "size":  "20920938",
                                                "boards":  [
                                                               {
                                                                   "name":  "ChipIntelli CI1302 (SSOP24, 2 MB)"
@@ -55,7 +55,7 @@
                                                                "host":  "x86_64-mingw32",
                                                                "url":  "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.0/riscv-nuclei-elf-gcc-9.2.0-windows.zip",
                                                                "archiveFileName":  "riscv-nuclei-elf-gcc-9.2.0-windows.zip",
-                                                               "checksum":  "SHA-256:ae6e4ae268b96c21850ffa33c57402be581c9e47b8a58be8e40c08b9ae9461cc",
+                                                               "checksum":  "SHA-256:2bb7708e32ef5de039a3ba58f95cca643832f9bccff7d7ffc4ddf224f8c6d94a",
                                                                "size":  "139799059"
                                                            }
                                                        ]
