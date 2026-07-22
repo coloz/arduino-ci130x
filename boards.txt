@@ -1,22 +1,25 @@
 menu.Algorithm=Algorithm profile
+menu.Clock=Clock source
+menu.CHeap=C/newlib heap reserve
 
 ci1302.name=ChipIntelli CI1302 (SSOP24, 2 MB)
 
 ci1302.upload.tool=citool-cli
 ci1302.upload.tool.default=citool-cli
 ci1302.upload.protocol=ci13xx_firmware
-ci1302.upload.maximum_size=382577
+ci1302.upload.maximum_size=427008
 ci1302.upload.maximum_data_size=532480
 ci1302.upload.use_1200bps_touch=false
 ci1302.upload.wait_for_upload_port=false
 
 ci1302.build.mcu=ci1302
-ci1302.build.f_cpu=246000000L
+ci1302.build.f_cpu=200000000L
+ci1302.build.clock_flags=-DUSE_EXTERNAL_CRYSTAL_OSC=0
 ci1302.build.board=CI1302
 ci1302.build.core=chipintelli
 ci1302.build.variant=ci1302
 ci1302.build.algorithm=null
-ci1302.build.user_code_max=458752
+ci1302.build.min_c_heap=16384
 ci1302.build.flash_size=2097152
 ci1302.build.chip=ci1302
 ci1302.build.extra_flags=-DCI_CHIP_CI1302 -DNO_ASR_FLOW=0 -DUSE_NULL=1 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
@@ -24,23 +27,38 @@ ci1302.build.extra_flags=-DCI_CHIP_CI1302 -DNO_ASR_FLOW=0 -DUSE_NULL=1 -DSIMPLE_
 ci1302.menu.Algorithm.null=Basic offline ASR (USE_NULL)
 ci1302.menu.Algorithm.null.build.algorithm=null
 
+ci1302.menu.Clock.internal=Internal RC (no crystal)
+ci1302.menu.Clock.internal.build.f_cpu=200000000L
+ci1302.menu.Clock.internal.build.clock_flags=-DUSE_EXTERNAL_CRYSTAL_OSC=0
+ci1302.menu.Clock.external=External 12.288 MHz crystal
+ci1302.menu.Clock.external.build.f_cpu=246000000L
+ci1302.menu.Clock.external.build.clock_flags=-DUSE_EXTERNAL_CRYSTAL_OSC=1
+
+ci1302.menu.CHeap.balanced=16 KiB minimum (larger sketches)
+ci1302.menu.CHeap.balanced.build.min_c_heap=16384
+ci1302.menu.CHeap.standard=32 KiB minimum
+ci1302.menu.CHeap.standard.build.min_c_heap=32768
+ci1302.menu.CHeap.asr=64 KiB minimum (ASR/audio headroom)
+ci1302.menu.CHeap.asr.build.min_c_heap=65536
+
 ci1303.name=ChipIntelli CI1303 (SSOP24, 4 MB)
 
 ci1303.upload.tool=citool-cli
 ci1303.upload.tool.default=citool-cli
 ci1303.upload.protocol=ci13xx_firmware
-ci1303.upload.maximum_size=382577
+ci1303.upload.maximum_size=427008
 ci1303.upload.maximum_data_size=532480
 ci1303.upload.use_1200bps_touch=false
 ci1303.upload.wait_for_upload_port=false
 
 ci1303.build.mcu=ci1303
-ci1303.build.f_cpu=246000000L
+ci1303.build.f_cpu=200000000L
+ci1303.build.clock_flags=-DUSE_EXTERNAL_CRYSTAL_OSC=0
 ci1303.build.board=CI1303
 ci1303.build.core=chipintelli
 ci1303.build.variant=ci1303
 ci1303.build.algorithm=null
-ci1303.build.user_code_max=458752
+ci1303.build.min_c_heap=16384
 ci1303.build.flash_size=4194304
 ci1303.build.chip=ci1303
 ci1303.build.extra_flags=-DCI_CHIP_CI1303 -DNO_ASR_FLOW=0 -DUSE_NULL=1 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
@@ -48,29 +66,51 @@ ci1303.build.extra_flags=-DCI_CHIP_CI1303 -DNO_ASR_FLOW=0 -DUSE_NULL=1 -DSIMPLE_
 ci1303.menu.Algorithm.null=Basic offline ASR (USE_NULL)
 ci1303.menu.Algorithm.null.build.algorithm=null
 
+ci1303.menu.Clock.internal=Internal RC (no crystal)
+ci1303.menu.Clock.internal.build.f_cpu=200000000L
+ci1303.menu.Clock.internal.build.clock_flags=-DUSE_EXTERNAL_CRYSTAL_OSC=0
+ci1303.menu.Clock.external=External 12.288 MHz crystal
+ci1303.menu.Clock.external.build.f_cpu=246000000L
+ci1303.menu.Clock.external.build.clock_flags=-DUSE_EXTERNAL_CRYSTAL_OSC=1
+
+ci1303.menu.CHeap.balanced=16 KiB minimum (larger sketches)
+ci1303.menu.CHeap.balanced.build.min_c_heap=16384
+ci1303.menu.CHeap.standard=32 KiB minimum
+ci1303.menu.CHeap.standard.build.min_c_heap=32768
+ci1303.menu.CHeap.asr=64 KiB minimum (ASR/audio headroom)
+ci1303.menu.CHeap.asr.build.min_c_heap=65536
+
 ci1306.name=ChipIntelli CI1306 (QFN40, 4 MB)
 
 ci1306.upload.tool=citool-cli
 ci1306.upload.tool.default=citool-cli
 ci1306.upload.protocol=ci13xx_firmware
-# The container has a 32-byte table plus up to 15 bytes of [0] image alignment
-# and the fixed 76,128-byte BNPU image. Arduino's section sum is itself more
-# conservative than raw [0]code.bin; postbuild.ps1 enforces the exact cap.
-ci1306.upload.maximum_size=382577
+# The linker dynamically shares this 417 KiB static-program budget between
+# loadable sections, BSS/no-init and the selected C/newlib heap reserve. The
+# separate 3 KiB stack and 100 KiB FreeRTOS heap remain fixed by the vendor SDK.
+ci1306.upload.maximum_size=427008
 ci1306.upload.maximum_data_size=532480
 ci1306.upload.use_1200bps_touch=false
 ci1306.upload.wait_for_upload_port=false
 
 ci1306.build.mcu=ci1306
 ci1306.build.f_cpu=246000000L
+ci1306.build.clock_flags=-DUSE_EXTERNAL_CRYSTAL_OSC=1
 ci1306.build.board=CI1306
 ci1306.build.core=chipintelli
 ci1306.build.variant=ci1306
 ci1306.build.algorithm=null
-ci1306.build.user_code_max=458752
+ci1306.build.min_c_heap=16384
 ci1306.build.flash_size=4194304
 ci1306.build.chip=ci1306
 ci1306.build.extra_flags=-DARDUINO_CI1306 -DCI_CHIP_CI1306 -DNO_ASR_FLOW=0 -DUSE_NULL=1 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
 
 ci1306.menu.Algorithm.null=Basic offline ASR (USE_NULL)
 ci1306.menu.Algorithm.null.build.algorithm=null
+
+ci1306.menu.CHeap.balanced=16 KiB minimum (larger sketches)
+ci1306.menu.CHeap.balanced.build.min_c_heap=16384
+ci1306.menu.CHeap.standard=32 KiB minimum
+ci1306.menu.CHeap.standard.build.min_c_heap=32768
+ci1306.menu.CHeap.asr=64 KiB minimum (ASR/audio headroom)
+ci1306.menu.CHeap.asr.build.min_c_heap=65536

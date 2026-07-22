@@ -91,9 +91,9 @@ chipintelli提供的部分开发板和模组，可以通过下面的宏选择，
 #endif 
 
 //**通讯串口配置
-#define CONFIG_CI_LOG_UART             HAL_UART0_BASE  //配置log输出使用的串口，请勿与protocol共用同一个串口
+#define CONFIG_CI_LOG_UART             0  // UART0 is owned by Arduino Serial.
 
-#define MSG_COM_USE_UART_EN            1   //0,关闭语音模块通讯协议。1,开启语音模块通讯协议。
+#define MSG_COM_USE_UART_EN            0   //0,关闭语音模块通讯协议。1,开启语音模块通讯协议。
 #define UART_PROTOCOL_NUMBER           (HAL_UART2_BASE)    //语音模块协议使用的串口，请勿与log共用同一个串口。
 #define UART_PROTOCOL_BAUDRATE         (UART_BaudRate921600) //语音模块协议使用的串口波特率。
 #define UART_PROTOCOL_VER              2   //语音模块协议版本号:1,一代协议。2,二代协议，255,平台生成协议
@@ -119,19 +119,15 @@ chipintelli提供的部分开发板和模组，可以通过下面的宏选择，
 开启OTA功能，需修改打包升级工具版本，并在firmware\config.ini文件中设置成firmware_version=FW_V4，
 升级与被升级固件均要FW_V4版本工具打包生成 */
 #define CI_OTA_ENABLE               0 
-#define OTA_TIMOUT                  3 //和MCU端交互数据超时时间，单位秒
-#define OTA_RETRY_TIME              10//和MCU端交互数据重复发送次数
-#if (CI_CHIP_TYPE == 1306)
-#define OTA_CHIP_TYPE               0x06
-#else
-#define OTA_CHIP_TYPE               0x02
-#endif    
 
 //**时钟源配置
-#if ((CI_CHIP_TYPE == 1312) || (CI_CHIP_TYPE == 1311))
+// Arduino board options may override this macro.
+#ifndef USE_EXTERNAL_CRYSTAL_OSC
+#if ((CI_CHIP_TYPE == 1302) || (CI_CHIP_TYPE == 1303) || (CI_CHIP_TYPE == 1312) || (CI_CHIP_TYPE == 1311))
 #define USE_EXTERNAL_CRYSTAL_OSC        0
 #else
-#define USE_EXTERNAL_CRYSTAL_OSC        1           //0:使用内部RC作为时钟源。1:使用外部晶振作为时钟源。
+#define USE_EXTERNAL_CRYSTAL_OSC        1
+#endif
 #endif
 
 //**波特率自适应功能配置

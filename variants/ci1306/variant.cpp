@@ -7,8 +7,8 @@
 #define GPIO_ADC   (PIN_CAP_GPIO | PIN_CAP_INTERRUPT | PIN_CAP_ADC)
 #define GPIO_APWM  (PIN_CAP_GPIO | PIN_CAP_INTERRUPT | PIN_CAP_ADC | PIN_CAP_PWM)
 
-// Logical pins are PA0..PA7, PB0..PB7, PC0..PC5, PD0..PD5.
-// PA0/PA1 are reserved for the CI-D06GT01D external crystal.
+// Logical slots preserve the PA/PB/PC/PD port formula. PA0/PA1 are reserved
+// for the CI-D06GT01D external crystal; PD2 and PD5 are not bonded out.
 const PinDescription g_APinDescription[NUM_DIGITAL_PINS] = {
 // port bit pad gpioMux adc  pwm pwmMux caps
     {0, 0,  0, 0, NONE, 5, 1, 0},            //  0 PA0 OSC_IN
@@ -35,10 +35,10 @@ const PinDescription g_APinDescription[NUM_DIGITAL_PINS] = {
     {2, 5, 30, 0, NONE, NONE, 0, GPIO_IRQ},  // 21 PC5
     {3, 0, 31, 0, NONE, NONE, 0, GPIO},      // 22 PD0 (amplifier control on board)
     {3, 1, 32, 0, NONE, NONE, 0, GPIO},      // 23 PD1
-    {3, 2, 33, 0, NONE, NONE, 0, GPIO},      // 24 PD2
+    {3, 2, 33, 0, NONE, NONE, 0, 0},         // 24 PD2 unbonded
     {3, 3, 34, 0, NONE, NONE, 0, GPIO},      // 25 PD3
     {3, 4, 35, 0, NONE, NONE, 0, GPIO},      // 26 PD4
-    {3, 5, 36, 0, NONE, NONE, 0, GPIO}       // 27 PD5
+    {3, 5, 36, 0, NONE, NONE, 0, 0}          // 27 PD5 unbonded
 };
 
 #undef NONE

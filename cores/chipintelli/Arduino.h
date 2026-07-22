@@ -9,8 +9,8 @@
 
 #include "pgmspace.h"
 
-// Keep every Arduino translation unit on the same board/algorithm profile as
-// the precompiled SDK archive. The platform adds the SDK include directory.
+// Keep every Arduino and packaged SDK translation unit on the same board and
+// algorithm profile. The platform adds the SDK include directory.
 #include "user_config.h"
 
 #ifdef __cplusplus
@@ -133,6 +133,7 @@ typedef struct chipintelli_asr_result_t {
     const char *text;
 } chipintelli_asr_result_t;
 typedef void (*chipintelli_asr_callback_t)(const chipintelli_asr_result_t *, void *);
+bool chipintelli_sdk_begin(void);
 void chipintelli_asr_set_callback(chipintelli_asr_callback_t callback, void *arg);
 #endif
 

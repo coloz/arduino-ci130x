@@ -29,6 +29,12 @@ ChipIntelliASRClass::ChipIntelliASRClass()
 
 bool ChipIntelliASRClass::begin() {
   if (!_begun) {
+    // The vendor ASR/audio application is intentionally not started during
+    // Arduino boot. This explicit begin() call transfers the required pins and
+    // peripherals to the SDK initialization task.
+    if (!chipintelli_sdk_begin()) {
+      return false;
+    }
     _head = 0;
     _tail = 0;
     _dropped = 0;

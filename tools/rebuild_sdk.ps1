@@ -79,6 +79,50 @@ function Write-MultiVariantUserConfig {
         throw "Unable to adapt SDK user_config.h for Arduino variants: $Source"
     }
 
+    # Arduino owns UART2. The SDK voice-module protocol must not initialize it
+    # during startup; HardwareSerial::begin() configures the peripheral and pads
+    # only when the sketch explicitly opens Serial2.
+    $messageUartEnabled = '#define MSG_COM_USE_UART_EN            1'
+    $messageUartDisabled = '#define MSG_COM_USE_UART_EN            0'
+    if (-not $content.Contains($messageUartEnabled) -and -not $content.Contains($messageUartDisabled)) {
+        throw "Unable to disable the SDK message UART in: $Source"
+    }
+    $content = $content.Replace($messageUartEnabled, $messageUartDisabled)
+
+    # Arduino owns UART0 as Serial. Disable the vendor SDK logger so it cannot
+    # configure the same peripheral for 921600 baud or block before setup().
+    $logUartPattern = '(?m)^#define CONFIG_CI_LOG_UART\s+HAL_UART0_BASE[^\r\n]*\r?$'
+    $logUartMatches = [regex]::Matches($content, $logUartPattern)
+    if ($logUartMatches.Count -ne 1) {
+        throw "Unable to disable the SDK UART0 logger in: $Source"
+    }
+    $content = [regex]::Replace(
+        $content,
+        $logUartPattern,
+        '#define CONFIG_CI_LOG_UART             0  // UART0 is owned by Arduino Serial.',
+        1)
+
+    # CI1302/CI1303 reference applications normally use the internal RC. Keep
+    # the default overridable so Arduino's board menu can support custom boards
+    # that really do fit a 12.288 MHz external crystal.
+    $arduinoClockSelection = @(
+        '// Arduino board options may override this macro.',
+        '#ifndef USE_EXTERNAL_CRYSTAL_OSC',
+        '#if ((CI_CHIP_TYPE == 1302) || (CI_CHIP_TYPE == 1303) || (CI_CHIP_TYPE == 1312) || (CI_CHIP_TYPE == 1311))',
+        '#define USE_EXTERNAL_CRYSTAL_OSC        0',
+        '#else',
+        '#define USE_EXTERNAL_CRYSTAL_OSC        1',
+        '#endif',
+        '#endif'
+    ) -join "`r`n"
+    # Match directives rather than the vendor's encoded trailing comment.
+    $clockPattern = '(?ms)^#if \(\(CI_CHIP_TYPE == 1312\) \|\| \(CI_CHIP_TYPE == 1311\)\)\r?\n#define USE_EXTERNAL_CRYSTAL_OSC\s+0\r?\n#else\r?\n#define USE_EXTERNAL_CRYSTAL_OSC\s+1[^\r\n]*\r?\n#endif'
+    $clockMatches = [regex]::Matches($content, $clockPattern)
+    if ($clockMatches.Count -ne 1) {
+        throw "Unable to make the SDK clock source selectable in: $Source"
+    }
+    $content = [regex]::Replace($content, $clockPattern, $arduinoClockSelection, 1)
+
     $selectionReplacement = @'
 #if defined(CI_CHIP_CI1302)
 #undef USE_CI_D02GS01J_BOARD
@@ -168,7 +212,7 @@ if (-not $SkipBuild) {
         # The vendor project defaults to -flto. GNU ld --wrap cannot interpose
         # calls that GCC resolves internally between LTO units, which would
         # bypass both the Arduino scheduler hook and the ASR result hook. Build
-        # the 138 open SDK objects without LTO; proprietary vendor archives keep
+        # the 138 source-available SDK objects without LTO; binary-only vendor archives keep
         # their original GCC 9.2 LTO payload. The vendor Makefile does not
         # track command-line flag changes, so remove its generated build tree
         # before every profile build.
@@ -203,11 +247,11 @@ if (-not $SkipBuild) {
             Pop-Location
         }
 
-        $optimization = '-Os'
-        if ($Variant -ne 'ci1306') {
-            $includePath = $variantPath.Replace('\', '/')
-            $optimization = "-Os -I`"$includePath`""
-        }
+        # Every Arduino variant supplies the user_config.h wrapper used for SDK
+        # builds, including CI1306. This keeps the packaged configuration (where
+        # the SDK message UART is disabled) authoritative for every source build.
+        $includePath = $variantPath.Replace('\', '/')
+        $optimization = "-Os -I`"$includePath`""
         & $make -C $projectRoot -j $jobs 'LTO_OPTION=' "O_OPTION=$optimization" 'build/offline_asr_alg_pro_sample.elf'
         if ($LASTEXITCODE -ne 0) {
             throw "SDK make failed with exit code $LASTEXITCODE"
@@ -238,53 +282,6 @@ generating the payload.
     }
 }
 
-$archiver = Join-Path $toolchain 'riscv-nuclei-elf-gcc-ar.exe'
-if ($Variant -ne 'ci1306') {
-    $variantOutput = Join-Path $platformRoot "tools\sdk\lib\$Variant"
-    $variantStaging = "$variantOutput.new"
-    if (Test-Path -LiteralPath $variantStaging) {
-        Remove-Item -LiteralPath $variantStaging -Recurse -Force
-    }
-    New-Item -ItemType Directory -Force -Path $variantStaging | Out-Null
-
-    $variantArchive = Join-Path $variantStaging 'libci13xx_sdk.a'
-    Write-Host "Archiving $($objects.Count) SDK objects for $Variant ..."
-    & $archiver crs $variantArchive @($objects.FullName)
-    if ($LASTEXITCODE -ne 0) {
-        throw "gcc-ar failed with exit code $LASTEXITCODE"
-    }
-
-    $archiveMembers = @(& $archiver t $variantArchive)
-    if ($LASTEXITCODE -ne 0 -or $archiveMembers.Count -ne 138) {
-        throw "SDK archive verification failed: expected 138 members, found $($archiveMembers.Count)"
-    }
-
-    $archiveHash = (Get-FileHash -LiteralPath $variantArchive -Algorithm SHA256).Hash
-    $variantManifest = @"
-Generated from: CI13XX_SDK_ASR_ALG_V2.7.12
-Project: projects/offline_asr_alg_pro_sample
-Arduino variant: $Variant
-Board: $($profile.Board) / $($profile.Chip) / $($profile.Flash)
-Algorithm profile: USE_NULL=1, NO_ASR_FLOW=0
-Compiler: riscv-nuclei-elf-gcc 9.2.0
-Compiler executable SHA256: $compilerHash
-SDK object count: 138
-Open SDK objects: non-LTO
-libci13xx_sdk.a SHA256=$archiveHash
-"@
-    [IO.File]::WriteAllText(
-        (Join-Path $variantStaging 'BUILD-MANIFEST.txt'),
-        $variantManifest,
-        [Text.UTF8Encoding]::new($false))
-
-    if (Test-Path -LiteralPath $variantOutput) {
-        Remove-Item -LiteralPath $variantOutput -Recurse -Force
-    }
-    Move-Item -LiteralPath $variantStaging -Destination $variantOutput
-    Write-Host "Variant SDK payload generated: $variantOutput"
-    return
-}
-
 $sdkOutput = Join-Path $platformRoot 'tools\sdk'
 $stagingOutput = Join-Path $platformRoot 'tools\sdk.new'
 if (Test-Path -LiteralPath $stagingOutput) {
@@ -294,28 +291,156 @@ if (Test-Path -LiteralPath $stagingOutput) {
 $libOutput = Join-Path $stagingOutput 'lib'
 $includeOutput = Join-Path $stagingOutput 'include'
 $preservedIncludeOutput = Join-Path $includeOutput 'sdk'
+$sourceOutput = Join-Path $stagingOutput 'src'
 $linkerOutput = Join-Path $stagingOutput 'ld'
 $binaryOutput = Join-Path $stagingOutput 'bin'
-New-Item -ItemType Directory -Force -Path $libOutput, $includeOutput, $preservedIncludeOutput, $linkerOutput, $binaryOutput | Out-Null
+New-Item -ItemType Directory -Force -Path $libOutput, $includeOutput, $preservedIncludeOutput, $sourceOutput, $linkerOutput, $binaryOutput | Out-Null
 
-$existingVariantLibRoot = Join-Path $sdkOutput 'lib'
-if (Test-Path -LiteralPath $existingVariantLibRoot -PathType Container) {
-    Get-ChildItem -LiteralPath $existingVariantLibRoot -Directory | ForEach-Object {
-        Copy-Item -LiteralPath $_.FullName -Destination $libOutput -Recurse -Force
+# Package the exact 138 translation units from the validated vendor project.
+# Files included textually by those units are copied as source dependencies but
+# are deliberately absent from source_file.prj, so they are not compiled twice.
+$sourceManifest = Join-Path $projectRoot 'source_file.prj'
+Copy-RequiredFile -Source $sourceManifest -DestinationDirectory $stagingOutput
+$sourceRelativePaths = @(
+    Get-Content -LiteralPath $sourceManifest | ForEach-Object {
+        if ($_ -match '^\s*source-file:\s*(.+?)\s*$') {
+            $matches[1].Trim().Replace('/', '\')
+        }
     }
+)
+if ($sourceRelativePaths.Count -ne 138) {
+    throw "Expected 138 compiled SDK sources in $sourceManifest, found $($sourceRelativePaths.Count)"
 }
 
-$sdkArchive = Join-Path $libOutput 'libci13xx_sdk.a'
-Write-Host "Archiving $($objects.Count) SDK objects ..."
-& $archiver crs $sdkArchive @($objects.FullName)
-if ($LASTEXITCODE -ne 0) {
-    throw "gcc-ar failed with exit code $LASTEXITCODE"
+$sourceDependencies = @(
+    'components\cmd_info\command_file_reader_v2.c',
+    'components\cmd_info\command_info_v2.c',
+    'driver\boards\CI-D02GS02S.c',
+    'driver\boards\CI-D03GS02S.c',
+    'driver\boards\CI-D06GT01D.c'
+)
+$packagedSourcePaths = @($sourceRelativePaths + $sourceDependencies | Sort-Object -Unique)
+foreach ($relativePath in $packagedSourcePaths) {
+    $source = Join-Path $sdkRoot $relativePath
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+        throw "Required SDK source is missing: $source"
+    }
+    $destination = Join-Path $sourceOutput $relativePath
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $destination) | Out-Null
+    Copy-Item -LiteralPath $source -Destination $destination -Force
 }
 
-$archiveMembers = @(& $archiver t $sdkArchive)
-if ($LASTEXITCODE -ne 0 -or $archiveMembers.Count -ne 138) {
-    throw "SDK archive verification failed: expected 138 members, found $($archiveMembers.Count)"
+# Arduino C++ global constructors may allocate memory before main(). Initialize
+# the ROM/newlib dispatch table at the end of the C runtime _init() hook, before
+# __libc_init_array starts those constructors. The vendor application initializes
+# it later from hardware_default_init(), so preserve that order outside Arduino.
+$arduinoRuntimeInitPath = Join-Path $sourceOutput 'startup\ci130x_init.c'
+$arduinoRuntimeInitContent = [IO.File]::ReadAllText($arduinoRuntimeInitPath)
+$runtimeInitPattern = '(?ms)(void _init\(\)\s*\{.*?)(\r?\n\})'
+$runtimeInitMatches = [regex]::Matches($arduinoRuntimeInitContent, $runtimeInitPattern)
+if ($runtimeInitMatches.Count -ne 1) {
+    throw "Unable to move ROM initialization ahead of Arduino constructors: $arduinoRuntimeInitPath"
 }
+$arduinoRuntimeInitContent = [regex]::Replace(
+    $arduinoRuntimeInitContent,
+    $runtimeInitPattern,
+    {
+        param($match)
+        return $match.Groups[1].Value + @'
+
+
+#if defined(CI_ARDUINO_CORE)
+    maskrom_lib_init();
+#endif
+'@ + $match.Groups[2].Value
+    },
+    1)
+[IO.File]::WriteAllText($arduinoRuntimeInitPath, $arduinoRuntimeInitContent, [Text.UTF8Encoding]::new($false))
+
+# The vendor demo aborts before starting FreeRTOS when its informational PLL
+# tolerance check fails. Internal-RC boards can legitimately exceed that fixed
+# 10 MHz window, so Arduino builds report the condition but must still reach
+# setup()/loop(). Keep the vendor behavior for non-Arduino SDK builds.
+$arduinoMainPath = Join-Path $sourceOutput 'projects\offline_asr_alg_pro_sample\app\app_main\main.c'
+$arduinoMainContent = [IO.File]::ReadAllText($arduinoMainPath)
+$pllFatalPattern = '(?m)^(\s*)mprintf\("PLL config err!\\n"\);\r?\n\1while\(1\);'
+$pllFatalMatches = [regex]::Matches($arduinoMainContent, $pllFatalPattern)
+if ($pllFatalMatches.Count -ne 1) {
+    throw "Unable to adapt the SDK PLL check for Arduino: $arduinoMainPath"
+}
+$arduinoMainContent = [regex]::Replace(
+    $arduinoMainContent,
+    $pllFatalPattern,
+    {
+        param($match)
+        $indent = $match.Groups[1].Value
+        return @(
+            ($indent + 'mprintf("PLL config err!\n");'),
+            ($indent + '#if !defined(CI_ARDUINO_CORE)'),
+            ($indent + 'while(1);'),
+            ($indent + '#endif')
+        ) -join "`r`n"
+    },
+    1)
+
+# The upstream sample main automatically starts its ASR/audio application and
+# configures board peripherals before an Arduino sketch runs. Arduino must have
+# neutral GPIO ownership by default, so use a minimal platform/FreeRTOS entry
+# point and expose the vendor init task as an explicit opt-in API.
+$vendorMainPattern = '(?ms)^int main\(void\)\r?\n\{.*?^\}\s*$'
+$vendorMainMatches = [regex]::Matches($arduinoMainContent, $vendorMainPattern)
+if ($vendorMainMatches.Count -ne 1) {
+    throw "Unable to replace the SDK sample main for Arduino: $arduinoMainPath"
+}
+$arduinoMainReplacement = @'
+#if defined(CI_ARDUINO_CORE)
+static TaskHandle_t g_arduino_sdk_init_task = NULL;
+
+int ci_arduino_sdk_start(void)
+{
+    if (g_arduino_sdk_init_task != NULL)
+    {
+        return 1;
+    }
+    return (xTaskCreate(task_init, "init task", 280, NULL, 4,
+                        &g_arduino_sdk_init_task) == pdPASS) ? 1 : 0;
+}
+#endif
+
+int main(void)
+{
+    #if defined(CI_ARDUINO_CORE)
+    /* Match the proven vendor bare-metal bring-up. The ROM/newlib dispatch
+     * table was initialized from _init(), before C++ constructors. Do not run
+     * the sample platform_init(), watchdog, task_init(), audio or ASR paths. */
+    extern void SystemInit(void);
+    SystemInit();
+    init_platform();
+
+    scu_set_dma_mode(DMAINT_SEL_CHANNEL1);
+    scu_set_device_reset(HAL_GDMA_BASE);
+    scu_set_device_reset_release(HAL_GDMA_BASE);
+
+    vTaskStartScheduler();
+    #else
+    hardware_default_init();
+    platform_init();
+    #if !USE_BLE
+    welcome();
+    #endif
+    xTaskCreate(task_init, "init task", 280, NULL, 4, NULL);
+    vTaskStartScheduler();
+    #endif
+
+    while(1){}
+}
+'@
+$arduinoMainContent = [regex]::Replace(
+    $arduinoMainContent,
+    $vendorMainPattern,
+    $arduinoMainReplacement.TrimEnd("`r", "`n"),
+    1)
+[IO.File]::WriteAllText($arduinoMainPath, $arduinoMainContent, [Text.UTF8Encoding]::new($false))
 
 $sdkLibraries = @(
     'libasr_dis_deepse_v2.a',
@@ -327,6 +452,12 @@ $sdkLibraries = @(
     'libcwsl_v2.a',
     'libtts.a',
     'libcikd_pro_cwsl_dis_frm.a'
+)
+$binaryOnlyArchives = @(
+    $sdkLibraries +
+    'libir_data.a' +
+    'libOnMicroBLE.a' +
+    'libcias_crypto.a'
 )
 foreach ($library in $sdkLibraries) {
     Copy-RequiredFile -Source (Join-Path $sdkRoot "libs\$library") -DestinationDirectory $libOutput
@@ -374,17 +505,36 @@ $artifactHashLines = @($hashedArtifacts | ForEach-Object {
     "$relative SHA256=$hash"
 }) -join "`r`n"
 
+$sourceHashInput = @($packagedSourcePaths | ForEach-Object {
+    $sourcePath = Join-Path $sourceOutput $_
+    "$_ $((Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash)"
+}) -join "`n"
+$sourceHashBytes = [Text.Encoding]::UTF8.GetBytes($sourceHashInput)
+$sourceHasher = [Security.Cryptography.SHA256]::Create()
+try {
+    $sourcePayloadHash = ([BitConverter]::ToString($sourceHasher.ComputeHash($sourceHashBytes))).Replace('-', '')
+}
+finally {
+    $sourceHasher.Dispose()
+}
+
 $manifest = @"
 Generated from: CI13XX_SDK_ASR_ALG_V2.7.12
 Project: projects/offline_asr_alg_pro_sample
-Board: CI-D06GT01D / CI1306 / 4 MB
+Validated variant: $Variant
+Board: $($profile.Board) / $($profile.Chip) / $($profile.Flash)
 Algorithm profile: USE_NULL=1, NO_ASR_FLOW=0
+SDK message UART: disabled; Arduino HardwareSerial owns UART2
 Compiler: riscv-nuclei-elf-gcc 9.2.0
 Compiler executable SHA256: $compilerHash
-SDK object count: 138
+Compiled SDK source count: $($sourceRelativePaths.Count)
+Packaged SDK source/dependency count: $($packagedSourcePaths.Count)
+SDK source payload SHA256: $sourcePayloadHash
 Header count: $($headers.Count)
-Open SDK objects: non-LTO (required for scheduler and ASR link interposition)
+SDK sources compile as non-LTO objects (required for scheduler and ASR link interposition)
 Vendor archives: original GCC 9.2.0 LTO/ABI payload
+Binary-only archive count: $($binaryOnlyArchives.Count)
+Binary-only archives: $($binaryOnlyArchives -join ', ')
 
 Payload artifact hashes:
 $artifactHashLines
