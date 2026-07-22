@@ -19,8 +19,8 @@
                                                         },
                                                "url":  "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.1/arduino-ci130x-1.0.1.zip",
                                                "archiveFileName":  "arduino-ci130x-1.0.1.zip",
-                                               "checksum":  "SHA-256:21c9b0ec7e9b55dc6bb6d1d4abc0dc02a06bca00867419d4ce84ca9217480243",
-                                               "size":  "14480223",
+                                               "checksum":  "SHA-256:ce81b564660220e0e791c877bd9fec82ad9268c9f27d3dbe02889894f57b99c6",
+                                               "size":  "14480238",
                                                "boards":  [
                                                               {
                                                                   "name":  "ChipIntelli CI1302 (SSOP24, 2 MB)"
