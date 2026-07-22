@@ -1,4 +1,4 @@
-#include <CI13XX.h>
+#include <Arduino.h>
 
 // These boards have no Arduino-controlled built-in LED.
 #if defined(CI_CHIP_CI1302) || defined(CI_CHIP_CI1303)

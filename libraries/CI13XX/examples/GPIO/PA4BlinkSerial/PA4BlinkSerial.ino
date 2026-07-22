@@ -1,4 +1,4 @@
-#include <CI13XX.h>
+#include <Arduino.h>
 
 constexpr uint8_t kLedPin = PA4;
 constexpr uint32_t kBlinkIntervalMs = 100;

@@ -29,13 +29,13 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前开发版本 | `1.0.1` |
+| 当前开发版本 | `1.0.2` |
 | Arduino IDE | Arduino IDE 2.x |
 | Arduino CLI | 已使用 1.3.1 验证 |
 | 主机系统 | Windows 10/11 x64 |
 | 编译器 | Nuclei RISC-V GCC 9.2.0（`rv32imafc / ilp32f`） |
 | 算法配置 | `USE_NULL=1` 基础离线 ASR profile |
-| 公共 Boards Manager 发布 | `v1.0.1`（Windows x64） |
+| 公共 Boards Manager 发布 | `v1.0.2`（Windows x64） |
 | 硬件运行验证 | CI1303：串口烧录、UART0、I2C/SSD1306 已通过；其余待验证 |
 
 当前版本在编译前检查 sketch 根目录的 `recursos/`；缺少 `asr.bin`、`dnn.bin`、
@@ -75,7 +75,7 @@ https://raw.githubusercontent.com/coloz/arduino-ci130x/main/package/package_chip
 固定版本的索引也随 GitHub Release 发布：
 
 ```text
-https://github.com/coloz/arduino-ci130x/releases/download/v1.0.1/package_chipintelli_index.json
+https://github.com/coloz/arduino-ci130x/releases/download/v1.0.2/package_chipintelli_index.json
 ```
 
 ## 快速开始
@@ -194,22 +194,16 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 
 ### 内存报告
 
-代码、只读数据、读写数据、BSS、栈和两类运行时 heap 共用一段 `0x82000`
-（532480 B）host SRAM。平台不再把最终 `user_code.bin` 固定限制为 `0x70000`：
+代码、只读数据、读写数据、BSS、栈和运行时 heap 共用一段 `0x82000`
+（532480 B）host SRAM，代码在启动时从 Flash 加载到 SRAM。根据芯片厂家的确认，
+Arduino 保留原厂 SDK 的最终 `user_code.bin <= 0x70000`（448 KiB）硬限制；超过时
+后处理立即报错，不会生成或烧录完整固件。
 
-- 链接器先为原厂 SDK 保留 3 KiB 栈和固定 100 KiB FreeRTOS heap；
-- 代码、BSS 与 C/newlib heap 在剩余 417 KiB 中动态分配；默认至少保留 16 KiB
-  C/newlib heap，也可在开发板菜单中选择 32 KiB 或 64 KiB；
-- 后处理从 ELF 符号核对实际 SRAM 布局和剩余 heap，再生成双核容器；
-- `citool-cli compose` 按五个最终 bin 的实际大小做 4 KiB 对齐和顺序排布，只有
-  超过当前资源组合的 User Flash 布局上限时才报错。
-
-因此最终 User 容器上限由 sketch 的 BSS、所选 heap 余量和其他 Flash 分区共同决定，
-不是一个固定常数。Arduino CLI 报告的 program 与 dynamic memory 包含重叠的
-`.data`，也不能当作两块可分别用满的内存。普通 `malloc`、Arduino `String` 和部分
-ASR/音频解码器使用 C/newlib heap；大型 sketch 应根据运行负载选择更高的 heap 余量。
-这里的放宽适用于 `citool-cli` 完整固件烧录流程；原厂 SDK 旧 OTA 头文件仍定义
-448 KiB User 上限，启用该 OTA 路径前必须另行验证协议和升级端兼容性。
+`citool-cli compose` 仍按 User、ASR、DNN、Voice、UserFile 五个最终 bin 的实际大小
+进行 4 KiB 对齐并顺序计算 Flash 地址，但这只优化 Flash 排布，不会放宽 User 的
+448 KiB SRAM/加载限制。Arduino CLI 报告的 program 与 dynamic memory 包含重叠的
+`.data`，不能当作两块可分别用满的内存；最终以链接器和 `user_code.bin` 后处理检查
+为准。
 
 ## 验证状态
 

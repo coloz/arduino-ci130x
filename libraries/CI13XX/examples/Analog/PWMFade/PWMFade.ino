@@ -1,4 +1,4 @@
-#include <CI13XX.h>
+#include <Arduino.h>
 
 #if defined(CI_CHIP_CI1302) || defined(CI_CHIP_CI1303)
 // Connect an external LED and series resistor from pin 20 (PC4/PWM0) to GND.

@@ -1,4 +1,4 @@
-#include <CI13XX.h>
+#include <Arduino.h>
 
 // UART0 console: TX=pin 13/PB5, RX=pin 14/PB6, 921600 baud.
 // UART1 device:  TX=pin 15/PB7, RX=pin 16/PC0, 115200 baud.

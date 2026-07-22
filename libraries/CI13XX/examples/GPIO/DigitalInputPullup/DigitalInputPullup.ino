@@ -1,4 +1,4 @@
-#include <CI13XX.h>
+#include <Arduino.h>
 
 #if defined(CI_CHIP_CI1302) || defined(CI_CHIP_CI1303)
 // Connect a push button between Arduino pin 20 (PC4) and GND.

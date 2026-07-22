@@ -7,7 +7,7 @@ param(
     [string]$CitoolCliBaseUrl,
     [string]$BaseUrl = 'http://127.0.0.1:8765',
     [switch]$FlatAssetUrls,
-    [string]$Version = '1.0.1',
+    [string]$Version = '1.0.2',
     [string]$OutputDirectory
 )
 
