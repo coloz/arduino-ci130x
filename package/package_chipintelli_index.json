@@ -68,8 +68,8 @@
                                                                "host":  "x86_64-mingw32",
                                                               "url":  "https://github.com/coloz/citool-cli/releases/download/v1.0.1/citool-cli-1.0.1-windows-x86_64.zip",
                                                                "archiveFileName":  "citool-cli-1.0.1-windows-x86_64.zip",
-                                                               "checksum":  "SHA-256:189dcaac609a6a821d1830635f3686631abbe0e499e647754234680f732f2975",
-                                                               "size":  "418415"
+                                                               "checksum":  "SHA-256:434bdcf9369aedbf19c6fe60a002df636a751c71148db63ddcd49378c661db0c",
+                                                               "size":  "435506"
                                                            }
                                                        ]
                                        }

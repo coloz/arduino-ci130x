@@ -142,9 +142,9 @@ physical-board runtime claim for the artificial 320,000-byte test object.
 
 The dynamic-layout uploader was versioned as `citool-cli@1.0.1` so Boards
 Manager cannot reuse the older fixed-capacity `1.0.0` installation. Its locked
-test and clippy run passed all 22 tests; the Windows x64 archive is 418,415 bytes
-with SHA-256
-`189dcaac609a6a821d1830635f3686631abbe0e499e647754234680f732f2975`.
+test and clippy run passed all 22 tests. The clean GitHub Actions Windows x64
+release archive is 435,506 bytes with SHA-256
+`434bdcf9369aedbf19c6fe60a002df636a751c71148db63ddcd49378c661db0c`.
 The regenerated Arduino `1.0.1` index depends on that exact tool version and
 archive.
 
