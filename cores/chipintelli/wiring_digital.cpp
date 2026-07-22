@@ -103,6 +103,9 @@ extern "C" void attachInterruptArg(uint8_t pin, voidFuncPtrArg callback, void *a
     if (pin >= NUM_DIGITAL_PINS) return;
     const PinDescription &desc = g_APinDescription[pin];
     if (!(desc.capabilities & PIN_CAP_INTERRUPT) || !callback) return;
+    // attachInterrupt() is an explicit request to use the pad as a GPIO input,
+    // even if it was previously assigned to a peripheral.
+    pinMode(pin, INPUT);
     gpio_trigger_t trigger;
     switch (mode) {
         case RISING: trigger = up_edges_trigger; break;

@@ -20,7 +20,7 @@
 // SDK VER
 #define SDK_VERSION                    2
 #define SDK_SUBVERSION                 7
-#define SDK_REVISION                   12
+#define SDK_REVISION                   14
 #define SDK_TYPE                       "ASR_ALG"
 
 /******************************** 开发板选择 **********************************/
@@ -816,9 +816,6 @@
 #ifndef MIC_DIFF_SINGLE
 #define MIC_DIFF_SINGLE                     0              //1，单端。0，差分（通用模块都是差分模式，省成本的模块为单端（MICN_L 接GND）时，需要配置为SINGLE）
 #endif
-
-#define OTA_STA_UPDATE              0xFC                  //不可修改
-#define OTA_STA_FINISH              0xF0                  //不可修改
 
 #if (USE_LOWPOWER_DOWN_FREQUENCY || USE_SOFT_AEC_REF)
 #undef INNER_CODEC_AUDIO_IN_USE_RESAMPLE

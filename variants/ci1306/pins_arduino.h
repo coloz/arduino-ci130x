@@ -2,6 +2,7 @@
 #define Pins_Arduino_h
 
 #include <stdint.h>
+#include "../ci130x_pin_aliases.h"
 
 enum : uint8_t {
     PIN_CAP_GPIO      = 1U << 0,
@@ -25,30 +26,58 @@ static constexpr uint8_t NUM_DIGITAL_PINS = 28;
 static constexpr uint8_t NUM_ANALOG_INPUTS = 4;
 extern const PinDescription g_APinDescription[NUM_DIGITAL_PINS];
 
-static constexpr uint8_t A0 = 20; // PC4 / AIN2
-static constexpr uint8_t A1 = 19; // PC3 / AIN3
-static constexpr uint8_t A2 = 18; // PC2 / AIN4
-static constexpr uint8_t A3 = 17; // PC1 / AIN5
+// Arduino logical pin aliases for GPIOs bonded out by the QFN40 package.
+#define PA0 0U
+#define PA1 1U
+#define PA2 2U
+#define PA3 3U
+#define PA4 4U
+#define PA5 5U
+#define PA6 6U
+#define PA7 7U
+#define PB0 8U
+#define PB1 9U
+#define PB2 10U
+#define PB3 11U
+#define PB4 12U
+#define PB5 13U
+#define PB6 14U
+#define PB7 15U
+#define PC0 16U
+#define PC1 17U
+#define PC2 18U
+#define PC3 19U
+#define PC4 20U
+#define PC5 21U
+#define PD0 22U
+#define PD1 23U
+#define PD3 25U
+#define PD4 26U
 
-static constexpr uint8_t SDA = 15; // PB7, board-default IIC0 third function
-static constexpr uint8_t SCL = 16; // PC0, board-default IIC0 third function
+static constexpr uint8_t A0 = PC4; // AIN2
+static constexpr uint8_t A1 = PC3; // AIN3
+static constexpr uint8_t A2 = PC2; // AIN4
+static constexpr uint8_t A3 = PC1; // AIN5
+
+static constexpr uint8_t SDA = PB7; // board-default IIC0 third function
+static constexpr uint8_t SCL = PC0; // board-default IIC0 third function
 static constexpr uint8_t SDA_MUX = 2; // THIRD_FUNCTION
 static constexpr uint8_t SCL_MUX = 2; // THIRD_FUNCTION
 
 // The CI1306 has no user-facing hardware SPI controller. These aliases are
 // the default pins used by the GPIO software SPI library and match the IIS
 // header signal group that is free in the current USE_NULL profile.
-static constexpr uint8_t SCK = 5;  // PA5 / IIS0_SCLK
-static constexpr uint8_t MISO = 2; // PA2 / IIS0_SDI
-static constexpr uint8_t MOSI = 4; // PA4 / IIS0_SDO (PG_EN strap during reset)
-static constexpr uint8_t SS = 3;   // PA3 / IIS0_LRCLK
+static constexpr uint8_t SCK = PA5;  // IIS0_SCLK
+static constexpr uint8_t MISO = PA2; // IIS0_SDI
+static constexpr uint8_t MOSI = PA4; // IIS0_SDO (PG_EN strap during reset)
+static constexpr uint8_t SS = PA3;   // IIS0_LRCLK
 
-static constexpr uint8_t TX = 13;  // PB5, UART0
-static constexpr uint8_t RX = 14;  // PB6, UART0
-static constexpr uint8_t TX1 = 15; // PB7, UART1
-static constexpr uint8_t RX1 = 16; // PC0, UART1
-static constexpr uint8_t TX2 = 9;  // PB1, UART2
-static constexpr uint8_t RX2 = 10; // PB2, UART2
+static constexpr uint8_t TX = PB5;  // UART0
+static constexpr uint8_t RX = PB6;  // UART0
+static constexpr uint8_t TX1 = PB7; // UART1
+static constexpr uint8_t RX1 = PC0; // UART1
+static constexpr uint8_t TX2 = PB1; // UART2
+static constexpr uint8_t RX2 = PB2; // UART2
 
 static constexpr uint8_t LED_BUILTIN = 255;
 

@@ -10,10 +10,10 @@ from Boards Manager:
 https://raw.githubusercontent.com/coloz/arduino-ci130x/main/package/package_chipintelli_index.json
 ```
 
-The version-pinned `v1.0.0` index is also published as a GitHub Release asset:
+The version-pinned `v1.0.1` index is also published as a GitHub Release asset:
 
 ```text
-https://github.com/coloz/arduino-ci130x/releases/download/v1.0.0/package_chipintelli_index.json
+https://github.com/coloz/arduino-ci130x/releases/download/v1.0.1/package_chipintelli_index.json
 ```
 
 The current compiler and `citool-cli` uploader packages support Windows x64 only.
@@ -33,7 +33,7 @@ then build the Arduino package from the platform root:
 
 The script validates the official GCC 9.2.0 executable against the SDK build
 manifest, consumes the prebuilt sibling
-`..\citool-cli\dist\citool-cli-1.0.0-windows-x86_64.zip`, creates the platform,
+`..\citool-cli\dist\citool-cli-1.0.1-windows-x86_64.zip`, creates the platform,
 toolchain and uploader ZIP files under `package/dist/`, and writes
 `package/package_chipintelli_index.json` with their exact sizes and SHA-256
 checksums. Pass `-CitoolCliArchive` to consume a release ZIP from another
@@ -73,9 +73,9 @@ than a `dist/` subdirectory, add `-FlatAssetUrls`:
 ```powershell
 .\package\build_package.ps1 `
   -ToolchainRoot C:\path\to\riscv-nuclei-elf-gcc-9.2.0 `
-  -Version 1.0.0 `
-  -BaseUrl https://github.com/OWNER/arduino-ci130x/releases/download/v1.0.0 `
-  -CitoolCliBaseUrl https://github.com/OWNER/citool-cli/releases/download/v1.0.0 `
+  -Version 1.0.1 `
+  -BaseUrl https://github.com/OWNER/arduino-ci130x/releases/download/v1.0.1 `
+  -CitoolCliBaseUrl https://github.com/OWNER/citool-cli/releases/download/v1.0.1 `
   -FlatAssetUrls
 ```
 
@@ -91,14 +91,14 @@ index. Replace every `__...__` value after release artifacts are hosted and
 redistribution permission has been confirmed.
 
 The platform archive must have exactly one top-level directory, for example
-`arduino-ci130x-1.0.0/`. Put the contents of `arduino-ci130x`
+`arduino-ci130x-1.0.1/`. Put the contents of `arduino-ci130x`
 directly inside that directory (including `boards.txt`, `platform.txt`,
 `cores/` and the generated `tools/sdk/`); do not add another architecture
 directory. Arduino's package manager ignores files placed directly at the ZIP
 root and does not extract RAR archives.
 
 The `citool-cli` archive must contain one top-level `citool-cli/` directory with
-`citool-cli.exe` directly inside it. The platform declares `citool-cli@1.0.0`
+`citool-cli.exe` directly inside it. The platform declares `citool-cli@1.0.1`
 as a tool dependency. Each build composes the generated `user_code.bin` and the
 sketch's four resource partitions into a complete firmware image; normal Arduino
 upload then uses `citool-cli flash` to write that verified image from Flash
@@ -112,7 +112,9 @@ directory `gcc_fix_raissrc/`, with the compiler at
 Before publishing:
 
 1. obtain permission to redistribute the SDK binaries and vendor tools;
-2. generate `tools/sdk` with `tools/rebuild_sdk.ps1`;
+2. generate `tools/sdk` with `tools/rebuild_sdk.ps1`; this packages the 138
+   source-available SDK translation units and retains archives only for
+   components whose source is not supplied;
 3. compile and package the included Arduino examples;
 4. publish the independently tested `citool-cli` release and provide its ZIP to the package build;
 5. host immutable HTTPS release artifacts;
@@ -121,10 +123,19 @@ Before publishing:
    validate it with Arduino CLI on Windows x64.
 
 The uploader embeds the validated CI130X FW_V2 Bootloader; the platform archive
-contains only the four default resource partitions under `recursos/`. The build
-reserves 448 KiB (`0x70000`) for user-code, generates the V2 metadata and
-partition table, lays out all partitions for the selected 2 MB or 4 MB Flash,
-and uploads the resulting complete image. Before release, validate
+contains only the four default resource partitions under `recursos/`. Arduino
+does not impose a fixed `0x70000` user-code-container limit. The linker shares
+the SRAM remaining after the vendor 3 KiB stack and 100 KiB FreeRTOS heap
+between the actual static image, BSS/no-init and a selectable 16/32/64 KiB
+minimum C/newlib heap. Post-build processing verifies that layout from ELF
+symbols. `citool-cli compose` then lays out User, ASR, DNN, Voice and UserFile
+from their final bin sizes, rounding each up to 4 KiB, and rejects a User image
+only when it exceeds the remaining Flash layout limit. It generates the V2
+metadata and partition table for the selected 2 MB or 4 MB Flash and uploads
+the resulting complete image. Before release, validate
 this exact Bootloader/resource set and full-flash flow on CI1302, CI1303 and
 CI1306 hardware. Redistribution permission is still required for every vendor
-binary included in the platform archive.
+binary included in the platform archive. This change applies to the complete
+firmware flash flow; the vendor SDK's legacy OTA header still declares a
+448 KiB User limit and must be validated separately before that OTA path is
+enabled for larger containers.

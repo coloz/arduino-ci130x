@@ -41,7 +41,7 @@ claim physical-board upload or runtime hardware validation.
 
 ## citool-cli integration
 
-The platform consumes independently released `citool-cli@1.0.0` as a Windows
+The platform consumes independently released `citool-cli@1.0.1` as a Windows
 x64 Boards Manager tool dependency; its source is not stored or built in the
 Arduino repository. A pre-build hook supplies only missing sketch-local
 resource partitions. Post-build processing creates `user_code.bin`, invokes
@@ -49,13 +49,16 @@ resource partitions. Post-build processing creates `user_code.bin`, invokes
 with `inspect`. The CI130X FW_V2 Bootloader is embedded in `citool-cli`; the
 platform archive no longer contains or requires `Firmware_V2.0.0.bin`.
 The upload and programmer recipes then invoke `citool-cli flash` on that complete
-image. Cargo unit tests and package/index checks cover this integration, but
-physical-board upload remains to be validated before release.
+image. Cargo unit tests and package/index checks cover this integration. The
+CI1303 physical-board upload and I2C runtime path is validated below; CI1302,
+CI1306, audio and offline-ASR hardware regression remain outstanding.
 
-The full updated Arduino recipe was exercised with `CI13XXSmoke` for CI1302,
-CI1303 and CI1306. All three builds copied the default resources on first use,
-produced a 212,992-byte `user_code.bin`, composed a 1,848,855-byte complete
-firmware, and passed strict V2 table and per-partition CRC inspection. CI1302
+Before compact automatic partition layout was enabled, the updated Arduino
+recipe was exercised with `CI13XXSmoke` for CI1302, CI1303 and CI1306. All three
+builds copied the default resources on first use, produced a 212,992-byte
+`user_code.bin`, composed a 1,848,855-byte complete firmware using the former
+fixed User reservation, and passed strict V2 table and per-partition CRC
+inspection. CI1302
 placed NV data at `0x1FC000`; CI1303 and CI1306 placed it at `0x3FC000`.
 
 The packaged `ci13xx@1.0.0`, `riscv-gcc@9.2.0` and `citool-cli@1.0.0`
@@ -67,19 +70,97 @@ partition resources and no complete firmware template. A short data directory
 remains necessary because of the legacy GCC path-length limitation described
 above.
 
-For the CI1302 smoke-test inputs, template-free compose produced the same
-1,848,855-byte image and SHA-256 as the previous validated template-based flow.
+For the CI1302 smoke-test inputs, the former fixed-reservation template-free
+compose produced the same 1,848,855-byte image and SHA-256 as the previous
+validated template-based flow.
 
-## CI1302 and CI1303 variant validation
+## Source SDK and variant validation
 
-The installed platform was resolved as `chipintelli:ci13xx:ci1302` and
-`chipintelli:ci13xx:ci1303` with Arduino CLI 1.3.1. The installed
-`CI13XXSmoke` example compiled, linked and completed the dual-image post-build
-step for both FQBNs.
+On 2026-07-21, the source-enabled development platform was tested with
+`BlinkPA5` for CI1302, CI1303 and CI1306. Each FQBN compiled all 138 packaged
+SDK translation units into non-LTO objects, linked them directly, and completed
+the dual-image post-build and firmware compose steps. The generated board
+dependencies selected `CI-D02GS02S.c`, `CI-D03GS02S.c` and `CI-D06GT01D.c`,
+respectively.
 
-The link maps resolve `libci13xx_sdk.a` from `tools/sdk/lib/ci1302/` and
-`tools/sdk/lib/ci1303/`, respectively. The rebuilt Boards Manager platform ZIP
-contains both variant directories and both SDK archives under a single top-level
-directory; the generated index parses as BOM-free JSON and lists all three
-boards. This validation used a fresh package-manager install; it does not claim
-physical-board runtime validation for CI1302/CI1303.
+All three link maps contain zero references to `libci13xx_sdk.a`, and all 138
+source-built objects per variant contain no `.gnu.lto_*` sections. Components
+for which the vendor SDK contains no source remain linked from 12 original GCC
+9.2.0 archives. This validation used an isolated manual hardware platform; it
+does not claim physical-board runtime validation.
+
+## Internal-RC clock and user-code container validation
+
+On 2026-07-22, the CI1302 source platform was rebuilt with the default
+`Clock=internal` board option. Both the 138 SDK translation units and Arduino
+translation units received `USE_EXTERNAL_CRYSTAL_OSC=0`; the expanded board
+properties reported a 200 MHz CPU clock. The CI1302/CI1303 external-crystal
+option reported `USE_EXTERNAL_CRYSTAL_OSC=1` and 246 MHz, while CI1306 retained
+its 246 MHz external-crystal profile.
+
+The CI1302 build generated a 167,664-byte `user_code.bin` containing file IDs
+0 and 1, then composed and inspected a 1,848,855-byte complete V2 firmware using
+the former fixed User reservation.
+The independently built `citool-cli` validation rejects a raw `[0]code.bin` as
+a user-code partition, preventing the packaging mistake reproduced during the
+hardware diagnosis.
+
+## Automatic partition layout validation
+
+On 2026-07-22, the release `citool-cli` was rebuilt with compact automatic
+layout enabled. A 208,368-byte Arduino `user_code.bin` and the packaged default
+resources produced and passed `inspect` as a 1,598,999-byte FW_V2 image for both
+CI1302 and CI1303. The calculated offsets were User `0x4000`, ASR `0x37000`,
+DNN `0x3C000`, Voice `0x80000` and UserFile `0xFE000`; NV remained at
+`0x1FC000` for CI1302 and `0x3FC000` for CI1303.
+
+With the same CI1302 resources, a 1,410,376-byte User input aligned to
+`0x159000` and was rejected before output because the dynamic User Flash layout
+limit was `0xA8000`.
+
+## Dynamic Arduino SRAM and User-container validation
+
+On 2026-07-22, the fixed Arduino `0x70000` user-container check was replaced by
+an ELF-aware SRAM check. The vendor 3 KiB stack and 100 KiB FreeRTOS heap remain
+unchanged; the linker and post-build step enforce the selected minimum for the
+remaining C/newlib heap. Board options provide 16 KiB (default), 32 KiB and
+64 KiB minimum reserves.
+
+A CI1302 internal-RC test sketch retained a 320,000-byte read-only object in the
+host image. It reported 386,501 bytes of program storage, left 37,672 bytes of
+C/newlib heap, generated a 462,688-byte (`0x70F60`) `user_code.bin`—larger than
+the former 458,752-byte limit—and completed `compose` and strict `inspect`.
+The resulting 1,852,951-byte image used dynamic offsets User `0x4000`, ASR
+`0x75000`, DNN `0x7A000`, Voice `0xBE000` and UserFile `0x13C000`, with CI1302
+NV data unchanged at `0x1FC000`.
+
+The same image was linked with the 64 KiB heap option and was rejected at link
+time with `CI13XX static image leaves less than the selected C/newlib heap
+reserve`; no firmware was composed. A normal PA4/UART sketch also completed the
+new ELF check, compose and inspect path. These are compile/package checks, not a
+physical-board runtime claim for the artificial 320,000-byte test object.
+
+The dynamic-layout uploader was versioned as `citool-cli@1.0.1` so Boards
+Manager cannot reuse the older fixed-capacity `1.0.0` installation. Its locked
+test and clippy run passed all 22 tests. The clean GitHub Actions Windows x64
+release archive is 435,506 bytes with SHA-256
+`434bdcf9369aedbf19c6fe60a002df636a751c71148db63ddcd49378c661db0c`.
+The regenerated Arduino `1.0.1` index depends on that exact tool version and
+archive.
+
+## CI1303 physical-board upload and SSD1306 validation
+
+On 2026-07-22, a CI1303 on COM31 was built from the workspace `arduino-ci130x`
+platform with the internal-RC profile and flashed with the workspace
+`citool-cli@1.0.1`. The tool connected to MaskROM, loaded the embedded CI130X
+update agent, erased and wrote the 1,545,751-byte complete firmware, verified
+its CRC and reset the device successfully.
+
+The sketch initialized UART0 at 921600 baud and IIC0 on PA2/PA3, required an
+SSD1306 ACK at `0x3C` or `0x3D`, initialized U8g2 and refreshed a 128x64 text
+screen once per second. After reset, COM31 returned consecutive `OLED frame`
+messages from 14 through 20. Since the loop is entered only after the SSD1306
+address probe and U8g2 initialization succeed, this validates the CI1303
+Arduino startup, full-firmware flash, UART0, Wire address probe and SSD1306
+refresh path. Display contents were `CI1303 OLED`, `Hello, U8g2!`, the detected
+address and a live counter.

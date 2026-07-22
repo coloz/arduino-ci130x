@@ -1,13 +1,22 @@
 #include "Arduino.h"
 
 #define NONE (-1)
+#define GPIO_ONLY  (PIN_CAP_GPIO | PIN_CAP_INTERRUPT)
 #define GPIO_PWM   (PIN_CAP_GPIO | PIN_CAP_INTERRUPT | PIN_CAP_PWM)
 #define GPIO_APWM  (PIN_CAP_GPIO | PIN_CAP_INTERRUPT | PIN_CAP_ADC | PIN_CAP_PWM)
 
+#if USE_EXTERNAL_CRYSTAL_OSC
+#define PA0_CAPS 0
+#define PA1_CAPS 0
+#else
+#define PA0_CAPS GPIO_PWM
+#define PA1_CAPS GPIO_ONLY
+#endif
+
 const PinDescription g_APinDescription[NUM_DIGITAL_PINS] = {
 // port bit pad gpioMux adc  pwm pwmMux caps
-    {0, 0,  0, 1, NONE, 5, 2, 0},
-    {0, 1,  1, 1, NONE, NONE, 0, 0},
+    {0, 0,  0, 1, NONE, 5, 2, PA0_CAPS},
+    {0, 1,  1, 1, NONE, NONE, 0, PA1_CAPS},
     {0, 2,  6, 0, NONE, 0, 4, GPIO_PWM},
     {0, 3,  7, 0, NONE, 1, 4, GPIO_PWM},
     {0, 4,  8, 0, NONE, 2, 2, GPIO_PWM},
@@ -30,5 +39,8 @@ const PinDescription g_APinDescription[NUM_DIGITAL_PINS] = {
 };
 
 #undef NONE
+#undef GPIO_ONLY
 #undef GPIO_PWM
 #undef GPIO_APWM
+#undef PA0_CAPS
+#undef PA1_CAPS

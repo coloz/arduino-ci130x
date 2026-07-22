@@ -3,11 +3,11 @@ param(
     [string]$PlatformRoot,
     [string]$ToolchainRoot,
     [string]$CitoolCliArchive,
-    [string]$CitoolCliVersion = '1.0.0',
+    [string]$CitoolCliVersion = '1.0.1',
     [string]$CitoolCliBaseUrl,
     [string]$BaseUrl = 'http://127.0.0.1:8765',
     [switch]$FlatAssetUrls,
-    [string]$Version = '1.0.0',
+    [string]$Version = '1.0.1',
     [string]$OutputDirectory
 )
 

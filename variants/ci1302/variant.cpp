@@ -1,16 +1,25 @@
 #include "Arduino.h"
 
 #define NONE (-1)
+#define GPIO_ONLY  (PIN_CAP_GPIO | PIN_CAP_INTERRUPT)
 #define GPIO_PWM   (PIN_CAP_GPIO | PIN_CAP_INTERRUPT | PIN_CAP_PWM)
 #define GPIO_APWM  (PIN_CAP_GPIO | PIN_CAP_INTERRUPT | PIN_CAP_ADC | PIN_CAP_PWM)
 
+#if USE_EXTERNAL_CRYSTAL_OSC
+#define PA0_CAPS 0
+#define PA1_CAPS 0
+#else
+#define PA0_CAPS GPIO_PWM
+#define PA1_CAPS GPIO_ONLY
+#endif
+
 // CI1302 and CI1303 are pin-compatible SSOP24 parts. Logical pins retain the
-// family-wide port numbering: PA0..PA7, PB0..PB7, PC0..PC4. PA0/PA1 are held
-// for the SDK's external-crystal profile; unbonded package pads have no caps.
+// family-wide port numbering: PA0..PA7, PB0..PB7, PC0..PC4. PA0/PA1 become
+// GPIO only when the internal-RC clock profile is selected.
 const PinDescription g_APinDescription[NUM_DIGITAL_PINS] = {
 // port bit pad gpioMux adc  pwm pwmMux caps
-    {0, 0,  0, 1, NONE, 5, 2, 0},            //  0 PA0 / XIN
-    {0, 1,  1, 1, NONE, NONE, 0, 0},         //  1 PA1 / XOUT
+    {0, 0,  0, 1, NONE, 5, 2, PA0_CAPS},     //  0 PA0 / XIN
+    {0, 1,  1, 1, NONE, NONE, 0, PA1_CAPS},  //  1 PA1 / XOUT
     {0, 2,  6, 0, NONE, 0, 4, GPIO_PWM},     //  2 PA2
     {0, 3,  7, 0, NONE, 1, 4, GPIO_PWM},     //  3 PA3
     {0, 4,  8, 0, NONE, 2, 2, GPIO_PWM},     //  4 PA4 / PG_EN
@@ -33,5 +42,8 @@ const PinDescription g_APinDescription[NUM_DIGITAL_PINS] = {
 };
 
 #undef NONE
+#undef GPIO_ONLY
 #undef GPIO_PWM
 #undef GPIO_APWM
+#undef PA0_CAPS
+#undef PA1_CAPS

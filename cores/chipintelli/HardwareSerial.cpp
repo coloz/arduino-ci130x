@@ -1,6 +1,7 @@
 #include "Arduino.h"
 
 extern "C" {
+#include "ci130x_core_eclic.h"
 #include "ci130x_uart.h"
 }
 
@@ -9,6 +10,31 @@ static UART_TypeDef *uartForNumber(uint8_t number) {
         case 1: return UART1;
         case 2: return UART2;
         default: return UART0;
+    }
+}
+
+static uint32_t irqForNumber(uint8_t number) {
+    switch (number) {
+        case 1: return UART1_IRQn;
+        case 2: return UART2_IRQn;
+        default: return UART0_IRQn;
+    }
+}
+
+static void releasePins(uint8_t number) {
+    switch (number) {
+        case 1:
+            pinMode(TX1, INPUT);
+            pinMode(RX1, INPUT);
+            break;
+        case 2:
+            pinMode(TX2, INPUT);
+            pinMode(RX2, INPUT);
+            break;
+        default:
+            pinMode(TX, INPUT);
+            pinMode(RX, INPUT);
+            break;
     }
 }
 
@@ -37,7 +63,17 @@ void HardwareSerial::begin(unsigned long baud, uint32_t config) {
 }
 
 void HardwareSerial::end() {
+    if (!_started) return;
     flush();
+    UART_TypeDef *uart = uartForNumber(_uartNumber);
+    eclic_irq_disable(irqForNumber(_uartNumber));
+    UART_IntMaskConfig(uart, UART_AllInt, ENABLE);
+    UART_EN(uart, DISABLE);
+    UART_IntClear(uart, UART_AllInt);
+    UART_FIFOClear(uart);
+    UART_CRConfig(uart, UART_TXE, DISABLE);
+    UART_CRConfig(uart, UART_RXE, DISABLE);
+    releasePins(_uartNumber);
     _peek = -1;
     _started = false;
 }

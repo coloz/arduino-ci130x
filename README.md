@@ -7,8 +7,8 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 
 > [!IMPORTANT]
 > 当前项目仍处于开发预览阶段。源码编译、链接、双核镜像后处理和本地
-> Boards Manager 安装流程已经验证，但尚未完成 CI1302、CI1303、CI1306 的
-> 实体板烧录与硬件 I/O/语音回归测试。请勿直接用于量产固件。
+> Boards Manager 安装流程已经验证；CI1303 已完成实体烧录以及 I2C/SSD1306
+> 运行测试，CI1302、CI1306 和音频/离线语音仍待实体回归。请勿直接用于量产固件。
 
 ## 目录
 
@@ -29,17 +29,21 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前开发版本 | `1.0.0` |
+| 当前开发版本 | `1.0.1` |
 | Arduino IDE | Arduino IDE 2.x |
 | Arduino CLI | 已使用 1.3.1 验证 |
 | 主机系统 | Windows 10/11 x64 |
 | 编译器 | Nuclei RISC-V GCC 9.2.0（`rv32imafc / ilp32f`） |
 | 算法配置 | `USE_NULL=1` 基础离线 ASR profile |
-| 公共 Boards Manager 发布 | `v1.0.0`（Windows x64） |
-| 硬件运行验证 | 尚未完成 |
+| 公共 Boards Manager 发布 | `v1.0.1`（Windows x64） |
+| 硬件运行验证 | CI1303：串口烧录、UART0、I2C/SSD1306 已通过；其余待验证 |
 
 当前版本在编译前检查 sketch 根目录的 `recursos/`；缺少 `asr.bin`、`dnn.bin`、
 `voice.bin` 或 `user_file.bin` 时，仅从 Arduino package 补齐缺失项，不覆盖项目文件。
+原厂示例中可获得源码的 138 个编译单元随平台发布，并在 Arduino 首次构建时并行
+编译为非 LTO `.o` 后直接链接；同一构建目录后续编译会复用缓存，不再使用
+`libci13xx_sdk.a`。原厂 SDK 未提供源码的 ASR、TTS、BLE、FreeRTOS port、DSU 等
+组件仍保留为二进制 `.a`。
 链接完成后先生成双核 `user_code.bin`，再由 `citool-cli compose` 合成完整固件并执行
 `inspect`；Arduino 上传阶段使用 `citool-cli flash` 从 Flash 地址 0 烧录该完整固件。
 `citool-cli` 内置 CI130X FW_V2 Bootloader，合成时不再依赖完整固件模板。
@@ -71,16 +75,19 @@ https://raw.githubusercontent.com/coloz/arduino-ci130x/main/package/package_chip
 固定版本的索引也随 GitHub Release 发布：
 
 ```text
-https://github.com/coloz/arduino-ci130x/releases/download/v1.0.0/package_chipintelli_index.json
+https://github.com/coloz/arduino-ci130x/releases/download/v1.0.1/package_chipintelli_index.json
 ```
 
 ## 快速开始
 
 1. 在 Arduino IDE 中选择对应开发板：
    **ChipIntelli CI1302**、**ChipIntelli CI1303** 或 **ChipIntelli CI1306**。
-2. 打开 **文件 > 示例 > CI13XX > GPIO > Blink**。
-3. 按照开发板原理图修改 LED 引脚。
-4. 执行验证/编译；平台会准备默认资源并生成经过校验的完整固件。
+2. CI1302/CI1303 默认选择 **Internal RC (no crystal)**；只有板上确实安装
+   12.288 MHz 晶振时才选择 **External 12.288 MHz crystal**。
+3. PA4 接有 LED 时可打开 **文件 > 示例 > CI13XX > GPIO > PA4BlinkSerial**，
+   并以 115200 波特率观察 UART0；其他接线可使用 **Blink** 并修改 LED 引脚。
+4. 按照开发板原理图确认 LED 极性与限流电阻。
+5. 执行验证/编译；平台会准备默认资源并生成经过校验的完整固件。
 
 Arduino CLI 编译示例：
 
@@ -105,7 +112,7 @@ arduino-cli compile --fqbn chipintelli:ci13xx:ci1303 `
 | 芯片 | 参考板卡 / 模组 | 封装与 Flash | FQBN | 当前验证 |
 | --- | --- | --- | --- | --- |
 | CI1302 | CI-D02GS02S | SSOP24 / 2 MB | `chipintelli:ci13xx:ci1302` | 编译、链接、后处理通过 |
-| CI1303 | CI-D03GS02S | SSOP24 / 4 MB | `chipintelli:ci13xx:ci1303` | 编译、链接、后处理通过 |
+| CI1303 | CI-D03GS02S | SSOP24 / 4 MB | `chipintelli:ci13xx:ci1303` | 编译、烧录、UART0 与 I2C/SSD1306 运行通过 |
 | CI1306 | CI-D06GT01D | QFN40 / 4 MB | `chipintelli:ci13xx:ci1306` | 编译、链接、后处理通过 |
 
 开发板或模组是否实际引出某个 PAD，应以对应硬件原理图为准。
@@ -116,7 +123,7 @@ arduino-cli compile --fqbn chipintelli:ci13xx:ci1303 `
 | --- | --- | --- |
 | Arduino 基础 | `setup()`、`loop()`、`String`、`Print`、`Stream`、`IPAddress` | C++17，无异常和 RTTI |
 | 时间 | `millis()`、`micros()`、`delay()`、`delayMicroseconds()`、`yield()` | `micros()` 读取 64 位 mtime |
-| GPIO | `pinMode()`、`digitalRead()`、`digitalWrite()`、`digitalToggle()` | PA0/PA1 为外部晶振保留 |
+| GPIO | `pinMode()`、`digitalRead()`、`digitalWrite()`、`digitalToggle()` | 使用外部晶振时 PA0/PA1 不可用 |
 | 中断 | `attachInterrupt()`、`attachInterruptArg()`、`detachInterrupt()` | PA/PB/PC 支持；PD 不支持 GPIO IRQ |
 | ADC | `analogRead()`、读取分辨率 | 12 位；CI1302/1303 为 AIN2，CI1306 为 AIN2–AIN5 |
 | PWM / Tone | `analogWrite()`、写分辨率/频率、`tone()`、`noTone()` | 6 个硬件通道 |
@@ -151,6 +158,9 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 
 ### 外设与资源冲突
 
+- CI1302/CI1303 默认使用内部 RC，系统主频为 200 MHz。选择外部 12.288 MHz
+  晶振后主频为 246 MHz，且 PA0/PA1 被晶振占用。无晶振硬件若误选外部时钟，
+  SDK 会在进入 Arduino `setup()` 前失去有效时钟，GPIO 和 UART 都不会运行。
 - CI1302、CI1303、CI1306 均没有可供 Arduino 用户复用的通用硬件 SPI；片内
   `QSPI0` 用于启动、模型和用户 Flash，因此 `SPI` 是 GPIO software SPI，
   不支持 DMA、硬件片选或从机模式。
@@ -172,8 +182,9 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 - `Wire` 与 `Serial1` 共用 PAD：CI1302/CI1303 为 PA2/PA3，CI1306 为 PB7/PC0，
   不能同时使用。当前 SDK profile 还将 UART1 TX 配置为开漏输出，使用
   `Serial1` 时必须提供与目标电平匹配的外部上拉电阻。
-- `Serial2` 默认用于 SDK 语音模块协议：CI1302/CI1303 为 PA5/PA6，CI1306 为
-  PB1/PB2。重新初始化会接管该协议端口。
+- `Serial2` 不会在 SDK 启动阶段自动占用 PAD。调用 `Serial2.begin()` 后才启用
+  UART2 并切换复用功能；调用 `Serial2.end()` 后关闭 UART2，并将 TX/RX 释放为
+  GPIO 输入。CI1302/CI1303 为 PA5/PA6，CI1306 为 PB1/PB2。
 - software SPI 默认使用 `SCK=PA5`、`MISO=PA2`、`MOSI=PA4`、`SS=PA3`。
   PA4 同时是复位阶段的 `PG_EN` 检测脚，外设在复位期间不得主动驱动它。
 - CI-D06GT01D 的 PD0 默认连接功放控制，改作普通 GPIO 会影响音频播放。
@@ -183,16 +194,30 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 
 ### 内存报告
 
-代码、只读数据、读写数据、BSS、栈和 100 KiB FreeRTOS heap 共用一段
-`0x82000`（532480 B）host SRAM。Arduino CLI 报告的 program 与 dynamic memory
-包含重叠的 `.data`，不能当作两块可分别用满的内存；最终容量以链接器和双镜像
-后处理检查为准。
+代码、只读数据、读写数据、BSS、栈和两类运行时 heap 共用一段 `0x82000`
+（532480 B）host SRAM。平台不再把最终 `user_code.bin` 固定限制为 `0x70000`：
+
+- 链接器先为原厂 SDK 保留 3 KiB 栈和固定 100 KiB FreeRTOS heap；
+- 代码、BSS 与 C/newlib heap 在剩余 417 KiB 中动态分配；默认至少保留 16 KiB
+  C/newlib heap，也可在开发板菜单中选择 32 KiB 或 64 KiB；
+- 后处理从 ELF 符号核对实际 SRAM 布局和剩余 heap，再生成双核容器；
+- `citool-cli compose` 按五个最终 bin 的实际大小做 4 KiB 对齐和顺序排布，只有
+  超过当前资源组合的 User Flash 布局上限时才报错。
+
+因此最终 User 容器上限由 sketch 的 BSS、所选 heap 余量和其他 Flash 分区共同决定，
+不是一个固定常数。Arduino CLI 报告的 program 与 dynamic memory 包含重叠的
+`.data`，也不能当作两块可分别用满的内存。普通 `malloc`、Arduino `String` 和部分
+ASR/音频解码器使用 C/newlib heap；大型 sketch 应根据运行负载选择更高的 heap 余量。
+这里的放宽适用于 `citool-cli` 完整固件烧录流程；原厂 SDK 旧 OTA 头文件仍定义
+448 KiB User 上限，启用该 OTA 路径前必须另行验证协议和升级端兼容性。
 
 ## 验证状态
 
 当前验证基线：
 
-- 原厂 SDK 示例的 138 个源文件使用 GCC 9.2.0 完整构建通过；
+- 原厂 SDK 示例的 138 个源文件使用 GCC 9.2.0 完整构建通过，并已验证 Arduino
+  源码预构建、缓存和直接对象链接；三个变体的链接映射均不再引用
+  `libci13xx_sdk.a`；
 - CI1306 的 GPIO、中断、ADC、PWM、Serial、software SPI、Wire、EEPROM、ASR、
   提示音和综合冒烟等 16 个 sketch 已完成编译、链接与双镜像后处理；
 - CI1302 与 CI1303 各完成 `CI13XXSmoke`、`PWMFade`、`Blink`、
@@ -200,7 +225,8 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 - `v1.0.0` Boards Manager 发布包已在隔离 Arduino CLI 环境完成安装；CI1306 的
   16 个安装后示例以及 CI1302/CI1303 的综合冒烟示例均编译通过，共 18/18；
 - CI1302、CI1303 与 CI1306 已在隔离 Arduino CLI 环境验证资源准备、完整编译、
-  `compose` 和 `inspect`；尚未完成实体板上传、GPIO、音频和离线语音运行验证。
+  `compose` 和 `inspect`；CI1303 已使用 `citool-cli` 完成实体板上传、固件 CRC、
+  UART0 和 I2C/SSD1306 运行验证，CI1302、CI1306、音频和离线语音仍待验证。
 
 详细环境、步骤与已知工具链问题见 [package/VALIDATION.md](package/VALIDATION.md)。
 

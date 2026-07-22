@@ -30,7 +30,7 @@ extern "C"{
 
 #define NVDATA_ID_USER_START            0x60000001 /*Start ID for user define. The ID user defined mast greater than this.*/
 /*Add user ID here */
-#define NVDATA_ID_OTA_MCU_STATUS        0x80000001 /*´æota×´Ì¬±ê¼Ç*/
+#define NVDATA_ID_OTA_MCU_STATUS        0x80000001 /*OTA ID*/
 #define NVDATA_ID_USER_END              0xF0000000 /*End ID for user define. The ID user defined mast smaller than this.*/
 
 //#define CINV_FLASH_BASE_ADDR        (0x7F0000)      //xiang.x:use the last 64k flash when test

@@ -55,13 +55,6 @@ function Get-FlashAlignedSize {
     return [long]([Math]::Ceiling($Length / 4096.0) * 4096)
 }
 
-# V2.7.12 components/ota/flash_update.h defines USERCODE_MAX_SIZE as 448 KiB.
-$userCodePartitionSize = 448KB
-$userCodeSize = (Get-Item -LiteralPath $userCodePath).Length
-if ($userCodeSize -gt $userCodePartitionSize) {
-    throw "User-code container is $userCodeSize bytes; the Arduino baseline maximum is $userCodePartitionSize bytes."
-}
-
 $profiles = @{
     ci1302 = [ordered]@{ board = 'CI-D02GS02S'; chip = 'CI1302'; flashSize = 2MB }
     ci1303 = [ordered]@{ board = 'CI-D03GS02S'; chip = 'CI1303'; flashSize = 4MB }
@@ -78,20 +71,27 @@ if ([string]::IsNullOrWhiteSpace($HardwareVersion)) {
 }
 
 $partitionFiles = @()
+$partitionOffset = 16KB
+$nvDataReservedSize = 16KB
+$nvDataOffset = $profile.flashSize - $nvDataReservedSize
 foreach ($entry in $files.GetEnumerator()) {
     $item = Get-Item -LiteralPath $entry.Value
+    $reservedSize = Get-FlashAlignedSize $item.Length
     $partitionFiles += [ordered]@{
         role = $entry.Key
         path = $item.FullName
         size = $item.Length
         sha256 = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash
-        reservedSize = if ($entry.Key -eq 'User') {
-            $userCodePartitionSize
-        } else {
-            Get-FlashAlignedSize $item.Length
-        }
+        offset = $partitionOffset
+        reservedSize = $reservedSize
     }
+    $partitionOffset += $reservedSize
 }
+if ($partitionOffset -gt $nvDataOffset) {
+    throw ("Partition images require 0x{0:X} bytes through address 0x{1:X}, beyond the User Flash layout limit 0x{2:X}." -f `
+        ($partitionOffset - 16KB), $partitionOffset, $nvDataOffset)
+}
+$userCodePartitionSize = $partitionFiles[0].reservedSize
 
 $manifest = [ordered]@{
     sdk = 'CI13XX_SDK_ASR_ALG_V2.7.12'
@@ -109,7 +109,8 @@ $manifest = [ordered]@{
     partitionVersion = 100
     userCodePartitionSize = $userCodePartitionSize
     code2Enabled = $false
-    nvDataReservedSize = 16KB
+    nvDataOffset = $nvDataOffset
+    nvDataReservedSize = $nvDataReservedSize
     generatedAt = (Get-Date).ToUniversalTime().ToString('o')
     inputs = $partitionFiles
 }
@@ -123,7 +124,7 @@ Write-Host "Provisioning manifest: $manifestPath"
 Write-Host "Open PACK_UPDATE_TOOL and select: CI130X series -> $($profile.chip) -> Firmware packaging."
 Write-Host "Use every metadata value from the manifest, FW_V2, $($profile.flashSize / 1MB) MB flash, Code2 disabled, and these inputs/reservations:"
 foreach ($entry in $partitionFiles) {
-    Write-Host ("  {0,-8} 0x{1:X} bytes reserved  {2}" -f $entry.role, $entry.reservedSize, $entry.path)
+    Write-Host ("  {0,-8} offset 0x{1:X}, 0x{2:X} bytes reserved  {3}" -f $entry.role, $entry.offset, $entry.reservedSize, $entry.path)
 }
 Write-Host 'After packaging, record the full firmware SHA-256 and flash it once with the tool firmware-upgrade page.'
 

@@ -15,7 +15,20 @@ static uint16_t s_pendingAsrFrames;
 static int16_t s_pendingAsrScore;
 static bool s_pendingAsrValid;
 
+static void initializeDefaultPins() {
+    // Arduino owns only pins exposed by the selected variant. Leave flash,
+    // reset and unbonded pads untouched; make every usable pin a high-impedance
+    // GPIO until the sketch explicitly selects another function.
+    for (uint8_t pin = 0; pin < NUM_DIGITAL_PINS; ++pin) {
+        if (g_APinDescription[pin].capabilities & PIN_CAP_GPIO) {
+            pinMode(pin, INPUT);
+            detachInterrupt(pin);
+        }
+    }
+}
+
 static void arduinoTask(void *) {
+    initializeDefaultPins();
     setup();
     for (;;) {
         loop();
@@ -25,10 +38,18 @@ static void arduinoTask(void *) {
     }
 }
 
+extern "C" int ci_arduino_sdk_start(void);
+extern "C" bool chipintelli_sdk_begin(void) {
+    return ci_arduino_sdk_start() != 0;
+}
+
 extern "C" void __real_vTaskStartScheduler(void);
 extern "C" void __wrap_vTaskStartScheduler(void) {
     if (!s_arduinoTask) {
-        BaseType_t result = xTaskCreate(arduinoTask, "arduino", 2048, nullptr, 1, &s_arduinoTask);
+        // Match the SDK init-task priority. FreeRTOS time slicing then lets
+        // setup()/loop() run even if a vendor initialization wait spins, while
+        // arduinoTask still blocks for one tick after every loop iteration.
+        BaseType_t result = xTaskCreate(arduinoTask, "arduino", 2048, nullptr, 4, &s_arduinoTask);
         if (result != pdPASS) {
             // This SDK builds configASSERT() as a no-op. Do not start a system
             // that appears alive but can never execute setup()/loop().

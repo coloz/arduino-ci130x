@@ -109,6 +109,11 @@ bool TwoWire::begin(int sda, int scl, uint32_t frequency) {
 }
 
 void TwoWire::end() {
+  if (_begun) {
+    scu_set_device_gate(IIC0, DISABLE);
+    pinMode(SDA, INPUT);
+    pinMode(SCL, INPUT);
+  }
   _begun = false;
   _transmitting = false;
   _pendingWrite = false;
