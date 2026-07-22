@@ -1,9 +1,9 @@
 # CI13XX board examples
 
-This library groups the core and board examples so Arduino IDE exposes them
-under **File > Examples > CI13XX**. `CI13XX.h` only publishes the package
-version; GPIO, analog, PWM, interrupt, and serial APIs remain part of the
-Arduino core.
+This metadata-only library groups the core and board examples so Arduino IDE
+exposes them under **File > Examples > CI13XX**. GPIO, analog, PWM, interrupt,
+serial, and FreeRTOS APIs remain part of the Arduino core and vendor SDK; the
+examples include `Arduino.h` directly.
 
 The examples support the CI1302 / CI-D02GS02S, CI1303 / CI-D03GS02S and CI1306
 / CI-D06GT01D profiles. These boards have no Arduino-controlled built-in LED,

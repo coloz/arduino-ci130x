@@ -55,6 +55,14 @@ function Get-FlashAlignedSize {
     return [long]([Math]::Ceiling($Length / 4096.0) * 4096)
 }
 
+# The complete dual-core user_code.bin is loaded into SRAM. Keep the vendor
+# SDK limit even when the surrounding Flash partitions have additional room.
+$maxUserCodeSize = 448KB
+$userCodeSize = (Get-Item -LiteralPath $userCodePath).Length
+if ($userCodeSize -gt $maxUserCodeSize) {
+    throw "User-code container is $userCodeSize bytes; the vendor SRAM-loading maximum is $maxUserCodeSize bytes."
+}
+
 $profiles = @{
     ci1302 = [ordered]@{ board = 'CI-D02GS02S'; chip = 'CI1302'; flashSize = 2MB }
     ci1303 = [ordered]@{ board = 'CI-D03GS02S'; chip = 'CI1303'; flashSize = 4MB }

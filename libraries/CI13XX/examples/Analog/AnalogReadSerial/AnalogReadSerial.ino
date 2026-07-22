@@ -1,4 +1,4 @@
-#include <CI13XX.h>
+#include <Arduino.h>
 
 // A0 is PC4/AIN2. Keep the input within the electrical limits documented for
 // the selected CI13XX chip and share GND with the signal source.

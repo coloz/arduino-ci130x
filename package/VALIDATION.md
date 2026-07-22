@@ -118,34 +118,28 @@ With the same CI1302 resources, a 1,410,376-byte User input aligned to
 `0x159000` and was rejected before output because the dynamic User Flash layout
 limit was `0xA8000`.
 
-## Dynamic Arduino SRAM and User-container validation
+## Restored Arduino User/SRAM limit
 
-On 2026-07-22, the fixed Arduino `0x70000` user-container check was replaced by
-an ELF-aware SRAM check. The vendor 3 KiB stack and 100 KiB FreeRTOS heap remain
-unchanged; the linker and post-build step enforce the selected minimum for the
-remaining C/newlib heap. Board options provide 16 KiB (default), 32 KiB and
-64 KiB minimum reserves.
+On 2026-07-22, the chip vendor confirmed that the complete dual-core
+`user_code.bin` must not exceed the SDK's SRAM-loading limit. Arduino therefore
+retains the original 448 KiB (`0x70000`, 458,752-byte) hard limit. The board
+metadata keeps the corresponding conservative host-program limit, and
+`postbuild.ps1` checks the exact merged container size before calling
+`citool-cli compose`.
 
-A CI1302 internal-RC test sketch retained a 320,000-byte read-only object in the
-host image. It reported 386,501 bytes of program storage, left 37,672 bytes of
-C/newlib heap, generated a 462,688-byte (`0x70F60`) `user_code.bin`—larger than
-the former 458,752-byte limit—and completed `compose` and strict `inspect`.
-The resulting 1,852,951-byte image used dynamic offsets User `0x4000`, ASR
-`0x75000`, DNN `0x7A000`, Voice `0xBE000` and UserFile `0x13C000`, with CI1302
-NV data unchanged at `0x1FC000`.
-
-The same image was linked with the 64 KiB heap option and was rejected at link
-time with `CI13XX static image leaves less than the selected C/newlib heap
-reserve`; no firmware was composed. A normal PA4/UART sketch also completed the
-new ELF check, compose and inspect path. These are compile/package checks, not a
-physical-board runtime claim for the artificial 320,000-byte test object.
+The earlier larger-container experiment is not part of the supported platform.
+The same 462,688-byte test container is now rejected before complete firmware is
+generated, while the normal PA4/UART sketches for CI1302, CI1303 and CI1306
+continue through merge, dynamic Flash layout and strict inspection. Dynamic
+4 KiB Flash address calculation remains enabled only within the fixed User
+limit.
 
 The dynamic-layout uploader was versioned as `citool-cli@1.0.1` so Boards
 Manager cannot reuse the older fixed-capacity `1.0.0` installation. Its locked
 test and clippy run passed all 22 tests. The clean GitHub Actions Windows x64
 release archive is 435,506 bytes with SHA-256
 `434bdcf9369aedbf19c6fe60a002df636a751c71148db63ddcd49378c661db0c`.
-The regenerated Arduino `1.0.1` index depends on that exact tool version and
+The regenerated Arduino `1.0.2` index depends on that exact tool version and
 archive.
 
 ## CI1303 physical-board upload and SSD1306 validation
