@@ -1,0 +1,8 @@
+ChipIntelliWatchdog	KEYWORD1
+ChipIntelliWatchdogClass	KEYWORD1
+begin	KEYWORD2
+feed	KEYWORD2
+reset	KEYWORD2
+end	KEYWORD2
+disable	KEYWORD2
+isRunning	KEYWORD2

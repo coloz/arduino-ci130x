@@ -168,7 +168,7 @@ typedef struct
 #endif
 
 void userapp_initial(void);
-void sys_msg_task_initial(void);
+BaseType_t sys_msg_task_initial(void);
 void UserTaskManageProcess(void *p_arg);
 
 typedef enum

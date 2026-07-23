@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$SdkPath = (Join-Path $PSScriptRoot '..\..\CI13XX_SDK_ASR_ALG_V2.7.12'),
+    [string]$SdkPath = (Join-Path $PSScriptRoot '..\..\CI130X_SDK_ALG_V2.7.14'),
 
     [string]$ToolchainBin = $env:CHIPINTELLI_GCC_BIN,
 
@@ -14,7 +14,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 if ($env:OS -ne 'Windows_NT') {
-    throw 'The V2.7.12 SDK build and packaging tools are currently supported on Windows only.'
+    throw 'The V2.7.14 SDK build and packaging tools are currently supported on Windows only.'
 }
 if (-not [Environment]::Is64BitOperatingSystem) {
     throw 'The CI13XX Arduino package requires 64-bit Windows because ci-tool-kit.exe is x64.'
@@ -64,6 +64,22 @@ function Copy-RequiredFile {
 
     New-Item -ItemType Directory -Force -Path $DestinationDirectory | Out-Null
     Copy-Item -LiteralPath $Source -Destination $DestinationDirectory -Force
+}
+
+function Replace-RequiredLiteral {
+    param(
+        [string]$Content,
+        [string]$OldValue,
+        [string]$NewValue,
+        [int]$ExpectedCount,
+        [string]$Description
+    )
+
+    $matches = [regex]::Matches($Content, [regex]::Escape($OldValue))
+    if ($matches.Count -ne $ExpectedCount) {
+        throw "Unable to $Description; expected $ExpectedCount match(es), found $($matches.Count)."
+    }
+    return $Content.Replace($OldValue, $NewValue)
 }
 
 function Write-MultiVariantUserConfig {
@@ -162,6 +178,9 @@ function Write-MultiVariantUserConfig {
 
     $content = $content.Replace($boardSelection, $selectionReplacement.TrimEnd("`r", "`n"))
     $content = $content.Replace($chipBranches, $branchReplacement.TrimEnd("`r", "`n"))
+    # Match the Windows checkout convention so a content-identical rebuild
+    # does not leave these generated headers falsely marked as modified.
+    $content = $content.Replace("`r`n", "`n").Replace("`n", "`r`n")
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Destination) | Out-Null
     [IO.File]::WriteAllText($Destination, $content, [Text.UTF8Encoding]::new($false))
 }
@@ -171,7 +190,7 @@ $toolchain = Resolve-ToolchainBin -RequestedPath $ToolchainBin
 $compiler = Join-Path $toolchain 'riscv-nuclei-elf-gcc.exe'
 $compilerVersion = @(& $compiler --version)
 if ($LASTEXITCODE -ne 0 -or ($compilerVersion -join "`n") -notmatch '(?m)\b9\.2\.0\b') {
-    throw "CI13XX SDK V2.7.12 requires Nuclei GCC 9.2.0: $compiler"
+    throw "CI13XX SDK V2.7.14 requires Nuclei GCC 9.2.0: $compiler"
 }
 $compilerHash = (Get-FileHash -LiteralPath $compiler -Algorithm SHA256).Hash
 $platformRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
@@ -208,7 +227,7 @@ if (-not $SkipBuild) {
     try {
         $env:PATH = "$toolchain;$oldPath"
         $jobs = [Math]::Max(1, [Environment]::ProcessorCount)
-        Write-Host "Building CI13XX V2.7.12 $Variant USE_NULL integration objects with $jobs jobs ..."
+        Write-Host "Building CI13XX V2.7.14 $Variant USE_NULL integration objects with $jobs jobs ..."
         # The vendor project defaults to -flto. GNU ld --wrap cannot interpose
         # calls that GCC resolves internally between LTO units, which would
         # bypass both the Arduino scheduler hook and the ASR result hook. Build
@@ -330,6 +349,399 @@ foreach ($relativePath in $packagedSourcePaths) {
     Copy-Item -LiteralPath $source -Destination $destination -Force
 }
 
+# The closed IR database archive looks up user-file ID 0 during ir_init().
+# Arduino keeps ID 0 available for the default TTS dictionary, so add a
+# task-scoped compatibility alias that can map only that initialization lookup
+# to a sketch-provided physical resource such as ID 50000.
+$flashDataSourcePath = Join-Path $sourceOutput 'components\flash_control\flash_control_src\ci_flash_data_info.c'
+$flashDataSourceContent = [IO.File]::ReadAllText($flashDataSourcePath)
+$flashDataNewline = if ($flashDataSourceContent.Contains("`r`n")) { "`r`n" } else { "`n" }
+$oldNvdmReadyOrder =
+    ('    set_ci_flash_data_info_init_flag();' + [char]0x20) +
+    $flashDataNewline +
+    '    cinv_init(partition_table.nv_data_offset, partition_table.nv_data_size);'
+$flashDataSourceContent = Replace-RequiredLiteral `
+    -Content $flashDataSourceContent `
+    -OldValue $oldNvdmReadyOrder `
+    -NewValue @'
+    cinv_init(partition_table.nv_data_offset, partition_table.nv_data_size);
+    /* Publish readiness only after NVDM has created its mutex and scanned the
+     * partition. Arduino storage libraries may run concurrently with this
+     * initialization task. */
+    set_ci_flash_data_info_init_flag();
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "publish NVDM readiness after initialization in $flashDataSourcePath"
+$flashDataSourceContent = Replace-RequiredLiteral `
+    -Content $flashDataSourceContent `
+    -OldValue 'static partition_table_t partition_table = {0};' `
+    -NewValue @'
+static partition_table_t partition_table = {0};
+
+typedef struct
+{
+    bool active;
+    uint16_t logical_id;
+    uint16_t physical_id;
+    TaskHandle_t owner;
+} userfile_id_alias_t;
+
+/*
+ * Some vendor algorithm libraries use a fixed user-file ID internally.  Keep
+ * that compatibility shim scoped to the task performing initialization so an
+ * unrelated TTS or application lookup can never observe the temporary alias.
+ */
+static userfile_id_alias_t userfile_id_alias = {false, 0, 0, NULL};
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "add the task-scoped user-file alias state to $flashDataSourcePath"
+$userFileLookupPattern = '(?m)^    if \(\(NULL == p_file_addr\) \|\|\(NULL == p_file_size\)\)\r?\n    \{\r?\n        return 1;\r?\n    \}\r?\n\r?\n    if \(get_file_addr\(partition_table\.user_file_offset, file_id, p_file_addr, p_file_size\)\)\r?$'
+$userFileLookupMatches = [regex]::Matches($flashDataSourceContent, $userFileLookupPattern)
+if ($userFileLookupMatches.Count -ne 1) {
+    throw "Unable to scope user-file ID aliases to the current task in $flashDataSourcePath; expected 1 match, found $($userFileLookupMatches.Count)."
+}
+$userFileLookupReplacement = @'
+    if ((NULL == p_file_addr) ||(NULL == p_file_size))
+    {
+        return 1;
+    }
+
+    userfile_id_alias_t alias_snapshot;
+    taskENTER_CRITICAL();
+    alias_snapshot = userfile_id_alias;
+    taskEXIT_CRITICAL();
+
+    if (alias_snapshot.active &&
+        (alias_snapshot.logical_id == file_id) &&
+        (alias_snapshot.owner == xTaskGetCurrentTaskHandle()))
+    {
+        file_id = alias_snapshot.physical_id;
+    }
+
+    if (get_file_addr(partition_table.user_file_offset, file_id, p_file_addr, p_file_size))
+'@.TrimEnd("`r", "`n")
+$flashDataSourceContent = [regex]::Replace(
+    $flashDataSourceContent,
+    $userFileLookupPattern,
+    $userFileLookupReplacement,
+    1)
+$flashDataSourceContent = Replace-RequiredLiteral `
+    -Content $flashDataSourceContent `
+    -OldValue 'partition_table_t * get_partition_table(void)' `
+    -NewValue @'
+bool ci_userfile_id_alias_begin(uint16_t logical_id, uint16_t physical_id)
+{
+    TaskHandle_t owner = xTaskGetCurrentTaskHandle();
+    if ((NULL == owner) || (logical_id == physical_id))
+    {
+        return false;
+    }
+
+    taskENTER_CRITICAL();
+    if (userfile_id_alias.active)
+    {
+        taskEXIT_CRITICAL();
+        return false;
+    }
+
+    userfile_id_alias.logical_id = logical_id;
+    userfile_id_alias.physical_id = physical_id;
+    userfile_id_alias.owner = owner;
+    userfile_id_alias.active = true;
+    taskEXIT_CRITICAL();
+    return true;
+}
+
+void ci_userfile_id_alias_end(void)
+{
+    TaskHandle_t owner = xTaskGetCurrentTaskHandle();
+
+    taskENTER_CRITICAL();
+    if (userfile_id_alias.active && (userfile_id_alias.owner == owner))
+    {
+        userfile_id_alias.active = false;
+        userfile_id_alias.logical_id = 0;
+        userfile_id_alias.physical_id = 0;
+        userfile_id_alias.owner = NULL;
+    }
+    taskEXIT_CRITICAL();
+}
+
+partition_table_t * get_partition_table(void)
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "add the task-scoped user-file alias API to $flashDataSourcePath"
+$flashDataSourceContent = $flashDataSourceContent.Replace("`r`n", "`n").Replace("`n", "`r`n")
+[IO.File]::WriteAllText($flashDataSourcePath, $flashDataSourceContent, [Text.UTF8Encoding]::new($false))
+
+# Keep ChipIntelliAudio mute authoritative across SDK-owned volume changes.
+# The weak hook preserves the upstream behavior when the Arduino audio library
+# is not linked into a sketch.
+$audioPlayDeviceSourcePath = Join-Path $sourceOutput 'components\player\audio_play\audio_play_device.c'
+$audioPlayDeviceSourceContent = [IO.File]::ReadAllText($audioPlayDeviceSourcePath)
+$audioPlayDeviceSourceContent = Replace-RequiredLiteral `
+    -Content $audioPlayDeviceSourceContent `
+    -OldValue @'
+void audio_play_set_vol_gain(int32_t gain)
+{
+    g_audio_play_gain = gain;
+'@.TrimEnd("`r", "`n") `
+    -NewValue @'
+void audio_play_set_vol_gain(int32_t gain)
+{
+#if defined(CI_ARDUINO_CORE)
+    /* Keep Arduino-level mute authoritative even when an SDK command changes
+     * the volume through vol_set() or another internal path. The hook is weak
+     * so sketches that do not use ChipIntelliAudio keep the vendor behavior. */
+    extern int chipintelli_audio_mute_requested(void) __attribute__((weak));
+    if ((chipintelli_audio_mute_requested != NULL) &&
+        chipintelli_audio_mute_requested())
+    {
+        gain = 0;
+    }
+#endif
+    g_audio_play_gain = gain;
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "add the Arduino audio-mute hook to $audioPlayDeviceSourcePath"
+$audioPlayDeviceSourceContent = $audioPlayDeviceSourceContent.Replace("`r`n", "`n").Replace("`n", "`r`n")
+[IO.File]::WriteAllText($audioPlayDeviceSourcePath, $audioPlayDeviceSourceContent, [Text.UTF8Encoding]::new($false))
+
+# The vendor prompt player invokes completion callbacks while holding its
+# non-recursive mutex. Route every mutex release through an Arduino weak hook;
+# ChipIntelliAudio records callbacks while locked and drains them from this
+# post-unlock hook, avoiding prompt API re-entry deadlocks.
+$promptPlayerSourcePath = Join-Path $sourceOutput 'components\cmd_info\prompt_player.c'
+$promptPlayerSourceContent = [IO.File]::ReadAllText($promptPlayerSourcePath).Replace("`r`n", "`n")
+$promptUnlockPattern = '(?m)^(?<indent>[ \t]*)if \(prompt_player\.semaphore\)\r?\n\k<indent>\{\r?\n\k<indent>    xSemaphoreGive\(prompt_player\.semaphore\);\r?\n\k<indent>\}'
+$promptUnlockMatches = [regex]::Matches($promptPlayerSourceContent, $promptUnlockPattern)
+if ($promptUnlockMatches.Count -ne 8) {
+    throw "Unable to route all prompt-player mutex releases through the Arduino hook in: $promptPlayerSourcePath"
+}
+$promptPlayerSourceContent = [regex]::Replace(
+    $promptPlayerSourceContent,
+    $promptUnlockPattern,
+    {
+        param($match)
+        return $match.Groups['indent'].Value + 'prompt_player_unlock();'
+    })
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue @'
+    #if USE_AEC_MODULE
+    0,          //timer_handle
+    #endif
+};
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -NewValue @'
+    #if USE_AEC_MODULE
+    0,          //timer_handle
+    #endif
+};
+
+#if defined(CI_ARDUINO_CORE)
+extern void chipintelli_sdk_prompt_unlocked(void) __attribute__((weak));
+#endif
+
+/*
+ * The vendor player normally invokes completion callbacks while holding this
+ * mutex. Arduino callbacks record the event there and are dispatched by the
+ * weak hook only after the mutex has been released.
+ */
+static void prompt_player_unlock(void)
+{
+    if (prompt_player.semaphore)
+    {
+        xSemaphoreGive(prompt_player.semaphore);
+    }
+#if defined(CI_ARDUINO_CORE)
+    if (chipintelli_sdk_prompt_unlocked != NULL)
+    {
+        chipintelli_sdk_prompt_unlocked();
+    }
+#endif
+}
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -ExpectedCount 1 `
+    -Description "add the post-unlock Arduino prompt hook to $promptPlayerSourcePath"
+$promptPlayerSourceContent = $promptPlayerSourceContent.Replace("`r`n", "`n").Replace("`n", "`r`n")
+[IO.File]::WriteAllText($promptPlayerSourcePath, $promptPlayerSourceContent, [Text.UTF8Encoding]::new($false))
+
+# ChipIntelliASR.begin() waits for the capture path, not merely for the later
+# system-message consumer. Publish readiness immediately after codec/DMA input
+# starts so a delayed queue consumer cannot cause a false initialization timeout.
+$audioInputSourcePath = Join-Path $sourceOutput 'components\audio_in_manage\audio_in_manage_inner.c'
+$audioInputSourceContent = [IO.File]::ReadAllText($audioInputSourcePath)
+$audioInputSourceContent = Replace-RequiredLiteral `
+    -Content $audioInputSourceContent `
+    -OldValue '    xTaskResumeAll();' `
+    -NewValue @'
+#if defined(CI_ARDUINO_CORE)
+    /*
+     * ASR begin() is waiting specifically for the capture path.  Notify it
+     * here, after the ASR core is up and the input codec/DMA has started,
+     * instead of depending solely on the later system-message consumer.
+     */
+    extern void chipintelli_sdk_notify_ready(void);
+    chipintelli_sdk_notify_ready();
+#endif
+    xTaskResumeAll();
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "publish Arduino capture readiness in $audioInputSourcePath"
+$audioInputSourceContent = $audioInputSourceContent.Replace("`r`n", "`n").Replace("`n", "`r`n")
+[IO.File]::WriteAllText($audioInputSourcePath, $audioInputSourceContent, [Text.UTF8Encoding]::new($false))
+
+# Expose allocation failure from the vendor system-message initializer. The
+# original void API only logged queue/mutex allocation failures and then let
+# the rest of the SDK start with invalid handles.
+$systemMessageSourcePath = Join-Path $sourceOutput 'projects\offline_asr_alg_pro_sample\app\app_main\system_msg_deal.c'
+$systemMessageSourceContent = [IO.File]::ReadAllText($systemMessageSourcePath)
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue 'void sys_msg_task_initial(void)' `
+    -NewValue 'BaseType_t sys_msg_task_initial(void)' `
+    -ExpectedCount 1 `
+    -Description "make the SDK system-message initializer report failure in $systemMessageSourcePath"
+$systemMessageFunctionEndPattern = '(?ms)(BaseType_t sys_msg_task_initial\(void\)\s*\{.*?)(\r?\n\}\r?\n\r?\n\r?\n/\*\*)'
+$systemMessageFunctionEndMatches = [regex]::Matches($systemMessageSourceContent, $systemMessageFunctionEndPattern)
+if ($systemMessageFunctionEndMatches.Count -ne 1) {
+    throw "Unable to add the SDK system-message initializer result in: $systemMessageSourcePath"
+}
+$systemMessageSourceContent = [regex]::Replace(
+    $systemMessageSourceContent,
+    $systemMessageFunctionEndPattern,
+    {
+        param($match)
+        return $match.Groups[1].Value + "`r`n    return (sys_msg_queue != NULL && WakeupMutex != NULL) ? pdPASS : pdFAIL;" + $match.Groups[2].Value
+    },
+    1)
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue '#include "cwsl_manage.h"' `
+    -NewValue @'
+#include "cwsl_manage.h"
+#if defined(CI_ARDUINO_CORE)
+extern void chipintelli_sdk_notify_ready(void);
+
+static volatile uint32_t s_arduino_sys_message_count = 0;
+static volatile uint32_t s_arduino_asr_message_count = 0;
+static volatile uint32_t s_arduino_cmd_info_message_count = 0;
+static volatile uint32_t s_arduino_audio_started_message_count = 0;
+static volatile uint32_t s_arduino_asr_status_count[6] = {0};
+
+uint32_t ci_arduino_sys_message_count(void)
+{
+    return s_arduino_sys_message_count;
+}
+
+uint32_t ci_arduino_asr_message_count(void)
+{
+    return s_arduino_asr_message_count;
+}
+
+uint32_t ci_arduino_cmd_info_message_count(void)
+{
+    return s_arduino_cmd_info_message_count;
+}
+
+uint32_t ci_arduino_audio_started_message_count(void)
+{
+    return s_arduino_audio_started_message_count;
+}
+
+uint32_t ci_arduino_asr_status_count(uint32_t status)
+{
+    if (status >= (sizeof(s_arduino_asr_status_count) /
+                   sizeof(s_arduino_asr_status_count[0])))
+    {
+        return 0;
+    }
+    return s_arduino_asr_status_count[status];
+}
+#endif
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "declare Arduino SDK readiness reporting in $systemMessageSourcePath"
+$audioReadyPattern = '(?ms)(\s*#if !UART_BAUDRATE_CALIBRATE\r?\n\s*\{\r?\n\s*sys_power_on_hook\(\);\r?\n\s*\}\r?\n\s*#endif)(\r?\n\s*break;\r?\n\s*\}\r?\n\s*default:)'
+$audioReadyMatches = [regex]::Matches($systemMessageSourceContent, $audioReadyPattern)
+if ($audioReadyMatches.Count -ne 1) {
+    throw "Unable to publish Arduino readiness after audio input starts in: $systemMessageSourcePath"
+}
+$systemMessageSourceContent = [regex]::Replace(
+    $systemMessageSourceContent,
+    $audioReadyPattern,
+    {
+        param($match)
+        return $match.Groups[1].Value + @'
+
+                    #if defined(CI_ARDUINO_CORE)
+                    chipintelli_sdk_notify_ready();
+                    #endif
+'@ + $match.Groups[2].Value
+    },
+    1)
+$systemMessageLoopPattern = '(?m)^        if\(pdPASS == err\)\r?\n        \{\r?$'
+$systemMessageLoopMatches =
+    [regex]::Matches($systemMessageSourceContent, $systemMessageLoopPattern)
+if ($systemMessageLoopMatches.Count -ne 1) {
+    throw "Unable to add the Arduino system-message counter in: $systemMessageSourcePath"
+}
+$systemMessageSourceContent = [regex]::Replace(
+    $systemMessageSourceContent,
+    $systemMessageLoopPattern,
+    {
+        param($match)
+        return $match.Value + @'
+
+#if defined(CI_ARDUINO_CORE)
+            ++s_arduino_sys_message_count;
+#endif
+'@
+    },
+    1)
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue '                    asr_rev_data = &(rev_msg.msg_data.asr_data);' `
+    -NewValue @'
+                    asr_rev_data = &(rev_msg.msg_data.asr_data);
+#if defined(CI_ARDUINO_CORE)
+                    ++s_arduino_asr_message_count;
+                    if ((uint32_t)asr_rev_data->asr_status <
+                        (sizeof(s_arduino_asr_status_count) /
+                         sizeof(s_arduino_asr_status_count[0])))
+                    {
+                        ++s_arduino_asr_status_count[(uint32_t)asr_rev_data->asr_status];
+                    }
+#endif
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "count Arduino ASR messages in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue '                    cmd_info_rev_data = &(rev_msg.msg_data.cmd_info_data);' `
+    -NewValue @'
+                    cmd_info_rev_data = &(rev_msg.msg_data.cmd_info_data);
+#if defined(CI_ARDUINO_CORE)
+                    ++s_arduino_cmd_info_message_count;
+#endif
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "count Arduino command-info messages in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue '                    uint8_t volume;' `
+    -NewValue @'
+#if defined(CI_ARDUINO_CORE)
+                    ++s_arduino_audio_started_message_count;
+#endif
+                    uint8_t volume;
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "count Arduino audio-start messages in $systemMessageSourcePath"
+$systemMessageSourceContent = $systemMessageSourceContent.Replace("`r`n", "`n").Replace("`n", "`r`n")
+[IO.File]::WriteAllText($systemMessageSourcePath, $systemMessageSourceContent, [Text.UTF8Encoding]::new($false))
+
 # Arduino C++ global constructors may allocate memory before main(). Initialize
 # the ROM/newlib dispatch table at the end of the C runtime _init() hook, before
 # __libc_init_array starts those constructors. The vendor application initializes
@@ -382,6 +794,111 @@ $arduinoMainContent = [regex]::Replace(
         ) -join "`r`n"
     },
     1)
+
+# Turn the vendor's asynchronous, fire-and-forget task_init() into an
+# observable Arduino startup state. Every resource needed by the default ASR
+# flow must exist before begin() reports success.
+$taskInitDeclaration = 'static void task_init(void *p_arg)'
+$arduinoInitSupport = @'
+#if defined(CI_ARDUINO_CORE)
+extern void chipintelli_sdk_notify_failed(void);
+
+#define CI_ARDUINO_INIT_FAILED()       \
+    do                                 \
+    {                                  \
+        chipintelli_sdk_notify_failed(); \
+        vTaskDelete(NULL);             \
+        return;                        \
+    } while (0)
+#define CI_ARDUINO_REQUIRE_OK(call)     \
+    do                                 \
+    {                                  \
+        if ((call) != RETURN_OK)       \
+        {                              \
+            CI_ARDUINO_INIT_FAILED();  \
+        }                              \
+    } while (0)
+#define CI_ARDUINO_REQUIRE_PASS(call)   \
+    do                                 \
+    {                                  \
+        if ((call) != pdPASS)          \
+        {                              \
+            CI_ARDUINO_INIT_FAILED();  \
+        }                              \
+    } while (0)
+#else
+#define CI_ARDUINO_INIT_FAILED() return
+#define CI_ARDUINO_REQUIRE_OK(call) ((void)(call))
+#define CI_ARDUINO_REQUIRE_PASS(call) ((void)(call))
+#endif
+'@
+$arduinoMainContent = Replace-RequiredLiteral `
+    -Content $arduinoMainContent `
+    -OldValue $taskInitDeclaration `
+    -NewValue ($arduinoInitSupport.TrimEnd("`r", "`n") + "`r`n`r`n" + $taskInitDeclaration) `
+    -ExpectedCount 1 `
+    -Description "add Arduino SDK initialization state reporting to $arduinoMainPath"
+
+$requiredMainCallReplacements = @(
+    @{ Old = '    audio_play_init();'; New = '    CI_ARDUINO_REQUIRE_OK(audio_play_init());'; Count = 2; Name = 'check audio player initialization' },
+    @{ Old = '    sap_init();'; New = '    CI_ARDUINO_REQUIRE_PASS(sap_init());'; Count = 1; Name = 'check simple audio player initialization' },
+    @{ Old = '    xTaskCreate(audio_in_manage_inner_task, "audio_in_manage_inner_task", 300, NULL, 4, NULL);'; New = '    CI_ARDUINO_REQUIRE_PASS(xTaskCreate(audio_in_manage_inner_task, "audio_in_manage_inner_task", 300, NULL, 4, NULL));'; Count = 1; Name = 'check the audio input task' },
+    @{ Old = ('    xTaskCreate(doa_out_result_hand_task, "doa_out_result_hand_task", 100, NULL, 4, NULL);' + ' '); New = '    CI_ARDUINO_REQUIRE_PASS(xTaskCreate(doa_out_result_hand_task, "doa_out_result_hand_task", 100, NULL, 4, NULL));'; Count = 1; Name = 'check the DOA task' },
+    @{ Old = "`txTaskCreate(nlpTaskManageProcess,`"nlpTaskManageProcess`",480,NULL,4,NULL);"; New = "`tCI_ARDUINO_REQUIRE_PASS(xTaskCreate(nlpTaskManageProcess,`"nlpTaskManageProcess`",480,NULL,4,NULL));"; Count = 1; Name = 'check the NLP task' },
+    @{ Old = '    sys_msg_task_initial();'; New = '    CI_ARDUINO_REQUIRE_PASS(sys_msg_task_initial());'; Count = 1; Name = 'check the system-message resources' },
+    @{ Old = '    xTaskCreate(UserTaskManageProcess,"UserTaskManageProcess",480,NULL,4,NULL);'; New = '    CI_ARDUINO_REQUIRE_PASS(xTaskCreate(UserTaskManageProcess,"UserTaskManageProcess",480,NULL,4,NULL));'; Count = 1; Name = 'check the user task' },
+    @{ Old = '    xTaskCreate(uart_data_handle_task,"uart_data_handle_task", 480, NULL, 4, NULL);'; New = '    CI_ARDUINO_REQUIRE_PASS(xTaskCreate(uart_data_handle_task,"uart_data_handle_task", 480, NULL, 4, NULL));'; Count = 1; Name = 'check the code-switch UART task' }
+)
+foreach ($replacement in $requiredMainCallReplacements) {
+    $arduinoMainContent = Replace-RequiredLiteral `
+        -Content $arduinoMainContent `
+        -OldValue $replacement.Old `
+        -NewValue $replacement.New `
+        -ExpectedCount $replacement.Count `
+        -Description "$($replacement.Name) in $arduinoMainPath"
+}
+
+$initFailurePatterns = @(
+    '(?ms)(if \(nlp_module_init\(\) != NLP_STATE_OK\)[^\r\n]*\r?\n\s*\{\r?\n\s*mprintf\("nlp module init error\.\.\.\\r\\n"\);\r?\n\s*)return;[ \t]*',
+    '(?ms)(if\(!record_play_test_init\(\)\)[^\r\n]*\r?\n\s*\{\r?\n\s*mprintf\("record_play_test_init init error\.\.\.\\r\\n"\);\r?\n\s*)return;[ \t]*'
+)
+foreach ($failurePattern in $initFailurePatterns) {
+    $failureMatches = [regex]::Matches($arduinoMainContent, $failurePattern)
+    if ($failureMatches.Count -ne 1) {
+        throw "Unable to adapt an SDK initialization failure path in: $arduinoMainPath"
+    }
+    $arduinoMainContent = [regex]::Replace(
+        $arduinoMainContent,
+        $failurePattern,
+        {
+            param($match)
+            return $match.Groups[1].Value + 'CI_ARDUINO_INIT_FAILED();'
+        },
+        1)
+}
+
+$lateUserTaskPattern = '(?ms)    /\*user app[^\r\n]*\*/\r?\n    userapp_initial\(\);\r?\n    /\*[^\r\n]*\*/\r?\n    CI_ARDUINO_REQUIRE_PASS\(sys_msg_task_initial\(\)\);\r?\n    CI_ARDUINO_REQUIRE_PASS\(xTaskCreate\(UserTaskManageProcess,"UserTaskManageProcess",480,NULL,4,NULL\)\);'
+$lateUserTaskMatches = [regex]::Matches($arduinoMainContent, $lateUserTaskPattern)
+if ($lateUserTaskMatches.Count -ne 1) {
+    throw "Unable to move the SDK system-message consumer ahead of producers in: $arduinoMainPath"
+}
+$arduinoMainContent = [regex]::Replace($arduinoMainContent, $lateUserTaskPattern, '', 1)
+
+$audioInputTaskCall = '    CI_ARDUINO_REQUIRE_PASS(xTaskCreate(audio_in_manage_inner_task, "audio_in_manage_inner_task", 300, NULL, 4, NULL));'
+$earlyMessageConsumer = @'
+    /* Create the consumer queue/task before audio or protocol producers can
+     * publish their first message. */
+    CI_ARDUINO_REQUIRE_PASS(sys_msg_task_initial());
+    CI_ARDUINO_REQUIRE_PASS(xTaskCreate(UserTaskManageProcess,"UserTaskManageProcess",480,NULL,4,NULL));
+    userapp_initial();
+    CI_ARDUINO_REQUIRE_PASS(xTaskCreate(audio_in_manage_inner_task, "audio_in_manage_inner_task", 300, NULL, 4, NULL));
+'@
+$arduinoMainContent = Replace-RequiredLiteral `
+    -Content $arduinoMainContent `
+    -OldValue $audioInputTaskCall `
+    -NewValue $earlyMessageConsumer.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "start the SDK system-message consumer before producers in $arduinoMainPath"
 
 # The upstream sample main automatically starts its ASR/audio application and
 # configures board peripherals before an Arduino sketch runs. Arduino must have
@@ -471,7 +988,25 @@ Copy-RequiredFile -Source (Join-Path $sdkRoot 'projects\offline_asr_alg_pro_samp
 Copy-RequiredFile -Source (Join-Path $sdkRoot 'utils\common.lds') -DestinationDirectory $linkerOutput
 
 Copy-RequiredFile -Source (Join-Path $sdkRoot 'libs\libbnpu_core_alg_pro_null.a') -DestinationDirectory $binaryOutput
-Copy-RequiredFile -Source (Join-Path $sdkRoot 'tools\ci-tool-kit.exe') -DestinationDirectory $binaryOutput
+$ciToolKitSource = Join-Path $sdkRoot 'tools\ci-tool-kit.exe'
+if (-not (Test-Path -LiteralPath $ciToolKitSource -PathType Leaf)) {
+    # The official V2.7.14 archive omits the standalone executable while the
+    # Arduino package still needs it for post-build image composition. Preserve
+    # the already validated package copy when regenerating the SDK payload.
+    $packagedCiToolKit = Join-Path $sdkOutput 'bin\ci-tool-kit.exe'
+    if (-not (Test-Path -LiteralPath $packagedCiToolKit -PathType Leaf)) {
+        throw "The SDK and current Arduino payload both lack ci-tool-kit.exe: $ciToolKitSource"
+    }
+    $expectedCiToolKitHash = 'F10CBF3C262AF9375251DB48A1941D79B14FF9AEB3D2B0BE12041B25B7EE095E'
+    $packagedCiToolKitHash =
+        (Get-FileHash -LiteralPath $packagedCiToolKit -Algorithm SHA256).Hash
+    if ($packagedCiToolKitHash -ne $expectedCiToolKitHash) {
+        throw "The preserved ci-tool-kit.exe SHA256 is $packagedCiToolKitHash; expected $expectedCiToolKitHash."
+    }
+    Write-Warning "V2.7.14 omits ci-tool-kit.exe; preserving the validated Arduino payload copy."
+    $ciToolKitSource = $packagedCiToolKit
+}
+Copy-RequiredFile -Source $ciToolKitSource -DestinationDirectory $binaryOutput
 Copy-RequiredFile -Source (Join-Path $sdkRoot 'tools\code_program.exe') -DestinationDirectory $binaryOutput
 
 # Keep the source hierarchy for qualified includes and also provide a flat
@@ -483,6 +1018,45 @@ foreach ($header in $headers) {
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $preservedDestination) | Out-Null
     Copy-Item -LiteralPath $header.FullName -Destination $preservedDestination -Force
     Copy-Item -LiteralPath $header.FullName -Destination (Join-Path $includeOutput $header.Name) -Force
+}
+
+foreach ($systemMessageHeaderPath in @(
+    (Join-Path $includeOutput 'system_msg_deal.h'),
+    (Join-Path $preservedIncludeOutput 'projects\offline_asr_alg_pro_sample\app\app_main\system_msg_deal.h')
+)) {
+    $systemMessageHeaderContent = [IO.File]::ReadAllText($systemMessageHeaderPath)
+    $systemMessageHeaderContent = Replace-RequiredLiteral `
+        -Content $systemMessageHeaderContent `
+        -OldValue 'void sys_msg_task_initial(void);' `
+        -NewValue 'BaseType_t sys_msg_task_initial(void);' `
+        -ExpectedCount 1 `
+        -Description "update the system-message initializer declaration in $systemMessageHeaderPath"
+    $systemMessageHeaderContent = $systemMessageHeaderContent.Replace("`r`n", "`n").Replace("`n", "`r`n")
+    [IO.File]::WriteAllText($systemMessageHeaderPath, $systemMessageHeaderContent, [Text.UTF8Encoding]::new($false))
+}
+
+foreach ($flashDataHeaderPath in @(
+    (Join-Path $includeOutput 'ci_flash_data_info.h'),
+    (Join-Path $preservedIncludeOutput 'components\flash_control\flash_control_inc\ci_flash_data_info.h')
+)) {
+    $flashDataHeaderContent = [IO.File]::ReadAllText($flashDataHeaderPath)
+    $flashDataHeaderContent = Replace-RequiredLiteral `
+        -Content $flashDataHeaderContent `
+        -OldValue 'extern uint32_t get_userfile_addr(uint16_t file_id, uint32_t *p_file_addr, uint32_t *p_file_size);' `
+        -NewValue @'
+extern uint32_t get_userfile_addr(uint16_t file_id, uint32_t *p_file_addr, uint32_t *p_file_size);
+
+/*
+ * Temporarily remap one user-file ID for lookups made by the current FreeRTOS
+ * task. Nested aliases are rejected. The task that begins an alias must end it.
+ */
+extern bool ci_userfile_id_alias_begin(uint16_t logical_id, uint16_t physical_id);
+extern void ci_userfile_id_alias_end(void);
+'@.TrimEnd("`r", "`n") `
+        -ExpectedCount 1 `
+        -Description "declare the task-scoped user-file alias API in $flashDataHeaderPath"
+    $flashDataHeaderContent = $flashDataHeaderContent.Replace("`r`n", "`n").Replace("`n", "`r`n")
+    [IO.File]::WriteAllText($flashDataHeaderPath, $flashDataHeaderContent, [Text.UTF8Encoding]::new($false))
 }
 
 $sourceUserConfig = Join-Path $sdkRoot 'projects\offline_asr_alg_pro_sample\app\app_main\user_config.h'
@@ -519,12 +1093,16 @@ finally {
 }
 
 $manifest = @"
-Generated from: CI13XX_SDK_ASR_ALG_V2.7.12
+Generated from: CI130X_SDK_ALG_V2.7.14
 Project: projects/offline_asr_alg_pro_sample
 Validated variant: $Variant
 Board: $($profile.Board) / $($profile.Chip) / $($profile.Flash)
 Algorithm profile: USE_NULL=1, NO_ASR_FLOW=0
 SDK message UART: disabled; Arduino HardwareSerial owns UART2
+NVDM readiness: published only after cinv_init() completes
+Audio mute compatibility: weak gain hook for ChipIntelliAudio
+Prompt callback safety: weak hook dispatched after the prompt mutex is released
+IR database compatibility: task-scoped user-file ID alias (Arduino default physical ID 50000)
 Compiler: riscv-nuclei-elf-gcc 9.2.0
 Compiler executable SHA256: $compilerHash
 Compiled SDK source count: $($sourceRelativePaths.Count)

@@ -8,6 +8,7 @@ extern "C" {
 }
 
 static TaskHandle_t s_arduinoTask;
+static volatile chipintelli_sdk_state_t s_sdkState = CHIPINTELLI_SDK_NOT_STARTED;
 static chipintelli_asr_callback_t s_asrCallback;
 static void *s_asrCallbackArg;
 static cmd_handle_t s_pendingAsrHandle;
@@ -32,6 +33,7 @@ static void arduinoTask(void *) {
     setup();
     for (;;) {
         loop();
+        serialEventRun();
         // taskYIELD() only rotates among equal-priority tasks. Block for one
         // tick so the lower-priority FreeRTOS idle task can run housekeeping.
         vTaskDelay(1);
@@ -40,7 +42,48 @@ static void arduinoTask(void *) {
 
 extern "C" int ci_arduino_sdk_start(void);
 extern "C" bool chipintelli_sdk_begin(void) {
-    return ci_arduino_sdk_start() != 0;
+    taskENTER_CRITICAL();
+    const chipintelli_sdk_state_t state = s_sdkState;
+    if (state == CHIPINTELLI_SDK_STARTING || state == CHIPINTELLI_SDK_READY) {
+        taskEXIT_CRITICAL();
+        return true;
+    }
+    if (state == CHIPINTELLI_SDK_FAILED) {
+        taskEXIT_CRITICAL();
+        return false;
+    }
+    s_sdkState = CHIPINTELLI_SDK_STARTING;
+    taskEXIT_CRITICAL();
+
+    if (ci_arduino_sdk_start() == 0) {
+        taskENTER_CRITICAL();
+        s_sdkState = CHIPINTELLI_SDK_FAILED;
+        taskEXIT_CRITICAL();
+        return false;
+    }
+    return true;
+}
+
+extern "C" chipintelli_sdk_state_t chipintelli_sdk_state(void) {
+    taskENTER_CRITICAL();
+    const chipintelli_sdk_state_t state = s_sdkState;
+    taskEXIT_CRITICAL();
+    return state;
+}
+
+// Called only by the Arduino-adapted vendor initialization task.
+extern "C" void chipintelli_sdk_notify_ready(void) {
+    taskENTER_CRITICAL();
+    if (s_sdkState == CHIPINTELLI_SDK_STARTING) {
+        s_sdkState = CHIPINTELLI_SDK_READY;
+    }
+    taskEXIT_CRITICAL();
+}
+
+extern "C" void chipintelli_sdk_notify_failed(void) {
+    taskENTER_CRITICAL();
+    s_sdkState = CHIPINTELLI_SDK_FAILED;
+    taskEXIT_CRITICAL();
 }
 
 extern "C" void __real_vTaskStartScheduler(void);
@@ -88,21 +131,26 @@ extern "C" void __wrap_sys_asr_result_hook(cmd_handle_t handle, uint8_t score) {
     // UART/I2C protocol before Arduino user code is notified.
     __real_sys_asr_result_hook(handle, score);
 
+    taskENTER_CRITICAL();
     chipintelli_asr_callback_t callback = s_asrCallback;
+    void *callbackArg = s_asrCallbackArg;
+    taskEXIT_CRITICAL();
     if (callback) {
         uint16_t frames = 0;
+        int16_t resultScore = static_cast<int16_t>(score);
         if (s_pendingAsrValid && s_pendingAsrHandle == handle &&
             static_cast<uint8_t>(s_pendingAsrScore) == score) {
             frames = s_pendingAsrFrames;
+            resultScore = s_pendingAsrScore;
         }
         chipintelli_asr_result_t result = {
             cmd_info_get_command_id(handle),
             cmd_info_get_semantic_id(handle),
-            static_cast<int16_t>(score),
+            resultScore,
             frames,
             cmd_info_get_command_string(handle)
         };
-        callback(&result, s_asrCallbackArg);
+        callback(&result, callbackArg);
     }
     s_pendingAsrValid = false;
 }

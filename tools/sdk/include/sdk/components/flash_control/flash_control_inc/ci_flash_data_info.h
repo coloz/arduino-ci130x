@@ -163,6 +163,13 @@ extern int32_t get_fw_version(product_version_t *product_version);
 
 extern uint32_t get_userfile_addr(uint16_t file_id, uint32_t *p_file_addr, uint32_t *p_file_size);
 
+/*
+ * Temporarily remap one user-file ID for lookups made by the current FreeRTOS
+ * task. Nested aliases are rejected. The task that begins an alias must end it.
+ */
+extern bool ci_userfile_id_alias_begin(uint16_t logical_id, uint16_t physical_id);
+extern void ci_userfile_id_alias_end(void);
+
 extern partition_table_t * get_partition_table(void);
 
 extern uint32_t cached_flash_reader_init(uint32_t start_addr_in_flash);

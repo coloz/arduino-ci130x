@@ -56,9 +56,10 @@ $citoolPath = (Resolve-Path -LiteralPath $citoolCandidate).Path
 $platformRoot = (Resolve-Path -LiteralPath $PlatformPath).Path
 $toolKit = Join-Path $platformRoot 'tools\sdk\bin\ci-tool-kit.exe'
 $secondCore = Join-Path $platformRoot 'tools\sdk\bin\libbnpu_core_alg_pro_null.a'
+$mergeUserFileEntries = Join-Path $platformRoot 'tools\merge_user_file_entries.ps1'
 $projectResourcesRoot = (Resolve-Path -LiteralPath $ProjectResources).Path
 
-foreach ($required in @($toolKit, $secondCore, $citoolPath)) {
+foreach ($required in @($toolKit, $secondCore, $mergeUserFileEntries, $citoolPath)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         throw "Missing post-build packaging asset: $required"
     }
@@ -90,6 +91,19 @@ if (Test-Path -LiteralPath $stagingRoot) {
 }
 $staging = Join-Path $stagingRoot 'user_code'
 New-Item -ItemType Directory -Path $staging | Out-Null
+
+$effectiveUserFile = $resourceFiles.UserFile
+$userFileEntries = Join-Path $projectResourcesRoot 'user_file_entries'
+if (Test-Path -LiteralPath $userFileEntries) {
+    if (-not (Test-Path -LiteralPath $userFileEntries -PathType Container)) {
+        throw "Project user_file_entries path is not a directory: $userFileEntries"
+    }
+    $effectiveUserFile = Join-Path $stagingRoot 'user_file.bin'
+    & $mergeUserFileEntries `
+        -BaseUserFile $resourceFiles.UserFile `
+        -EntriesDirectory $userFileEntries `
+        -Output $effectiveUserFile
+}
 
 $hostImage = Join-Path $staging '[0]code.bin'
 $algorithmImage = Join-Path $staging '[1]code.bin'
@@ -127,7 +141,7 @@ Write-Host "CI13XX user-code image: $outputFullPath ($mergedImageSize / $MaxUser
     --asr $resourceFiles.ASR `
     --dnn $resourceFiles.DNN `
     --voice $resourceFiles.Voice `
-    --user-file $resourceFiles.UserFile `
+    --user-file $effectiveUserFile `
     --output $firmwareOutputFullPath `
     --force
 if ($LASTEXITCODE -ne 0) {

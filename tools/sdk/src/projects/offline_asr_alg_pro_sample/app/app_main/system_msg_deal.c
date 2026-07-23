@@ -39,6 +39,45 @@
 #include "remote_api_for_host.h"
 
 #include "cwsl_manage.h"
+#if defined(CI_ARDUINO_CORE)
+extern void chipintelli_sdk_notify_ready(void);
+
+static volatile uint32_t s_arduino_sys_message_count = 0;
+static volatile uint32_t s_arduino_asr_message_count = 0;
+static volatile uint32_t s_arduino_cmd_info_message_count = 0;
+static volatile uint32_t s_arduino_audio_started_message_count = 0;
+static volatile uint32_t s_arduino_asr_status_count[6] = {0};
+
+uint32_t ci_arduino_sys_message_count(void)
+{
+    return s_arduino_sys_message_count;
+}
+
+uint32_t ci_arduino_asr_message_count(void)
+{
+    return s_arduino_asr_message_count;
+}
+
+uint32_t ci_arduino_cmd_info_message_count(void)
+{
+    return s_arduino_cmd_info_message_count;
+}
+
+uint32_t ci_arduino_audio_started_message_count(void)
+{
+    return s_arduino_audio_started_message_count;
+}
+
+uint32_t ci_arduino_asr_status_count(uint32_t status)
+{
+    if (status >= (sizeof(s_arduino_asr_status_count) /
+                   sizeof(s_arduino_asr_status_count[0])))
+    {
+        return 0;
+    }
+    return s_arduino_asr_status_count[status];
+}
+#endif
 #if USE_IR_ENABLE
 #include "main_device.h"
 #include "middle_device.h"
@@ -659,7 +698,7 @@ uint8_t vol_get(void)
  * @brief 系统消息任务资源初始化
  *
  */
-void sys_msg_task_initial(void)
+BaseType_t sys_msg_task_initial(void)
 {
     sys_msg_queue = xQueueCreate(16, sizeof(sys_msg_t));
     if(!sys_msg_queue)
@@ -672,6 +711,7 @@ void sys_msg_task_initial(void)
     {
         mprintf("not enough memory:%d,%s\n",__LINE__,__FUNCTION__);
     }
+    return (sys_msg_queue != NULL && WakeupMutex != NULL) ? pdPASS : pdFAIL;
 }
 
 
@@ -1112,6 +1152,9 @@ void UserTaskManageProcess(void *p_arg)
 
         if(pdPASS == err)
         {
+#if defined(CI_ARDUINO_CORE)
+            ++s_arduino_sys_message_count;
+#endif
             /* 根据消息来源来处理对应消息，用户可以自己创建属于自己的系统消息类型 */
             switch (rev_msg.msg_type)
             {
@@ -1127,6 +1170,15 @@ void UserTaskManageProcess(void *p_arg)
                 {
                     sys_msg_asr_data_t *asr_rev_data;
                     asr_rev_data = &(rev_msg.msg_data.asr_data);
+#if defined(CI_ARDUINO_CORE)
+                    ++s_arduino_asr_message_count;
+                    if ((uint32_t)asr_rev_data->asr_status <
+                        (sizeof(s_arduino_asr_status_count) /
+                         sizeof(s_arduino_asr_status_count[0])))
+                    {
+                        ++s_arduino_asr_status_count[(uint32_t)asr_rev_data->asr_status];
+                    }
+#endif
                     sys_deal_asr_msg(asr_rev_data);
                     break;
                 }
@@ -1137,12 +1189,18 @@ void UserTaskManageProcess(void *p_arg)
                 {
                     sys_msg_cmd_info_data_t *cmd_info_rev_data;
                     cmd_info_rev_data = &(rev_msg.msg_data.cmd_info_data);
+#if defined(CI_ARDUINO_CORE)
+                    ++s_arduino_cmd_info_message_count;
+#endif
                     sys_deal_cmd_info_msg(cmd_info_rev_data);
                     break;
                 }
                 /* 音频采集任务消息，目前处理音频采集开启完成，在这里播放欢迎词 */
                 case SYS_MSG_TYPE_AUDIO_IN_STARTED:
                 {
+#if defined(CI_ARDUINO_CORE)
+                    ++s_arduino_audio_started_message_count;
+#endif
                     uint8_t volume;
                     uint16_t real_len;
 
@@ -1185,6 +1243,9 @@ void UserTaskManageProcess(void *p_arg)
                     {
 					    sys_power_on_hook();
                     }
+                    #endif
+                    #if defined(CI_ARDUINO_CORE)
+                    chipintelli_sdk_notify_ready();
                     #endif
                     break;
                 }

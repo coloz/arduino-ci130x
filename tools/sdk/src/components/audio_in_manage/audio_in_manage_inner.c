@@ -396,6 +396,15 @@ void audio_in_manage_inner_task(void *p)
     #endif
     cm_start_codec(HOST_MIC_RECORD_CODEC_ID, CODEC_INPUT);
     ciss_set(CI_SS_MIC_VOICE_STATUE, CI_SS_MIC_VOICE_NORMAL);
+#if defined(CI_ARDUINO_CORE)
+    /*
+     * ASR begin() is waiting specifically for the capture path.  Notify it
+     * here, after the ASR core is up and the input codec/DMA has started,
+     * instead of depending solely on the later system-message consumer.
+     */
+    extern void chipintelli_sdk_notify_ready(void);
+    chipintelli_sdk_notify_ready();
+#endif
     xTaskResumeAll();
 
     #if !NO_ASR_FLOW

@@ -1,10 +1,9 @@
 # SPI for CI13XX
 
 These CI13XX profiles do not expose a general-purpose hardware SPI controller.
-`QSPI0` is
-the boot/model/user Flash interface and must not be repurposed. This library is
-therefore an explicit GPIO software SPI master, not a wrapper around the
-on-chip Flash bus.
+`QSPI0` is the boot/model/user Flash interface and must not be repurposed. This
+library is therefore an explicit GPIO software SPI master, not a wrapper around
+the on-chip Flash bus.
 
 The default route for all three variants is:
 
@@ -27,9 +26,14 @@ an optional MISO, MOSI, or SS signal. Chip select is configured high by
 `begin()`, but—as with the standard Arduino transaction API—the sketch must
 drive it low/high around each device transfer.
 
+`begin()` atomically acquires the software-SPI resource and every selected
+pad. It returns `false` without changing pin muxes when Wire, a UART, PWM, or
+another peripheral owns any of them. `end()` returns all acquired resources.
+
 Implemented APIs include `SPISettings`, modes 0–3, MSB/LSB order,
 `beginTransaction()` / `endTransaction()`, byte/16-bit/32-bit transfers,
 in-place buffers, separate TX/RX buffers, and write helpers. Requested clocks
 above 500 kHz are capped. GPIO call overhead makes the real clock lower than
 the requested value, and FreeRTOS/interrupt activity can add jitter. There is
-no DMA, hardware chip select, slave mode, or multi-task arbitration.
+no DMA, hardware chip select, slave mode, or transaction-level multi-task
+arbitration.

@@ -76,6 +76,17 @@ void audio_play_hw_per_init(void)
  */
 void audio_play_set_vol_gain(int32_t gain)
 {
+#if defined(CI_ARDUINO_CORE)
+    /* Keep Arduino-level mute authoritative even when an SDK command changes
+     * the volume through vol_set() or another internal path. The hook is weak
+     * so sketches that do not use ChipIntelliAudio keep the vendor behavior. */
+    extern int chipintelli_audio_mute_requested(void) __attribute__((weak));
+    if ((chipintelli_audio_mute_requested != NULL) &&
+        chipintelli_audio_mute_requested())
+    {
+        gain = 0;
+    }
+#endif
     g_audio_play_gain = gain;
 
     cm_set_codec_dac_gain(sg_play_device_index, 0, gain);

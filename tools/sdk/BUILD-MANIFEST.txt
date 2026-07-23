@@ -1,14 +1,18 @@
-﻿Generated from: CI13XX_SDK_ASR_ALG_V2.7.12
+﻿Generated from: CI130X_SDK_ALG_V2.7.14
 Project: projects/offline_asr_alg_pro_sample
-Validated variant: ci1303
-Board: CI-D03GS02S / CI1303 / 4 MB
+Validated variant: ci1306
+Board: CI-D06GT01D / CI1306 / 4 MB
 Algorithm profile: USE_NULL=1, NO_ASR_FLOW=0
 SDK message UART: disabled; Arduino HardwareSerial owns UART2
+NVDM readiness: published only after cinv_init() completes
+Audio mute compatibility: weak gain hook for ChipIntelliAudio
+Prompt callback safety: weak hook dispatched after the prompt mutex is released
+IR database compatibility: task-scoped user-file ID alias (Arduino default physical ID 50000)
 Compiler: riscv-nuclei-elf-gcc 9.2.0
 Compiler executable SHA256: 84B0FFB1FB194CC41FCFA96FB01D65B3A6289147041CF8BC76DB60BD05FBCB6D
 Compiled SDK source count: 138
 Packaged SDK source/dependency count: 143
-SDK source payload SHA256: 59ACA1D0F7FC1848042E96121E4AFB793CE0AE8D1F14F9151A13226F602F90DA
+SDK source payload SHA256: 1EF3379ACE092C124568C557ADFAA655FB91BE8CE7A204FFDE72D18D77D76EE8
 Header count: 273
 SDK sources compile as non-LTO objects (required for scheduler and ASR link interposition)
 Vendor archives: original GCC 9.2.0 LTO/ABI payload

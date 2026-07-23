@@ -52,14 +52,21 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 ## 文档
 
 - [启英泰伦官方文档](https://document.chipintelli.com/)
+- [CI13XX SDK UART 外设 API](https://document.chipintelli.com/软件开发/SDK/CI13XX芯片SDK/CI-SDK-ALG/CI13XX_SDK_ASR_ALG_V2.6.3/API参考/外设API/uart/)
+- [CI13XX SDK IIC 外设 API](https://document.chipintelli.com/软件开发/SDK/CI13XX芯片SDK/CI-SDK-ALG/CI13XX_SDK_ASR_ALG_V2.6.3/API参考/外设API/iic/)
+- [ArduinoCore-API](https://github.com/arduino/ArduinoCore-API)
 - [Boards Manager 打包与发布说明](package/README.md)
 - [Boards Manager 验证记录](package/VALIDATION.md)
 - [Wire / I2C 说明](libraries/Wire/README.md)
 - [SPI 说明](libraries/SPI/README.md)
 - [Servo 说明](libraries/Servo/README.md)
 - [EEPROM 说明](libraries/EEPROM/README.md)
+- [Preferences 说明](libraries/Preferences/README.md)
+- [硬件 Timer / Ticker 说明](libraries/ChipIntelliTimer/README.md)
+- [Watchdog 说明](libraries/ChipIntelliWatchdog/README.md)
 - [离线语音识别结果接口](libraries/ChipIntelliASR/README.md)
 - [提示音播放接口](libraries/ChipIntelliAudio/README.md)
+- [红外收发与空调码库](libraries/ChipIntelliIR/README.md)
 
 ## 安装
 
@@ -123,18 +130,37 @@ arduino-cli compile --fqbn chipintelli:ci13xx:ci1303 `
 | --- | --- | --- |
 | Arduino 基础 | `setup()`、`loop()`、`String`、`Print`、`Stream`、`IPAddress` | C++17，无异常和 RTTI |
 | 时间 | `millis()`、`micros()`、`delay()`、`delayMicroseconds()`、`yield()` | `micros()` 读取 64 位 mtime |
+| 定时任务 | [`ChipIntelliTimer`](libraries/ChipIntelliTimer/README.md)、`Ticker` | TIMER0–2 微秒级中断；TIMER3 保留给 BLE；软件定时器为 2 ms 分辨率 |
+| 看门狗 | [`ChipIntelliWatchdog`](libraries/ChipIntelliWatchdog/README.md) | 官方 IWDG、毫秒配置、喂狗和全系统复位路由 |
 | GPIO | `pinMode()`、`digitalRead()`、`digitalWrite()`、`digitalToggle()` | 使用外部晶振时 PA0/PA1 不可用 |
 | 中断 | `attachInterrupt()`、`attachInterruptArg()`、`detachInterrupt()` | PA/PB/PC 支持；PD 不支持 GPIO IRQ |
 | ADC | `analogRead()`、读取分辨率 | 12 位；CI1302/1303 为 AIN2，CI1306 为 AIN2–AIN5 |
 | PWM / Tone | `analogWrite()`、写分辨率/频率、`tone()`、`noTone()` | 6 个硬件通道 |
 | 舵机 | [`Servo`](libraries/Servo/README.md) | 50 Hz 硬件 PWM、角度/微秒接口；CI1302/CI1303 最多 5 个通道，CI1306 最多 6 个通道 |
-| 串口 | `Serial`、`Serial1`、`Serial2` | polling、8N1、原厂支持的固定波特率 |
-| I2C | [`Wire`](libraries/Wire/README.md) | IIC0 master、32 B、10–400 kHz、支持安全地址探测和 repeated start |
+| 串口 | `Serial`、`Serial1`、`Serial2` | 中断收发、128 B RX/TX 环形缓冲、5–8 数据位、奇偶校验和 1/1.5/2 停止位 |
+| I2C | [`Wire`](libraries/Wire/README.md) | IIC0 controller/peripheral、64 B、10–400 kHz、repeated start、从机回调和 25 ms 可恢复超时 |
 | SPI | [`SPI`](libraries/SPI/README.md)、`SPISettings` | GPIO software master、模式 0–3、MSB/LSB，最高 500 kHz |
-| 持久化 | [`EEPROM`](libraries/EEPROM/README.md) | 基于 NVDM，单实例 1–240 B，需要 `commit()` |
+| SD 卡 | [`SD`](libraries/SD/README.md)、`File` | software SPI、SD/SDHC、FAT16/FAT32、8.3 短文件名 |
+| 持久化 | [`EEPROM`](libraries/EEPROM/README.md)、[`Preferences`](libraries/Preferences/README.md) | 基于 NVDM；EEPROM 缓冲提交，Preferences 提供 namespace/typed key-value |
 | 语音识别 | [`ChipIntelliASR`](libraries/ChipIntelliASR/README.md) | 命令 ID、语义 ID、得分、帧数、文本队列与回调 |
-| 提示音 | [`ChipIntelliAudio`](libraries/ChipIntelliAudio/README.md) | 播放 `voice.bin` 中已有的提示音，支持队列、停止、音量和完成回调 |
+| 提示音 | [`ChipIntelliAudio`](libraries/ChipIntelliAudio/README.md) | 播放 `voice.bin` 中已有的提示音，支持队列、停止、音量、静音和完成回调 |
+| 红外 | [`ChipIntelliIR`](libraries/ChipIntelliIR/README.md) | 38 kHz raw 收发、NEC、学习回放，以及官方 36 品牌空调码库和码组搜索 |
+| 资源管理 | `PeripheralManager` | 原子申请引脚与 UART/IIC/SPI/PWM/Timer 资源，冲突查询和安全释放 |
 | 兼容接口 | `pulseIn()`、`shiftIn()`、`shiftOut()`、`random()`、`map()`、`PROGMEM` | 软件实现或统一地址空间兼容 |
+
+资源冲突不会再静默覆盖管脚复用。返回 `bool` 的 `Wire.begin()`、`SPI.begin()`、
+`Servo.attach()` 应检查结果；`HardwareSerial::begin()` 保持 Arduino 官方的 `void`
+签名，通过 `operator bool()` 和 `lastError()` 检查。详细冲突可以这样读取：
+
+```cpp
+#include <PeripheralManager.h>
+
+PeripheralConflict conflict = PeripheralManager.lastConflict();
+Serial.print(PeripheralManager.ownerName(conflict.currentOwner));
+```
+
+公共 `pinMode()` 对正在由外设占用的管脚不会改写复用寄存器。应先调用对应的
+`end()`、`detach()` 或 `noTone()`；普通 GPIO 所有权可以被外设 `begin()` 安全接管。
 
 ## 示例
 
@@ -144,13 +170,19 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 | --- | --- | --- |
 | `CI13XX > GPIO` | `Blink`、`DigitalInputPullup`、`GPIOInterrupt` | GPIO 输出、上拉输入和外部中断 |
 | `CI13XX > Analog` | `AnalogReadSerial`、`PWMFade` | 12 位 ADC 和硬件 PWM |
-| `CI13XX > Serial` | `SerialEcho`、`Serial1Bridge` | UART0 回显和 UART0/UART1 桥接 |
+| `CI13XX > Serial` | `SerialEcho`、`Serial1Bridge`、`BufferedSerial` | UART 回显、桥接、帧格式和错误计数 |
+| `CI13XX > Peripherals` | `ResourceOwnership` | 检测 Wire/Serial1 引脚复用冲突并安全切换 |
 | `SPI` | `SoftwareSPILoopback` | GPIO software SPI 回环 |
+| `SD` | `CardInfo`、`ReadWrite`、`Datalogger` 等 | SD 卡诊断、FAT 文件与目录读写 |
 | `Servo` | `Sweep` | 硬件 PWM 舵机角度扫描 |
-| `Wire` | `MasterWrite`、`RegisterRead`、`Scanner` | IIC0 写入、repeated-start 寄存器读取和安全地址扫描 |
+| `Wire` | `MasterWrite`、`RegisterRead`、`Scanner`、`PeripheralCallbacks` | IIC0 主机传输、地址扫描、超时和从机回调 |
 | `EEPROM` | `PersistentCounter` | NVDM 持久化计数器 |
+| `Preferences` | `StartCounter` | namespace、typed key-value 与立即持久化 |
+| `ChipIntelliTimer` | `HardwareTimer`、`Ticker` | 硬件中断定时和 FreeRTOS 软件定时任务 |
+| `ChipIntelliWatchdog` | `BasicWatchdog` | 配置、喂养并测试芯片级 IWDG |
 | `ChipIntelliASR` | `ASRResults` | 读取离线语音识别结果 |
 | `ChipIntelliAudio` | `PlayVoiceId`、`PromptControl` | 播放与控制已配置提示音 |
+| `ChipIntelliIR` | `RawSendReceive`、`AirConditioner` | 原始波形/NEC 收发，以及使用官方码库控制和匹配空调 |
 
 `examples/CI13XXSmoke` 是平台综合回归 sketch。
 
@@ -164,33 +196,55 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 - CI1302、CI1303、CI1306 均没有可供 Arduino 用户复用的通用硬件 SPI；片内
   `QSPI0` 用于启动、模型和用户 Flash，因此 `SPI` 是 GPIO software SPI，
   不支持 DMA、硬件片选或从机模式。
-- `Servo`、`analogWrite()` 和 `tone()` 共用 PWM0–PWM5。Servo 只能连接具有
-  PWM 能力的引脚；同一硬件通道不能被多个功能同时占用。
+- `Servo`、`analogWrite()` 和 `tone()` 共用 PWM0–PWM5。资源管理器会拒绝同一
+  通道或管脚的并发占用；释放原功能后才能切换。Servo 只能连接具有 PWM
+  能力的引脚。
 - CI-D03GS02S（CI1303）的原厂板级初始化使用 PC4 控制功放使能；当前 CI1303
   variant 同时将该管脚公开为 Arduino pin 20、`A0` 和 PC4 上的 PWM0 输出。
   使用原厂模块及音频基线时，不要把 pin 20 用作普通 GPIO、`analogRead(A0)`、
   `analogWrite()` 或 Servo，否则会改写功放控制状态并影响音频播放。只有确认
   自定义硬件未连接该功放控制电路且固件已释放 PC4 后，才能复用该管脚。
-- `Wire` 只支持 IIC0 master。`Wire.probe()` 及空数据的 `endTransmission()` 使用
+- `Wire` 使用唯一的 IIC0，可选择 controller/master 或 peripheral/slave 模式。
+  `Wire.probe()` 及空数据的 `endTransmission()` 使用
   专用地址探测事务：只发送 START 和地址、读取 ACK/NACK，并在 START 后的所有
   完成及错误路径发送 STOP；不会用可能改写未知设备寄存器的虚拟数据字节。
 - `Serial` 使用 SDK 日志口 UART0（PB5/PB6），默认日志波特率为 921600；
   `Serial.begin()` 会重新初始化该端口。
-- `HardwareSerial` 当前仅提供 polling 方式的 8N1；`Serial.begin(baud, config)`
-  的 `config` 参数尚未生效。波特率必须使用原厂驱动支持的固定值，其他值会
-  静默回退到 115200。
-- `Wire` 与 `Serial1` 共用 PAD：CI1302/CI1303 为 PA2/PA3，CI1306 为 PB7/PC0，
-  不能同时使用。当前 SDK profile 还将 UART1 TX 配置为开漏输出，使用
+- `HardwareSerial` 使用 128 B 可配置 RX/TX 环形缓冲和 UART 中断。帧格式支持
+  5–8 数据位、无/奇/偶校验及 1/1.5/2 停止位；CI130X 不支持 mark/space
+  校验。波特率必须是原厂驱动列出的固定值；不支持的参数会保留原端口状态并
+  通过 `lastError()` 报错，不再静默回退。
+- `Wire` 与 `Serial1` 共用 PAD：CI1302/CI1303 为 PA2/PA3，CI1306 为 PB7/PC0。
+  后初始化者会在改写复用寄存器前失败，可通过 `PeripheralManager.lastConflict()`
+  查询占用者；先调用当前外设的 `end()` 才能安全切换。当前 SDK profile 还将
+  UART1 TX 配置为开漏输出，使用
   `Serial1` 时必须提供与目标电平匹配的外部上拉电阻。
 - `Serial2` 不会在 SDK 启动阶段自动占用 PAD。调用 `Serial2.begin()` 后才启用
   UART2 并切换复用功能；调用 `Serial2.end()` 后关闭 UART2，并将 TX/RX 释放为
   GPIO 输入。CI1302/CI1303 为 PA5/PA6，CI1306 为 PB1/PB2。
-- software SPI 默认使用 `SCK=PA5`、`MISO=PA2`、`MOSI=PA4`、`SS=PA3`。
+- software SPI 默认使用 `SCK=PA5`、`MISO=PA2`、`MOSI=PA4`、`SS=PA3`，
+  `SPI.begin()` 会原子申请四个引脚和 software-SPI 资源；冲突时返回 `false`。
   PA4 同时是复位阶段的 `PG_EN` 检测脚，外设在复位期间不得主动驱动它。
+- `SD` 使用上述 software SPI 接线，仅支持 FAT16/FAT32 和 8.3 短文件名；不支持
+  exFAT、长文件名、DMA 或 SDIO。CI1302/CI1303 上 PA2/PA3 与 `Wire`/`Serial1`
+  冲突，SD 文件系统和 SPI 总线也需要由应用保证跨 task 互斥。
 - CI-D06GT01D 的 PD0 默认连接功放控制，改作普通 GPIO 会影响音频播放。
+- `ChipIntelliIR` 默认占用 pin 2/PWM0、pin 4 和 TIMER2，载波固定为 38 kHz。
+  原厂驱动和空调任务没有完整反初始化接口，因此成功启动后会持有这些资源直到
+  复位；raw 模式与空调码库模式不能在同一次启动中切换。
+- 官方数据库只覆盖空调。电视、风扇、灯具等设备通过 raw 学习/保存/回放或 NEC
+  控制；空调数据库以 sketch-local user-file ID `50000` 叠加，不占用 TTS 的 ID `0`。
+- `ChipIntelliTimer` 会通过资源管理器申请 TIMER0–2；当前 SDK 的 BLE 射频驱动固定
+  占用 TIMER3，资源管理器将其标记为系统保留，Timer 和 IR 都不能覆盖。硬件回调
+  运行在中断中，不能阻塞、访问 Flash 或调用 `Serial`。`Ticker` 不占硬件 Timer，
+  但回调运行在共享的 FreeRTOS timer-service task，耗时操作会延迟 SDK 的其他软件定时器。
+- `ChipIntelliWatchdog` 和原厂音频任务共用唯一 IWDG；音频输入任务也会喂狗，
+  因此它用于检测系统/音频管线整体停滞，不能严格只监视 Arduino `loop()`。
+- `Preferences` 每个 namespace 最多 16 项且整个记录最多 240 B；它保留 NVDM
+  ID `0xE0000000`–`0xEFFFFFFF`，与 IR 等 user-file 资源 ID 属于不同地址空间。
 - `ChipIntelliAudio` 只能播放完整固件 `voice.bin` 中已经配置的提示音，不能读取
   任意 WAV/MP3 文件，也不会把文本实时转换为语音。
-- 当前基线不提供 Wi-Fi、SD 卡或通用文件系统。
+- 当前基线不提供 Wi-Fi；除 `SD` 库的 FAT16/FAT32 外，不提供通用文件系统。
 
 ### 内存报告
 
@@ -216,6 +270,11 @@ Arduino 保留原厂 SDK 的最终 `user_code.bin <= 0x70000`（448 KiB）硬限
   提示音和综合冒烟等 16 个 sketch 已完成编译、链接与双镜像后处理；
 - CI1302 与 CI1303 各完成 `CI13XXSmoke`、`PWMFade`、`Blink`、
   `DigitalInputPullup`、`GPIOInterrupt` 的编译、链接与后处理；
+- `SD` 的 7 个示例已分配到 CI1302、CI1303、CI1306 完成编译、链接和完整固件
+  后处理；实体 SD 卡的初始化、FAT16/FAT32 读写和吞吐量仍待硬件验证；
+- `ChipIntelliWatchdog`、`ChipIntelliTimer`/`Ticker`、`Preferences` 与
+  `ChipIntelliAudio` 已在 CI1302、CI1303、CI1306 完成单库及合并编译、链接和完整
+  固件后处理；定时精度、复位、Flash 掉电保持和音频输出仍待实体板验证；
 - `v1.0.0` Boards Manager 发布包已在隔离 Arduino CLI 环境完成安装；CI1306 的
   16 个安装后示例以及 CI1302/CI1303 的综合冒烟示例均编译通过，共 18/18；
 - CI1302、CI1303 与 CI1306 已在隔离 Arduino CLI 环境验证资源准备、完整编译、

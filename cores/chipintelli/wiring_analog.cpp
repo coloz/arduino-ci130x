@@ -1,4 +1,5 @@
 #include "Arduino.h"
+#include "PeripheralManager.h"
 
 extern "C" {
 #include "ci130x_adc.h"
@@ -28,10 +29,17 @@ static bool s_adcReady;
 static TimerHandle_t s_toneTimers[6];
 static uint8_t s_tonePins[6];
 static bool s_toneActive[6];
+static uint8_t s_pwmPins[6] = {255, 255, 255, 255, 255, 255};
+static PeripheralOwner s_pwmOwners[6] = {};
 
 static pwm_base_t pwmBase(uint8_t channel) {
     static const pwm_base_t bases[] = {PWM0, PWM1, PWM2, PWM3, PWM4, PWM5};
     return bases[channel < 6 ? channel : 0];
+}
+
+static PeripheralResource pwmResource(uint8_t channel) {
+    return static_cast<PeripheralResource>(
+        static_cast<uint8_t>(PeripheralResource::Pwm0) + channel);
 }
 
 static uint32_t scaleResolution(uint32_t value, uint8_t from, uint8_t to) {
@@ -48,11 +56,28 @@ static void stopToneTimer(uint8_t channel) {
     }
 }
 
-static void stopPwmPin(uint8_t pin) {
+static void releasePwmPin(uint8_t pin, PeripheralOwner owner) {
     const PinDescription &desc = g_APinDescription[pin];
     pwm_stop(pwmBase(desc.pwmChannel));
-    pinMode(pin, OUTPUT);
+    (void)pinModeOwned(pin, OUTPUT, owner);
     digitalWrite(pin, LOW);
+    const PeripheralResource resource = pwmResource(desc.pwmChannel);
+    PeripheralManager.release(owner, &pin, 1, &resource, 1);
+    s_pwmPins[desc.pwmChannel] = 255;
+    s_pwmOwners[desc.pwmChannel] = PeripheralOwner::None;
+}
+
+static bool claimPwmPin(uint8_t pin, PeripheralOwner owner) {
+    const uint8_t channel = g_APinDescription[pin].pwmChannel;
+    if (s_pwmOwners[channel] == owner && s_pwmPins[channel] != pin &&
+        s_pwmPins[channel] < NUM_DIGITAL_PINS) {
+        releasePwmPin(s_pwmPins[channel], owner);
+    }
+    const PeripheralResource resource = pwmResource(channel);
+    if (!PeripheralManager.claim(owner, &pin, 1, &resource, 1)) return false;
+    s_pwmPins[channel] = pin;
+    s_pwmOwners[channel] = owner;
+    return true;
 }
 
 extern "C" void analogReadResolution(uint8_t bits) {
@@ -63,6 +88,8 @@ extern "C" int analogRead(uint8_t pin) {
     if (pin >= NUM_DIGITAL_PINS) return 0;
     const PinDescription &desc = g_APinDescription[pin];
     if (!(desc.capabilities & PIN_CAP_ADC)) return 0;
+    if (!PeripheralManager.claimPin(PeripheralOwner::Adc, pin)) return 0;
+    detachInterrupt(pin);
     if (!s_adcReady) {
         scu_set_device_gate(HAL_ADC_BASE, ENABLE);
         adc_poweron();
@@ -80,7 +107,12 @@ extern "C" int analogRead(uint8_t pin) {
     dpmu_set_adio_reuse(static_cast<PinPad_Name>(desc.pad), ANALOG_MODE);
     adc_channelx_t channel = static_cast<adc_channelx_t>(desc.adcChannel);
     adc_signal_mode(channel);
-    return static_cast<int>(scaleResolution(adc_get_result(channel) & 0x0fffU, 12, s_readResolution));
+    const int result = static_cast<int>(
+        scaleResolution(adc_get_result(channel) & 0x0fffU, 12,
+                        s_readResolution));
+    (void)pinModeOwned(pin, INPUT, PeripheralOwner::Adc);
+    PeripheralManager.releasePin(PeripheralOwner::Adc, pin);
+    return result;
 }
 
 extern "C" void analogWriteResolution(uint8_t bits) {
@@ -96,6 +128,12 @@ extern "C" void analogWrite(uint8_t pin, int value) {
     const PinDescription &desc = g_APinDescription[pin];
     if (!(desc.capabilities & PIN_CAP_PWM)) return;
     stopToneTimer(desc.pwmChannel);
+    if (s_pwmOwners[desc.pwmChannel] == PeripheralOwner::Tone &&
+        s_pwmPins[desc.pwmChannel] < NUM_DIGITAL_PINS) {
+        releasePwmPin(s_pwmPins[desc.pwmChannel], PeripheralOwner::Tone);
+    }
+    if (!claimPwmPin(pin, PeripheralOwner::AnalogWrite)) return;
+    detachInterrupt(pin);
     const uint32_t dutyMax = (1UL << s_writeResolution) - 1UL;
     uint32_t duty = value < 0 ? 0U : static_cast<uint32_t>(value);
     if (duty > dutyMax) duty = dutyMax;
@@ -107,8 +145,13 @@ extern "C" void analogWrite(uint8_t pin, int value) {
     if (duty == 0U || duty == dutyMax) {
         scu_set_device_gate(static_cast<uint32_t>(pwm), ENABLE);
         pwm_stop(pwm);
-        pinMode(pin, OUTPUT);
+        (void)pinModeOwned(pin, OUTPUT, PeripheralOwner::AnalogWrite);
         digitalWrite(pin, duty == dutyMax ? HIGH : LOW);
+        const PeripheralResource resource = pwmResource(desc.pwmChannel);
+        PeripheralManager.release(PeripheralOwner::AnalogWrite, &pin, 1,
+                                  &resource, 1);
+        s_pwmPins[desc.pwmChannel] = 255;
+        s_pwmOwners[desc.pwmChannel] = PeripheralOwner::None;
         return;
     }
 
@@ -143,7 +186,7 @@ static void toneTimerCallback(TimerHandle_t timer) {
     uint8_t channel = static_cast<uint8_t>(reinterpret_cast<uintptr_t>(pvTimerGetTimerID(timer)));
     if (channel < 6 && s_toneTimers[channel] == timer && s_toneActive[channel]) {
         s_toneActive[channel] = false;
-        stopPwmPin(s_tonePins[channel]);
+        releasePwmPin(s_tonePins[channel], PeripheralOwner::Tone);
     }
 }
 
@@ -151,13 +194,24 @@ extern "C" void tone(uint8_t pin, unsigned int frequency, unsigned long duration
     if (!frequency || pin >= NUM_DIGITAL_PINS) return;
     const PinDescription &desc = g_APinDescription[pin];
     if (!(desc.capabilities & PIN_CAP_PWM)) return;
-    uint32_t previous = s_writeFrequency;
-    s_writeFrequency = frequency;
-    uint8_t previousResolution = s_writeResolution;
-    s_writeResolution = 8;
-    analogWrite(pin, 128);
-    s_writeResolution = previousResolution;
-    s_writeFrequency = previous;
+    stopToneTimer(desc.pwmChannel);
+    if (s_pwmOwners[desc.pwmChannel] == PeripheralOwner::AnalogWrite &&
+        s_pwmPins[desc.pwmChannel] < NUM_DIGITAL_PINS) {
+        releasePwmPin(s_pwmPins[desc.pwmChannel],
+                      PeripheralOwner::AnalogWrite);
+    }
+    if (!claimPwmPin(pin, PeripheralOwner::Tone)) return;
+    detachInterrupt(pin);
+
+    const pwm_base_t pwm = pwmBase(desc.pwmChannel);
+    scu_set_device_gate(static_cast<uint32_t>(pwm), ENABLE);
+    dpmu_set_adio_reuse(static_cast<PinPad_Name>(desc.pad), DIGITAL_MODE);
+    dpmu_set_io_reuse(static_cast<PinPad_Name>(desc.pad),
+                      static_cast<IOResue_FUNCTION>(desc.pwmMux));
+    pwm_init_t config = {0, frequency, 128, 255};
+    pwm_init(pwm, config);
+    pwm_set_restart_md(pwm, 0);
+    pwm_start(pwm);
     if (duration && xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
         const uint8_t channel = desc.pwmChannel;
         TickType_t ticks = static_cast<TickType_t>(
@@ -182,5 +236,8 @@ extern "C" void noTone(uint8_t pin) {
     const PinDescription &desc = g_APinDescription[pin];
     if (!(desc.capabilities & PIN_CAP_PWM)) return;
     stopToneTimer(desc.pwmChannel);
-    stopPwmPin(pin);
+    if (s_pwmOwners[desc.pwmChannel] == PeripheralOwner::Tone &&
+        s_pwmPins[desc.pwmChannel] == pin) {
+        releasePwmPin(pin, PeripheralOwner::Tone);
+    }
 }

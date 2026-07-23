@@ -4,6 +4,11 @@ playVoice	KEYWORD2
 playCommand	KEYWORD2
 playSemantic	KEYWORD2
 isPlaying	KEYWORD2
+isReady	KEYWORD2
 setVolume	KEYWORD2
 volume	KEYWORD2
+setMuted	KEYWORD2
+mute	KEYWORD2
+unmute	KEYWORD2
+isMuted	KEYWORD2
 onFinished	KEYWORD2

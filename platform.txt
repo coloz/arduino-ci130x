@@ -1,7 +1,7 @@
 name=ChipIntelli CI130X Arduino
 version=1.0.2
 
-# CI13XX SDK ASR ALG V2.7.12 is ABI-locked to the vendor Nuclei GCC 9.2.0
+# CI130X SDK ALG V2.7.14 is ABI-locked to the vendor Nuclei GCC 9.2.0
 # distribution. Boards Manager removes the archive's single gcc_fix_raissrc/
 # wrapper directory, so the installed tool root contains bin/ directly.
 compiler.path={runtime.tools.riscv-gcc.path}/bin/

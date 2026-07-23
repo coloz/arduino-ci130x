@@ -28,11 +28,10 @@ would claim an already attached channel. The SSOP24 CI1302/CI1303 profiles
 provide five usable PWM channels because their PWM5 pad is reserved for the
 external crystal. CI1306 exposes pins for all six channels.
 
-Servo owns its PWM channel while attached. Do not use `analogWrite()`,
-`tone()` or another peripheral mux on a pin or channel owned by Servo. The
-library detects conflicts between Servo objects, but it cannot detect PWM use
-started directly by other code. `detach()` stops the channel and drives the
-former signal pin low.
+Servo owns its pin and PWM channel while attached. The core resource manager
+rejects conflicting Servo, `analogWrite()`, `tone()`, SPI, UART and Wire
+initialization before changing the mux. `detach()` stops the channel, drives
+the former signal pin low, and releases both resources.
 
 The PWM uses the CI13XX SRC clock. Duty scaling is calculated from the runtime
 clock so the vendor driver's 32-bit period-times-duty operation cannot

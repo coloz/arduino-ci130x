@@ -17,6 +17,7 @@ struct ChipIntelliASRResult {
   int16_t score;
   uint16_t frames;
   char text[kTextCapacity];
+  bool textTruncated;
 };
 
 class ChipIntelliASRClass {
@@ -27,7 +28,12 @@ public:
 
   ChipIntelliASRClass();
 
-  bool begin();
+  // Starts the shared vendor SDK and waits for its audio input path to report
+  // ready. A zero timeout performs only an immediate state check.
+  bool begin(uint32_t timeoutMs = 10000U);
+
+  // Detaches this result listener and clears its queue. The shared SDK remains
+  // active because ChipIntelliAudio and other services may still be using it.
   void end();
 
   // Callback executes in the CI13XX SDK message task. Keep it short and do
@@ -54,6 +60,7 @@ private:
   ContextCallback _contextCallback;
   void *_callbackContext;
   bool _begun;
+  volatile bool _accepting;
 };
 
 extern ChipIntelliASRClass ChipIntelliASR;

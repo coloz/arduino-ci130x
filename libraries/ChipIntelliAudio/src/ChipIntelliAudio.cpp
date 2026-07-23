@@ -3,27 +3,118 @@
 extern "C" {
 #include "FreeRTOS.h"
 #include "audio_play_api.h"
+#include "ci_flash_data_info.h"
 #include "prompt_player.h"
+#include "system_msg_deal.h"
 #include "task.h"
+
+uint32_t ci_arduino_audio_started_message_count(void);
 }
 
-ChipIntelliAudioClass ChipIntelliAudio;
+namespace {
+constexpr uint32_t kInitTimeoutMs = 10000;
+constexpr uint32_t kIdleStabilityMs = 500;
+
+bool sdkAudioReady() {
+  bool flashReady = false;
+  is_ci_flash_data_info_inited(&flashReady);
+
+  // vol_get() starts at VOLUME_MAX + 1. It enters the configured range only
+  // after the SDK system task has handled SYS_MSG_TYPE_AUDIO_IN_STARTED,
+  // initialized the persisted volume and enabled the board audio path.
+  uint8_t volumeLevel = vol_get();
+  if (flashReady && audio_play_task_handle != nullptr &&
+      ci_arduino_audio_started_message_count() != 0U &&
+      (volumeLevel < VOLUME_MIN || volumeLevel > VOLUME_MAX)) {
+    // The vendor startup path leaves its VOLUME_MAX + 1 sentinel unchanged if
+    // NVDM contains an out-of-range byte. Repair it once the audio-start
+    // message has been consumed instead of waiting for begin() to time out.
+    volumeLevel = vol_set(VOLUME_DEFAULT);
+  }
+  return flashReady && audio_play_task_handle != nullptr &&
+         volumeLevel >= VOLUME_MIN && volumeLevel <= VOLUME_MAX;
+}
+}  // namespace
+
+class ChipIntelliAudioFactory {
+ public:
+  static ChipIntelliAudioClass &instance() {
+    static ChipIntelliAudioClass instance;
+    return instance;
+  }
+};
+
+ChipIntelliAudioClass &ChipIntelliAudio =
+    ChipIntelliAudioFactory::instance();
+
+extern "C" int chipintelli_audio_mute_requested(void) {
+  return ChipIntelliAudio.isMuted() ? 1 : 0;
+}
+
+extern "C" void chipintelli_sdk_prompt_unlocked(void) {
+  ChipIntelliAudio.dispatchFinishedCallbacks();
+}
 
 ChipIntelliAudioClass::ChipIntelliAudioClass()
-    : _finishedCallback(nullptr), _finishedContext(nullptr) {}
+    : _finishedCallback(nullptr),
+      _finishedContext(nullptr),
+      _begun(false),
+      _muted(false),
+      _unmutedVolume(70),
+      _pendingFinished(0),
+      _dispatchingFinished(false) {}
 
 bool ChipIntelliAudioClass::begin() {
+  if (_begun) {
+    return true;
+  }
+  if (!chipintelli_sdk_begin()) {
+    return false;
+  }
+
+  const uint32_t started = millis();
+  uint32_t idleSince = 0;
+  while (true) {
+    if (!sdkAudioReady() || prompt_is_playing() != 0U) {
+      idleSince = 0;
+    } else if (idleSince == 0) {
+      idleSince = millis();
+    } else if ((millis() - idleSince) >= kIdleStabilityMs) {
+      break;
+    }
+
+    if ((millis() - started) >= kInitTimeoutMs) {
+      return false;
+    }
+    delay(1);
+  }
+
   prompt_player_enable(ENABLE);
+  const int32_t currentGain = audio_play_get_vol_gain();
+  _unmutedVolume = currentGain <= 0
+                         ? 0U
+                         : static_cast<uint8_t>(currentGain >= 100
+                                                    ? 100
+                                                    : currentGain);
+  _muted = false;
+  _begun = true;
   return true;
 }
 
 void ChipIntelliAudioClass::end() {
-  stop();
+  // A stop can complete a queued prompt. Clear the user callback first so
+  // end() never delivers a late completion into application teardown code.
   onFinished(nullptr);
+  stop();
+  setMuted(false);
+  _begun = false;
 }
 
 bool ChipIntelliAudioClass::playVoice(uint16_t voiceId,
                                      bool interruptCurrent) {
+  if (!_begun) {
+    return false;
+  }
   return prompt_play_by_voice_id(
              voiceId,
              hasFinishedCallback() ? sdkPlaybackFinished : nullptr,
@@ -70,6 +161,9 @@ bool ChipIntelliAudioClass::playCommand(int commandId, int optionIndex,
 
 bool ChipIntelliAudioClass::playCommand(uint16_t commandId, int optionIndex,
                                        bool interruptCurrent) {
+  if (!_begun) {
+    return false;
+  }
   return prompt_play_by_cmd_id(
              commandId, optionIndex,
              hasFinishedCallback() ? sdkPlaybackFinished : nullptr,
@@ -78,6 +172,9 @@ bool ChipIntelliAudioClass::playCommand(uint16_t commandId, int optionIndex,
 
 bool ChipIntelliAudioClass::playSemantic(uint32_t semanticId, int optionIndex,
                                         bool interruptCurrent) {
+  if (!_begun) {
+    return false;
+  }
   return prompt_play_by_semantic_id(
              semanticId, optionIndex,
              hasFinishedCallback() ? sdkPlaybackFinished : nullptr,
@@ -87,11 +184,11 @@ bool ChipIntelliAudioClass::playSemantic(uint32_t semanticId, int optionIndex,
 bool ChipIntelliAudioClass::playCommand(const char *commandText,
                                        int optionIndex,
                                        bool interruptCurrent) {
-  if (commandText == nullptr || commandText[0] == '\0') {
+  if (!_begun || commandText == nullptr || commandText[0] == '\0') {
     return false;
   }
 
-  // The SDK lookup function does not modify this string, but its V2.7.12 C
+  // The SDK lookup function does not modify this string, but its V2.7.14 C
   // declaration is missing const.
   return prompt_play_by_cmd_string(
              const_cast<char *>(commandText), optionIndex,
@@ -100,21 +197,35 @@ bool ChipIntelliAudioClass::playCommand(const char *commandText,
 }
 
 bool ChipIntelliAudioClass::stop() {
-  return prompt_stop_play() == 0U;
+  return !_begun || prompt_stop_play() == 0U;
 }
 
 bool ChipIntelliAudioClass::isPlaying() const {
-  return prompt_is_playing() != 0U;
+  return _begun && prompt_is_playing() != 0U;
+}
+
+bool ChipIntelliAudioClass::isReady() const {
+  return _begun;
 }
 
 void ChipIntelliAudioClass::setVolume(uint8_t percent) {
+  if (!_begun) {
+    return;
+  }
   if (percent > 100U) {
     percent = 100U;
   }
-  audio_play_set_vol_gain(percent);
+  _unmutedVolume = percent;
+  audio_play_set_vol_gain(_muted ? 0 : percent);
 }
 
 uint8_t ChipIntelliAudioClass::volume() const {
+  if (!_begun) {
+    return 0U;
+  }
+  if (_muted) {
+    return _unmutedVolume;
+  }
   int32_t gain = audio_play_get_vol_gain();
   if (gain <= 0) {
     return 0U;
@@ -123,6 +234,40 @@ uint8_t ChipIntelliAudioClass::volume() const {
     return 100U;
   }
   return static_cast<uint8_t>(gain);
+}
+
+void ChipIntelliAudioClass::setMuted(bool muted) {
+  if (!_begun) {
+    return;
+  }
+  if (_muted == muted) {
+    return;
+  }
+
+  if (muted) {
+    const int32_t gain = audio_play_get_vol_gain();
+    _unmutedVolume = gain <= 0
+                           ? 0U
+                           : static_cast<uint8_t>(gain >= 100 ? 100 : gain);
+    _muted = true;
+    audio_play_set_vol_gain(0);
+    return;
+  }
+
+  _muted = false;
+  audio_play_set_vol_gain(_unmutedVolume);
+}
+
+void ChipIntelliAudioClass::mute() {
+  setMuted(true);
+}
+
+void ChipIntelliAudioClass::unmute() {
+  setMuted(false);
+}
+
+bool ChipIntelliAudioClass::isMuted() const {
+  return _muted;
 }
 
 void ChipIntelliAudioClass::onFinished(FinishedCallback callback,
@@ -142,16 +287,37 @@ bool ChipIntelliAudioClass::hasFinishedCallback() const {
 
 void ChipIntelliAudioClass::sdkPlaybackFinished(void *commandHandle) {
   (void)commandHandle;
-  ChipIntelliAudio.notifyFinished();
+  taskENTER_CRITICAL();
+  if (ChipIntelliAudio._pendingFinished != UINT32_MAX) {
+    ++ChipIntelliAudio._pendingFinished;
+  }
+  taskEXIT_CRITICAL();
 }
 
-void ChipIntelliAudioClass::notifyFinished() {
+void ChipIntelliAudioClass::dispatchFinishedCallbacks() {
   taskENTER_CRITICAL();
-  FinishedCallback callback = _finishedCallback;
-  void *context = _finishedContext;
+  if (_dispatchingFinished) {
+    taskEXIT_CRITICAL();
+    return;
+  }
+  _dispatchingFinished = true;
   taskEXIT_CRITICAL();
 
-  if (callback != nullptr) {
-    callback(context);
+  while (true) {
+    taskENTER_CRITICAL();
+    if (_pendingFinished == 0U) {
+      _dispatchingFinished = false;
+      taskEXIT_CRITICAL();
+      return;
+    }
+
+    --_pendingFinished;
+    FinishedCallback callback = _finishedCallback;
+    void *context = _finishedContext;
+    taskEXIT_CRITICAL();
+
+    if (callback != nullptr) {
+      callback(context);
+    }
   }
 }

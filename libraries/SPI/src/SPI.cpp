@@ -1,4 +1,5 @@
 #include "SPI.h"
+#include "PeripheralManager.h"
 
 namespace {
 constexpr uint32_t kDefaultClock = 100000;
@@ -68,22 +69,42 @@ bool SPIClass::begin(int8_t sck, int8_t miso, int8_t mosi, int8_t ss) {
     end();
   }
 
+  uint8_t pins[4];
+  size_t pinCount = 0;
+  pins[pinCount++] = static_cast<uint8_t>(sck);
+  if (miso >= 0) pins[pinCount++] = static_cast<uint8_t>(miso);
+  if (mosi >= 0) pins[pinCount++] = static_cast<uint8_t>(mosi);
+  if (ss >= 0) pins[pinCount++] = static_cast<uint8_t>(ss);
+  const PeripheralResource resource = PeripheralResource::SoftwareSPI;
+  if (!PeripheralManager.claim(PeripheralOwner::SPI, pins, pinCount,
+                               &resource, 1)) {
+    return false;
+  }
+  for (size_t i = 0; i < pinCount; ++i) {
+    detachInterrupt(pins[i]);
+  }
+
   _sck = sck;
   _miso = miso;
   _mosi = mosi;
   _ss = ss;
 
-  pinMode(_sck, OUTPUT);
+  if (!pinModeOwned(_sck, OUTPUT, PeripheralOwner::SPI)) {
+    PeripheralManager.release(PeripheralOwner::SPI, pins, pinCount,
+                              &resource, 1);
+    _sck = _miso = _mosi = _ss = -1;
+    return false;
+  }
   digitalWrite(_sck, clockIdleLevel());
   if (_mosi >= 0) {
-    pinMode(_mosi, OUTPUT);
+    (void)pinModeOwned(_mosi, OUTPUT, PeripheralOwner::SPI);
     digitalWrite(_mosi, LOW);
   }
   if (_miso >= 0) {
-    pinMode(_miso, INPUT);
+    (void)pinModeOwned(_miso, INPUT, PeripheralOwner::SPI);
   }
   if (_ss >= 0) {
-    pinMode(_ss, OUTPUT);
+    (void)pinModeOwned(_ss, OUTPUT, PeripheralOwner::SPI);
     digitalWrite(_ss, HIGH);
   }
 
@@ -100,15 +121,25 @@ void SPIClass::end() {
   digitalWrite(_sck, clockIdleLevel());
   if (_ss >= 0) {
     digitalWrite(_ss, HIGH);
-    pinMode(_ss, INPUT);
+    (void)pinModeOwned(_ss, INPUT, PeripheralOwner::SPI);
   }
   if (_mosi >= 0) {
-    pinMode(_mosi, INPUT);
+    (void)pinModeOwned(_mosi, INPUT, PeripheralOwner::SPI);
   }
   if (_miso >= 0) {
-    pinMode(_miso, INPUT);
+    (void)pinModeOwned(_miso, INPUT, PeripheralOwner::SPI);
   }
-  pinMode(_sck, INPUT);
+  (void)pinModeOwned(_sck, INPUT, PeripheralOwner::SPI);
+
+  uint8_t pins[4];
+  size_t pinCount = 0;
+  pins[pinCount++] = static_cast<uint8_t>(_sck);
+  if (_miso >= 0) pins[pinCount++] = static_cast<uint8_t>(_miso);
+  if (_mosi >= 0) pins[pinCount++] = static_cast<uint8_t>(_mosi);
+  if (_ss >= 0) pins[pinCount++] = static_cast<uint8_t>(_ss);
+  const PeripheralResource resource = PeripheralResource::SoftwareSPI;
+  PeripheralManager.release(PeripheralOwner::SPI, pins, pinCount,
+                            &resource, 1);
 
   _sck = -1;
   _miso = -1;

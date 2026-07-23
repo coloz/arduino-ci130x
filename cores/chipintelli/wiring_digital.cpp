@@ -1,4 +1,5 @@
 #include "Arduino.h"
+#include "PeripheralManager.h"
 
 extern "C" {
 #include "ci130x_gpio.h"
@@ -55,10 +56,10 @@ static void simpleInterruptThunk(void *arg) {
     }
 }
 
-extern "C" void pinMode(uint8_t pin, uint8_t mode) {
-    if (pin >= NUM_DIGITAL_PINS) return;
+static bool configurePinMode(uint8_t pin, uint8_t mode) {
+    if (pin >= NUM_DIGITAL_PINS) return false;
     const PinDescription &desc = g_APinDescription[pin];
-    if (!(desc.capabilities & PIN_CAP_GPIO)) return;
+    if (!(desc.capabilities & PIN_CAP_GPIO)) return false;
     gpio_base_t base = portBase(desc.port);
     gpio_pin_t mask = static_cast<gpio_pin_t>(1U << desc.bit);
 
@@ -79,6 +80,20 @@ extern "C" void pinMode(uint8_t pin, uint8_t mode) {
         dpmu_set_io_direction(static_cast<PinPad_Name>(desc.pad), DPMU_IO_DIRECTION_INPUT);
         gpio_set_input_mode(base, mask);
     }
+    return true;
+}
+
+bool pinModeOwned(uint8_t pin, uint8_t mode, PeripheralOwner owner) {
+    if (pin >= NUM_DIGITAL_PINS ||
+        !(g_APinDescription[pin].capabilities & PIN_CAP_GPIO) ||
+        !PeripheralManager.claimPin(owner, pin)) {
+        return false;
+    }
+    return configurePinMode(pin, mode);
+}
+
+extern "C" void pinMode(uint8_t pin, uint8_t mode) {
+    (void)pinModeOwned(pin, mode, PeripheralOwner::GPIO);
 }
 
 extern "C" void digitalWrite(uint8_t pin, uint8_t value) {
@@ -103,9 +118,7 @@ extern "C" void attachInterruptArg(uint8_t pin, voidFuncPtrArg callback, void *a
     if (pin >= NUM_DIGITAL_PINS) return;
     const PinDescription &desc = g_APinDescription[pin];
     if (!(desc.capabilities & PIN_CAP_INTERRUPT) || !callback) return;
-    // attachInterrupt() is an explicit request to use the pad as a GPIO input,
-    // even if it was previously assigned to a peripheral.
-    pinMode(pin, INPUT);
+    if (!pinModeOwned(pin, INPUT, PeripheralOwner::GPIO)) return;
     gpio_trigger_t trigger;
     switch (mode) {
         case RISING: trigger = up_edges_trigger; break;

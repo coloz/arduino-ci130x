@@ -35,6 +35,21 @@
 static __attribute__((section(".boot_parameter"))) partition_table_t partition_table_from_boot;
 static partition_table_t partition_table = {0};
 
+typedef struct
+{
+    bool active;
+    uint16_t logical_id;
+    uint16_t physical_id;
+    TaskHandle_t owner;
+} userfile_id_alias_t;
+
+/*
+ * Some vendor algorithm libraries use a fixed user-file ID internally.  Keep
+ * that compatibility shim scoped to the task performing initialization so an
+ * unrelated TTS or application lookup can never observe the temporary alias.
+ */
+static userfile_id_alias_t userfile_id_alias = {false, 0, 0, NULL};
+
 /**
  * @brief Get the fw version object
  * 
@@ -285,8 +300,11 @@ uint32_t ci_flash_data_info_init(uint8_t default_model_group_id)
         ret = cmd_info_init(file_addr, partition_table.voice_offset, default_model_group_id);
     }
 	#endif
-    set_ci_flash_data_info_init_flag(); 
     cinv_init(partition_table.nv_data_offset, partition_table.nv_data_size);
+    /* Publish readiness only after NVDM has created its mutex and scanned the
+     * partition. Arduino storage libraries may run concurrently with this
+     * initialization task. */
+    set_ci_flash_data_info_init_flag();
     ci_loginfo(LOG_NVDATA,"nv_data_offset = %08x\n",partition_table.nv_data_offset);
     ci_loginfo(LOG_NVDATA,"nv_data_size = %08x\n",partition_table.nv_data_size);
     ci_loginfo(LOG_NVDATA,"FWV:%s_V%d.%d.%d\n",
@@ -428,6 +446,18 @@ uint32_t get_userfile_addr(uint16_t file_id, uint32_t *p_file_addr, uint32_t *p_
         return 1;
     }
 
+    userfile_id_alias_t alias_snapshot;
+    taskENTER_CRITICAL();
+    alias_snapshot = userfile_id_alias;
+    taskEXIT_CRITICAL();
+
+    if (alias_snapshot.active &&
+        (alias_snapshot.logical_id == file_id) &&
+        (alias_snapshot.owner == xTaskGetCurrentTaskHandle()))
+    {
+        file_id = alias_snapshot.physical_id;
+    }
+
     if (get_file_addr(partition_table.user_file_offset, file_id, p_file_addr, p_file_size))
     {
         (*p_file_addr) += partition_table.user_file_offset;
@@ -435,6 +465,44 @@ uint32_t get_userfile_addr(uint16_t file_id, uint32_t *p_file_addr, uint32_t *p_
     }
 
     return 1;
+}
+
+bool ci_userfile_id_alias_begin(uint16_t logical_id, uint16_t physical_id)
+{
+    TaskHandle_t owner = xTaskGetCurrentTaskHandle();
+    if ((NULL == owner) || (logical_id == physical_id))
+    {
+        return false;
+    }
+
+    taskENTER_CRITICAL();
+    if (userfile_id_alias.active)
+    {
+        taskEXIT_CRITICAL();
+        return false;
+    }
+
+    userfile_id_alias.logical_id = logical_id;
+    userfile_id_alias.physical_id = physical_id;
+    userfile_id_alias.owner = owner;
+    userfile_id_alias.active = true;
+    taskEXIT_CRITICAL();
+    return true;
+}
+
+void ci_userfile_id_alias_end(void)
+{
+    TaskHandle_t owner = xTaskGetCurrentTaskHandle();
+
+    taskENTER_CRITICAL();
+    if (userfile_id_alias.active && (userfile_id_alias.owner == owner))
+    {
+        userfile_id_alias.active = false;
+        userfile_id_alias.logical_id = 0;
+        userfile_id_alias.physical_id = 0;
+        userfile_id_alias.owner = NULL;
+    }
+    taskEXIT_CRITICAL();
 }
 
 partition_table_t * get_partition_table(void)

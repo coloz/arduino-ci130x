@@ -9,15 +9,6 @@ extern "C" {
 
 ChipIntelliASRClass ChipIntelliASR;
 
-namespace {
-// CI1306 is built as rv32imafc (without the RISC-V A extension). This is a
-// single-producer/single-consumer queue on one CPU, so naturally aligned byte
-// and word accesses plus compiler barriers avoid a libatomic dependency.
-inline void compilerBarrier() {
-  __asm__ __volatile__("" ::: "memory");
-}
-}  // namespace
-
 ChipIntelliASRClass::ChipIntelliASRClass()
     : _head(0),
       _tail(0),
@@ -25,30 +16,65 @@ ChipIntelliASRClass::ChipIntelliASRClass()
       _callback(nullptr),
       _contextCallback(nullptr),
       _callbackContext(nullptr),
-      _begun(false) {}
+      _begun(false),
+      _accepting(false) {}
 
-bool ChipIntelliASRClass::begin() {
-  if (!_begun) {
-    // The vendor ASR/audio application is intentionally not started during
-    // Arduino boot. This explicit begin() call transfers the required pins and
-    // peripherals to the SDK initialization task.
-    if (!chipintelli_sdk_begin()) {
+bool ChipIntelliASRClass::begin(uint32_t timeoutMs) {
+#if defined(NO_ASR_FLOW) && NO_ASR_FLOW
+  (void)timeoutMs;
+  return false;
+#else
+  taskENTER_CRITICAL();
+  if (_begun) {
+    taskEXIT_CRITICAL();
+    return true;
+  }
+  _head = 0;
+  _tail = 0;
+  _dropped = 0;
+  _accepting = true;
+  taskEXIT_CRITICAL();
+
+  // Register before starting the task so a fast or already-running shared SDK
+  // cannot publish a result into an unobserved window.
+  chipintelli_asr_set_callback(receiveFromCore, this);
+  if (!chipintelli_sdk_begin()) {
+    end();
+    return false;
+  }
+
+  const uint32_t startedAt = millis();
+  chipintelli_sdk_state_t state = chipintelli_sdk_state();
+  while (state == CHIPINTELLI_SDK_STARTING) {
+    if ((millis() - startedAt) >= timeoutMs) {
+      end();
       return false;
     }
-    _head = 0;
-    _tail = 0;
-    _dropped = 0;
-    chipintelli_asr_set_callback(receiveFromCore, this);
-    _begun = true;
+    delay(1);
+    state = chipintelli_sdk_state();
   }
+
+  if (state != CHIPINTELLI_SDK_READY) {
+    end();
+    return false;
+  }
+
+  taskENTER_CRITICAL();
+  _begun = true;
+  taskEXIT_CRITICAL();
   return true;
+#endif
 }
 
 void ChipIntelliASRClass::end() {
-  if (_begun) {
-    chipintelli_asr_set_callback(nullptr, nullptr);
-    _begun = false;
-  }
+  taskENTER_CRITICAL();
+  _accepting = false;
+  _begun = false;
+  _head = 0;
+  _tail = 0;
+  _dropped = 0;
+  taskEXIT_CRITICAL();
+  chipintelli_asr_set_callback(nullptr, nullptr);
 }
 
 void ChipIntelliASRClass::onResult(ResultCallback callback) {
@@ -76,60 +102,72 @@ void ChipIntelliASRClass::receiveFromCore(
 }
 
 void ChipIntelliASRClass::enqueue(const chipintelli_asr_result_t &source) {
-  uint8_t head = _head;
-  uint8_t next = static_cast<uint8_t>((head + 1U) % kQueueSize);
-  compilerBarrier();
-  if (next == _tail) {
-    ++_dropped;
+  Result delivered;
+  delivered.commandId = source.command_id;
+  delivered.semanticId = source.semantic_id;
+  delivered.score = source.score;
+  delivered.frames = source.frames;
+  if (source.text != nullptr) {
+    const size_t length = strlen(source.text);
+    const size_t copyLength =
+        length < Result::kTextCapacity ? length : Result::kTextCapacity - 1U;
+    memcpy(delivered.text, source.text, copyLength);
+    delivered.text[copyLength] = '\0';
+    delivered.textTruncated = length >= Result::kTextCapacity;
+  } else {
+    delivered.text[0] = '\0';
+    delivered.textTruncated = false;
+  }
+
+  taskENTER_CRITICAL();
+  if (!_accepting) {
+    taskEXIT_CRITICAL();
     return;
   }
 
-  Result &result = _queue[head];
-  result.commandId = source.command_id;
-  result.semanticId = source.semantic_id;
-  result.score = source.score;
-  result.frames = source.frames;
-  if (source.text != nullptr) {
-    strncpy(result.text, source.text, Result::kTextCapacity - 1U);
-    result.text[Result::kTextCapacity - 1U] = '\0';
+  const uint8_t head = _head;
+  const uint8_t next = static_cast<uint8_t>((head + 1U) % kQueueSize);
+  if (next == _tail) {
+    ++_dropped;
   } else {
-    result.text[0] = '\0';
+    _queue[head] = delivered;
+    _head = next;
   }
 
-  compilerBarrier();
-  _head = next;
-
-  taskENTER_CRITICAL();
   ContextCallback contextCallback = _contextCallback;
   ResultCallback callback = _callback;
   void *callbackContext = _callbackContext;
   taskEXIT_CRITICAL();
   if (contextCallback != nullptr) {
-    contextCallback(result, callbackContext);
+    contextCallback(delivered, callbackContext);
   } else if (callback != nullptr) {
-    callback(result);
+    callback(delivered);
   }
 }
 
 bool ChipIntelliASRClass::available() const {
-  uint8_t tail = _tail;
-  compilerBarrier();
-  return tail != _head;
+  taskENTER_CRITICAL();
+  const bool hasResult = _tail != _head;
+  taskEXIT_CRITICAL();
+  return hasResult;
 }
 
 bool ChipIntelliASRClass::read(Result &result) {
-  uint8_t tail = _tail;
-  compilerBarrier();
+  taskENTER_CRITICAL();
+  const uint8_t tail = _tail;
   if (tail == _head) {
+    taskEXIT_CRITICAL();
     return false;
   }
   result = _queue[tail];
-  compilerBarrier();
   _tail = static_cast<uint8_t>((tail + 1U) % kQueueSize);
+  taskEXIT_CRITICAL();
   return true;
 }
 
 uint32_t ChipIntelliASRClass::droppedResults() const {
-  compilerBarrier();
-  return _dropped;
+  taskENTER_CRITICAL();
+  const uint32_t dropped = _dropped;
+  taskEXIT_CRITICAL();
+  return dropped;
 }

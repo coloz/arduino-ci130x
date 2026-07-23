@@ -69,6 +69,29 @@ static prompt_player_t prompt_player =
     #endif
 };
 
+#if defined(CI_ARDUINO_CORE)
+extern void chipintelli_sdk_prompt_unlocked(void) __attribute__((weak));
+#endif
+
+/*
+ * The vendor player normally invokes completion callbacks while holding this
+ * mutex. Arduino callbacks record the event there and are dispatched by the
+ * weak hook only after the mutex has been released.
+ */
+static void prompt_player_unlock(void)
+{
+    if (prompt_player.semaphore)
+    {
+        xSemaphoreGive(prompt_player.semaphore);
+    }
+#if defined(CI_ARDUINO_CORE)
+    if (chipintelli_sdk_prompt_unlocked != NULL)
+    {
+        chipintelli_sdk_prompt_unlocked();
+    }
+#endif
+}
+
 
 /**
  * @brief Get the mute voice in state object, DENOISE will used this function
@@ -273,10 +296,7 @@ static void combination_callback(int32_t play_cb_state)
     if (AUDIO_PLAY_CB_STATE_PLAY_THRESHOLD == play_cb_state &&
         (prompt_player.combination_index >= prompt_player.combination_number))
     {
-        if (prompt_player.semaphore)
-        {
-            xSemaphoreGive(prompt_player.semaphore);
-        }
+        prompt_player_unlock();
         return;
     }
 #endif
@@ -340,10 +360,7 @@ static void combination_callback(int32_t play_cb_state)
 		#endif
     }
 
-    if (prompt_player.semaphore)
-    {
-        xSemaphoreGive(prompt_player.semaphore);
-    }
+    prompt_player_unlock();
 }
 
 
@@ -426,10 +443,7 @@ uint32_t prompt_play_by_cmd_handle(
         {
             play_done_callback(cmd_handle);
         }
-        if (prompt_player.semaphore)
-        {
-            xSemaphoreGive(prompt_player.semaphore);
-        }
+        prompt_player_unlock();
         return ret;
     }
 
@@ -441,10 +455,7 @@ uint32_t prompt_play_by_cmd_handle(
         pause_play(NULL,NULL);
 #endif
         int timeout = 2000;        //2秒
-        if (prompt_player.semaphore)
-        {
-            xSemaphoreGive(prompt_player.semaphore);
-        }
+        prompt_player_unlock();
         #if SIMPLE_AUDIO_PLAYER_ENABLE
         int cnt = 0; 
         while(prompt_player.combination_number > 0 && timeout > 0)
@@ -507,10 +518,7 @@ uint32_t prompt_play_by_cmd_handle(
         ret = 0;
     }
     
-    if (prompt_player.semaphore)
-    {
-        xSemaphoreGive(prompt_player.semaphore);
-    }
+    prompt_player_unlock();
     return ret;
 }
 
@@ -579,10 +587,7 @@ uint32_t prompt_play_by_multi_cmd_id(prompt_play_info_t *p_play_info, int number
         {
             play_done_callback(0);
         }
-        if (prompt_player.semaphore)
-        {
-            xSemaphoreGive(prompt_player.semaphore);
-        }
+        prompt_player_unlock();
         return ret;
     }
 
@@ -598,10 +603,7 @@ uint32_t prompt_play_by_multi_cmd_id(prompt_play_info_t *p_play_info, int number
             pause_play(NULL,NULL);
         }
 #endif
-        if (prompt_player.semaphore)
-        {
-            xSemaphoreGive(prompt_player.semaphore);
-        }
+        prompt_player_unlock();
 
         int timeout = 2000;        //2秒
         while(prompt_player.combination_number > 0 && timeout > 0)
@@ -664,10 +666,7 @@ uint32_t prompt_play_by_multi_cmd_id(prompt_play_info_t *p_play_info, int number
 	#endif
 
 
-    if (prompt_player.semaphore)
-    {
-        xSemaphoreGive(prompt_player.semaphore);
-    }
+    prompt_player_unlock();
     ret = 0;
     return ret;
 }

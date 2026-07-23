@@ -204,6 +204,38 @@ static int alg_cloud_protocol_init(void)
 }
 #endif
 
+#if defined(CI_ARDUINO_CORE)
+extern void chipintelli_sdk_notify_failed(void);
+
+#define CI_ARDUINO_INIT_FAILED()       \
+    do                                 \
+    {                                  \
+        chipintelli_sdk_notify_failed(); \
+        vTaskDelete(NULL);             \
+        return;                        \
+    } while (0)
+#define CI_ARDUINO_REQUIRE_OK(call)     \
+    do                                 \
+    {                                  \
+        if ((call) != RETURN_OK)       \
+        {                              \
+            CI_ARDUINO_INIT_FAILED();  \
+        }                              \
+    } while (0)
+#define CI_ARDUINO_REQUIRE_PASS(call)   \
+    do                                 \
+    {                                  \
+        if ((call) != pdPASS)          \
+        {                              \
+            CI_ARDUINO_INIT_FAILED();  \
+        }                              \
+    } while (0)
+#else
+#define CI_ARDUINO_INIT_FAILED() return
+#define CI_ARDUINO_REQUIRE_OK(call) ((void)(call))
+#define CI_ARDUINO_REQUIRE_PASS(call) ((void)(call))
+#endif
+
 static void task_init(void *p_arg)
 {
 	#if USE_BLE
@@ -352,7 +384,7 @@ static void task_init(void *p_arg)
     #endif
     #if USE_TTS
     get_ci_tts_model_addr();
-    audio_play_init();
+    CI_ARDUINO_REQUIRE_OK(audio_play_init());
     audio_play_set_vol_gain(85);
     sys_tts_msg_task_initial();
     tts_module_init();
@@ -375,20 +407,25 @@ static void task_init(void *p_arg)
     extern void decoder_task_init_port(void);
     decoder_task_init_port();
     #endif
-    xTaskCreate(audio_in_manage_inner_task, "audio_in_manage_inner_task", 300, NULL, 4, NULL);
+    /* Create the consumer queue/task before audio or protocol producers can
+     * publish their first message. */
+    CI_ARDUINO_REQUIRE_PASS(sys_msg_task_initial());
+    CI_ARDUINO_REQUIRE_PASS(xTaskCreate(UserTaskManageProcess,"UserTaskManageProcess",480,NULL,4,NULL));
+    userapp_initial();
+    CI_ARDUINO_REQUIRE_PASS(xTaskCreate(audio_in_manage_inner_task, "audio_in_manage_inner_task", 300, NULL, 4, NULL));
     #if AUDIO_PLAYER_ENABLE
     /* 播放器任务 */
     #if SIMPLE_AUDIO_PLAYER_ENABLE
-    sap_init();
+    CI_ARDUINO_REQUIRE_PASS(sap_init());
     #else
     #if !USE_TTS
-    audio_play_init();
+    CI_ARDUINO_REQUIRE_OK(audio_play_init());
     #endif
     #endif
     #endif
     alg_model_init();     //初始化算法模型
     #if USE_AI_DOA
-    xTaskCreate(doa_out_result_hand_task, "doa_out_result_hand_task", 100, NULL, 4, NULL); 
+    CI_ARDUINO_REQUIRE_PASS(xTaskCreate(doa_out_result_hand_task, "doa_out_result_hand_task", 100, NULL, 4, NULL));
     #endif
     #if USE_SED
     sed_set_vol_init();
@@ -403,25 +440,21 @@ static void task_init(void *p_arg)
     if (nlp_module_init() != NLP_STATE_OK) //nlp模块初始化
     {
         mprintf("nlp module init error...\r\n");
-        return;
+        CI_ARDUINO_INIT_FAILED();
     }
     #if (MULT_INTENT > 1)
 	nlp_msg_initial();
-	xTaskCreate(nlpTaskManageProcess,"nlpTaskManageProcess",480,NULL,4,NULL);
+	CI_ARDUINO_REQUIRE_PASS(xTaskCreate(nlpTaskManageProcess,"nlpTaskManageProcess",480,NULL,4,NULL));
 	#endif
     #if RECORD_PLAY_BY_FLASH_ENABLE
     if(!record_play_test_init())  //录音播放初始化失败
     {
         mprintf("record_play_test_init init error...\r\n");
-        return;  
+        CI_ARDUINO_INIT_FAILED();
     }
     #endif
 
-    /*user app初始化*/
-    userapp_initial();
-    /* 用户任务 */
-    sys_msg_task_initial();
-    xTaskCreate(UserTaskManageProcess,"UserTaskManageProcess",480,NULL,4,NULL);
+
     #endif
 #if !NO_ASR_FLOW  
     extern void config_adpt_cnt(int enable);
@@ -438,7 +471,7 @@ static void task_init(void *p_arg)
     config_silprob_cnt(DEFAULT_STOP_SILPROB, DEFAULT_STOP_SILCNT);
 #endif
     #if USER_CODE_SWITCH_ENABLE
-    xTaskCreate(uart_data_handle_task,"uart_data_handle_task", 480, NULL, 4, NULL);
+    CI_ARDUINO_REQUIRE_PASS(xTaskCreate(uart_data_handle_task,"uart_data_handle_task", 480, NULL, 4, NULL));
     #endif
     #if (!COMMAND_LINE_CONSOLE_EN)
     while(1) 

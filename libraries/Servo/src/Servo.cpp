@@ -1,4 +1,5 @@
 #include <Servo.h>
+#include <PeripheralManager.h>
 
 extern "C" {
 #include <ci130x_dpmu.h>
@@ -89,6 +90,15 @@ uint8_t Servo::attach(int pin, int minPulse, int maxPulse) {
     detach();
   }
 
+  const uint8_t claimedPin = static_cast<uint8_t>(pin);
+  const PeripheralResource resource = static_cast<PeripheralResource>(
+      static_cast<uint8_t>(PeripheralResource::Pwm0) + channel);
+  if (!PeripheralManager.claim(PeripheralOwner::Servo, &claimedPin, 1,
+                               &resource, 1)) {
+    return INVALID_SERVO;
+  }
+  detachInterrupt(claimedPin);
+
   _pin = static_cast<uint8_t>(pin);
   _channel = static_cast<int8_t>(channel);
   _minPulse = static_cast<uint16_t>(minPulse);
@@ -98,6 +108,8 @@ uint8_t Servo::attach(int pin, int minPulse, int maxPulse) {
 
   if (!startPwm()) {
     s_channelOwners[channel] = nullptr;
+    PeripheralManager.release(PeripheralOwner::Servo, &claimedPin, 1,
+                              &resource, 1);
     _pin = INVALID_SERVO;
     _channel = -1;
     _attached = false;
@@ -115,11 +127,17 @@ void Servo::detach() {
 
   const uint8_t channel = static_cast<uint8_t>(_channel);
   pwm_stop(pwmBase(channel));
-  pinMode(_pin, OUTPUT);
+  (void)pinModeOwned(_pin, OUTPUT, PeripheralOwner::Servo);
   digitalWrite(_pin, LOW);
   if (s_channelOwners[channel] == this) {
     s_channelOwners[channel] = nullptr;
   }
+
+  const uint8_t releasedPin = _pin;
+  const PeripheralResource resource = static_cast<PeripheralResource>(
+      static_cast<uint8_t>(PeripheralResource::Pwm0) + channel);
+  PeripheralManager.release(PeripheralOwner::Servo, &releasedPin, 1,
+                            &resource, 1);
 
   _pin = INVALID_SERVO;
   _channel = -1;
