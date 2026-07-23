@@ -75,9 +75,14 @@ than a `dist/` subdirectory, add `-FlatAssetUrls`:
   -ToolchainRoot C:\path\to\riscv-nuclei-elf-gcc-9.2.0 `
   -Version 1.0.3 `
   -BaseUrl https://github.com/OWNER/arduino-ci130x/releases/download/v1.0.3 `
-  -CitoolCliBaseUrl https://github.com/OWNER/citool-cli/releases/download/v1.0.2 `
   -FlatAssetUrls
 ```
+
+Upload the generated platform, toolchain and `citool-cli` ZIP files together
+with `package_chipintelli_index.json` to the same public Arduino GitHub Release.
+The package builder always points the uploader dependency at that Arduino
+release; do not reference the private `citool-cli` repository from a public
+Boards Manager index.
 
 The official compiler source is documented at
 <https://document.chipintelli.com/en/%E8%BD%AF%E4%BB%B6%E5%BC%80%E5%8F%91/SDK/CI130X%E8%8A%AF%E7%89%87SDK/CI-SDK-Offline/CI130X_SDK_ASR_Offline_V2.2.0/%E8%B5%84%E6%BA%90/gcc/>.

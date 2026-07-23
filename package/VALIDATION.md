@@ -167,6 +167,9 @@ warnings denied, and the GitHub Actions Windows x64 release build. The published
 `b0cd5b6dc5348a5d5af70f920899f533b942a0a5347cee3385aa13fce2d4fcaa`.
 This uploader adds validated MP3 insertion into `voice.bin` while retaining the
 existing compose, inspect and flash behavior.
+The exact uploader archive is mirrored in the public Arduino `v1.0.3` Release,
+and the Boards Manager index references that public asset rather than the
+private uploader repository.
 
 The Arduino `1.0.3` package was installed through its generated Boards Manager
 index into a new Arduino CLI 1.5.0 data directory. This exposed and fixed a GCC

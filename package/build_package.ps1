@@ -4,7 +4,6 @@ param(
     [string]$ToolchainRoot,
     [string]$CitoolCliArchive,
     [string]$CitoolCliVersion = '1.0.2',
-    [string]$CitoolCliBaseUrl,
     [string]$BaseUrl = 'http://127.0.0.1:8765',
     [switch]$FlatAssetUrls,
     [string]$Version = '1.0.3',
@@ -117,7 +116,6 @@ $CitoolCliArchive = Resolve-CitoolCliArchive -PlatformPath $PlatformRoot -Reques
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 $BaseUrl = $BaseUrl.TrimEnd('/')
 $AssetBaseUrl = if ($FlatAssetUrls) { $BaseUrl } else { "$BaseUrl/dist" }
-$CitoolCliAssetBaseUrl = if ($CitoolCliBaseUrl) { $CitoolCliBaseUrl.TrimEnd('/') } else { $AssetBaseUrl }
 
 $resourceRoot = Join-Path $PlatformRoot 'recursos'
 $requiredResources = @(
@@ -286,7 +284,7 @@ try {
                         systems = @(
                             [ordered]@{
                                 host = 'x86_64-mingw32'
-                                url = "$CitoolCliAssetBaseUrl/$citoolArchiveName"
+                                url = "$AssetBaseUrl/$citoolArchiveName"
                                 archiveFileName = $citoolArchiveName
                                 checksum = "SHA-256:$citoolHash"
                                 size = $citoolFile.Length.ToString()
