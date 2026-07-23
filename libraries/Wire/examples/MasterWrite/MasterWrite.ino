@@ -7,7 +7,7 @@ constexpr uint8_t kDeviceAddress = 0x40;
 constexpr uint8_t kRegister = 0x01;
 
 void setup() {
-  Serial.begin(921600);
+  Serial.begin(115200);
   if (!Wire.begin()) {
     Serial.println("I2C setup failed");
     while (true) {

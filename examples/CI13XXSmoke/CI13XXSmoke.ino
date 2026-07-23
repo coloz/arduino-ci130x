@@ -4,14 +4,15 @@
 #include <ChipIntelliASR.h>
 
 #if defined(CI_CHIP_CI1302) || defined(CI_CHIP_CI1303)
-static constexpr uint8_t kLedPin = 20;  // PC4; connect an external LED.
+// PC4/A0 becomes the audio power-amplifier control after ASR starts.
+static constexpr uint8_t kLedPin = PA5;  // Connect an external LED.
 #else
 static constexpr uint8_t kLedPin = 11;  // PB3; connect an external LED.
 #endif
 static const char kBanner[] PROGMEM = "CI13XX Arduino smoke test";
 
 void setup() {
-  Serial.begin(921600);
+  Serial.begin(115200);
   if (pgm_read_byte(kBanner) == 'C') {
     Serial.println(FPSTR(kBanner));
   }
@@ -24,7 +25,9 @@ void setup() {
   pinMode(kLedPin, OUTPUT);
   Wire.begin();
   EEPROM.begin(32);
-  ChipIntelliASR.begin();
+  if (!ChipIntelliASR.begin()) {
+    Serial.println("ASR initialization failed or timed out.");
+  }
 }
 
 void loop() {

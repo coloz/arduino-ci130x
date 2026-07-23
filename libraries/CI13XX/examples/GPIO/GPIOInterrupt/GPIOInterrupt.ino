@@ -18,7 +18,7 @@ void onButtonPressed() {
 }
 
 void setup() {
-  Serial.begin(921600);
+  Serial.begin(115200);
   pinMode(kButtonPin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(kButtonPin), onButtonPressed, FALLING);
   Serial.print("Press the button on pin ");

@@ -10,7 +10,7 @@ constexpr uint32_t kSoftwareSpiClock = 100000;
 const uint8_t kPatterns[] = {0x00, 0x55, 0xaa, 0xff, 0x3c, 0xc3};
 
 void setup() {
-  Serial.begin(921600);
+  Serial.begin(115200);
   if (!SPI.begin()) {
     Serial.println("SPI pin setup failed");
     while (true) {

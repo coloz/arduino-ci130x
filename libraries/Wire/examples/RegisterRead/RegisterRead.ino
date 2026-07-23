@@ -5,7 +5,7 @@ constexpr uint8_t kDeviceAddress = 0x40;
 constexpr uint8_t kRegister = 0x00;
 
 void setup() {
-  Serial.begin(921600);
+  Serial.begin(115200);
   Wire.begin();
   Wire.setClock(100000);
 }
@@ -30,4 +30,3 @@ void loop() {
   }
   delay(1000);
 }
-

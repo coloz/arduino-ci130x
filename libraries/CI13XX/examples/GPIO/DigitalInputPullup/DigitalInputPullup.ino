@@ -9,7 +9,7 @@ constexpr uint8_t kButtonPin = 12;
 #endif
 
 void setup() {
-  Serial.begin(921600);
+  Serial.begin(115200);
   pinMode(kButtonPin, INPUT_PULLUP);
   Serial.println("Button: released");
 }

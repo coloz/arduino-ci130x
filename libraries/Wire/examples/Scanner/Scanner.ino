@@ -1,7 +1,7 @@
 #include <Wire.h>
 
 void setup() {
-  Serial.begin(921600);
+  Serial.begin(115200);
   if (!Wire.begin()) {
     Serial.println("I2C setup failed");
     while (true) {

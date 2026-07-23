@@ -1,7 +1,7 @@
 #include <EEPROM.h>
 
 void setup() {
-  Serial.begin(921600);
+  Serial.begin(115200);
 
   if (!EEPROM.begin(64)) {
     Serial.println("EEPROM/NVDM initialization failed");
@@ -25,4 +25,3 @@ void setup() {
 }
 
 void loop() {}
-

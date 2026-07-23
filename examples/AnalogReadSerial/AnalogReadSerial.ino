@@ -1,7 +1,7 @@
 #include <Arduino.h>
 
 void setup() {
-  Serial.begin(921600);
+  Serial.begin(115200);
   analogReadResolution(12);
 }
 

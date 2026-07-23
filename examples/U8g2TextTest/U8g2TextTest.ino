@@ -13,7 +13,7 @@
 #include <Wire.h>
 
 namespace {
-constexpr uint32_t kSerialBaud = 921600;
+constexpr uint32_t kSerialBaud = 115200;
 constexpr uint32_t kI2cClock = 100000;
 constexpr uint8_t kSsd1306AddressA = 0x3C;
 constexpr uint8_t kSsd1306AddressB = 0x3D;
