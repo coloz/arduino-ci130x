@@ -27,7 +27,9 @@ compiler.ar.flags=crs
 compiler.c.extra_flags=
 compiler.cpp.extra_flags=
 compiler.S.extra_flags=
-compiler.c.elf.extra_flags=
+# Binary-only vendor archives retain stale GCC 9.2 LTO type metadata. Suppress
+# only that known final-link diagnostic; source compilation warnings stay on.
+compiler.c.elf.extra_flags=-Wno-lto-type-mismatch
 compiler.ar.extra_flags=
 compiler.objcopy.extra_flags=
 compiler.libraries.ldflags=
