@@ -10,10 +10,10 @@ from Boards Manager:
 https://raw.githubusercontent.com/coloz/arduino-ci130x/main/package/package_chipintelli_index.json
 ```
 
-The version-pinned `v1.0.2` index is also published as a GitHub Release asset:
+The version-pinned `v1.0.3` index is also published as a GitHub Release asset:
 
 ```text
-https://github.com/coloz/arduino-ci130x/releases/download/v1.0.2/package_chipintelli_index.json
+https://github.com/coloz/arduino-ci130x/releases/download/v1.0.3/package_chipintelli_index.json
 ```
 
 The current compiler and `citool-cli` uploader packages support Windows x64 only.
@@ -33,7 +33,7 @@ then build the Arduino package from the platform root:
 
 The script validates the official GCC 9.2.0 executable against the SDK build
 manifest, consumes the prebuilt sibling
-`..\citool-cli\dist\citool-cli-1.0.1-windows-x86_64.zip`, creates the platform,
+`..\citool-cli\dist\citool-cli-1.0.2-windows-x86_64.zip`, creates the platform,
 toolchain and uploader ZIP files under `package/dist/`, and writes
 `package/package_chipintelli_index.json` with their exact sizes and SHA-256
 checksums. Pass `-CitoolCliArchive` to consume a release ZIP from another
@@ -73,9 +73,9 @@ than a `dist/` subdirectory, add `-FlatAssetUrls`:
 ```powershell
 .\package\build_package.ps1 `
   -ToolchainRoot C:\path\to\riscv-nuclei-elf-gcc-9.2.0 `
-  -Version 1.0.2 `
-  -BaseUrl https://github.com/OWNER/arduino-ci130x/releases/download/v1.0.2 `
-  -CitoolCliBaseUrl https://github.com/OWNER/citool-cli/releases/download/v1.0.1 `
+  -Version 1.0.3 `
+  -BaseUrl https://github.com/OWNER/arduino-ci130x/releases/download/v1.0.3 `
+  -CitoolCliBaseUrl https://github.com/OWNER/citool-cli/releases/download/v1.0.2 `
   -FlatAssetUrls
 ```
 
@@ -91,14 +91,14 @@ index. Replace every `__...__` value after release artifacts are hosted and
 redistribution permission has been confirmed.
 
 The platform archive must have exactly one top-level directory, for example
-`arduino-ci130x-1.0.2/`. Put the contents of `arduino-ci130x`
+`arduino-ci130x-1.0.3/`. Put the contents of `arduino-ci130x`
 directly inside that directory (including `boards.txt`, `platform.txt`,
 `cores/` and the generated `tools/sdk/`); do not add another architecture
 directory. Arduino's package manager ignores files placed directly at the ZIP
 root and does not extract RAR archives.
 
 The `citool-cli` archive must contain one top-level `citool-cli/` directory with
-`citool-cli.exe` directly inside it. The platform declares `citool-cli@1.0.1`
+`citool-cli.exe` directly inside it. The platform declares `citool-cli@1.0.2`
 as a tool dependency. Each build composes the generated `user_code.bin` and the
 sketch's four resource partitions into a complete firmware image; normal Arduino
 upload then uses `citool-cli flash` to write that verified image from Flash

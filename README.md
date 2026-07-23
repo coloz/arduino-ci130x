@@ -1,7 +1,7 @@
 # Arduino core for ChipIntelli CI130X
 
 面向启英泰伦 CI13XX 系列语音芯片的 Arduino Core，当前基于
-`CI13XX_SDK_ASR_ALG_V2.7.12`。项目沿用 Arduino 平台熟悉的目录、API 和示例组织方式，
+`CI130X_SDK_ALG_V2.7.14`。项目沿用 Arduino 平台熟悉的目录、API 和示例组织方式，
 同时保留原厂 SDK 已验证的启动流程、FreeRTOS、双核通信与离线语音任务。
 Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 SDK 调度器。
 
@@ -29,13 +29,13 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前开发版本 | `1.0.2` |
+| 当前开发版本 | `1.0.3` |
 | Arduino IDE | Arduino IDE 2.x |
-| Arduino CLI | 已使用 1.3.1 验证 |
+| Arduino CLI | 已使用 1.5.0 验证 |
 | 主机系统 | Windows 10/11 x64 |
 | 编译器 | Nuclei RISC-V GCC 9.2.0（`rv32imafc / ilp32f`） |
 | 算法配置 | `USE_NULL=1` 基础离线 ASR profile |
-| 公共 Boards Manager 发布 | `v1.0.2`（Windows x64） |
+| 公共 Boards Manager 发布 | `v1.0.3`（Windows x64） |
 | 硬件运行验证 | CI1303：串口烧录、UART0、I2C/SSD1306 已通过；其余待验证 |
 
 当前版本在编译前检查 sketch 根目录的 `recursos/`；缺少 `asr.bin`、`dnn.bin`、
@@ -82,7 +82,7 @@ https://raw.githubusercontent.com/coloz/arduino-ci130x/main/package/package_chip
 固定版本的索引也随 GitHub Release 发布：
 
 ```text
-https://github.com/coloz/arduino-ci130x/releases/download/v1.0.2/package_chipintelli_index.json
+https://github.com/coloz/arduino-ci130x/releases/download/v1.0.3/package_chipintelli_index.json
 ```
 
 ## 快速开始

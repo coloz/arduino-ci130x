@@ -12,15 +12,15 @@
                                            {
                                                "name":  "ChipIntelli CI130X Arduino",
                                                "architecture":  "ci13xx",
-                                               "version":  "1.0.2",
+                                               "version":  "1.0.3",
                                                "category":  "Contributed",
                                                "help":  {
                                                             "online":  "https://document.chipintelli.com/"
                                                         },
-                                               "url":  "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.2/arduino-ci130x-1.0.2.zip",
-                                               "archiveFileName":  "arduino-ci130x-1.0.2.zip",
-                                               "checksum":  "SHA-256:a34c54f52bd9c38dd844d148d1c0c31663bc523c4b3840f465b90a4e6a3cb6b9",
-                                               "size":  "14481827",
+                                               "url":  "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.3/arduino-ci130x-1.0.3.zip",
+                                               "archiveFileName":  "arduino-ci130x-1.0.3.zip",
+                                               "checksum":  "SHA-256:c4e241fab0cbfff573cf312341d4ac06d0d97b84b19f2fd282f2dd8128a07099",
+                                               "size":  "15771104",
                                                "boards":  [
                                                               {
                                                                   "name":  "ChipIntelli CI1302 (SSOP24, 2 MB)"
@@ -41,7 +41,7 @@
                                                                          {
                                                                              "packager":  "chipintelli",
                                                                              "name":  "citool-cli",
-                                                                             "version":  "1.0.1"
+                                                                             "version":  "1.0.2"
                                                                          }
                                                                      ]
                                            }
@@ -53,23 +53,23 @@
                                            "systems":  [
                                                            {
                                                                "host":  "x86_64-mingw32",
-                                                               "url":  "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.2/riscv-nuclei-elf-gcc-9.2.0-windows.zip",
+                                                               "url":  "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.3/riscv-nuclei-elf-gcc-9.2.0-windows.zip",
                                                                "archiveFileName":  "riscv-nuclei-elf-gcc-9.2.0-windows.zip",
-                                                               "checksum":  "SHA-256:2adad847fd9afe7cb5b55a210e6cfe34480ce7c05d0e44199d57692e1c37dd01",
+                                                               "checksum":  "SHA-256:044381414264899a701d20bbd75e2add76bd86112b02d33b6d5354d5c7fbb0e7",
                                                                "size":  "49248150"
                                                            }
                                                        ]
                                        },
                                        {
                                            "name":  "citool-cli",
-                                           "version":  "1.0.1",
+                                           "version":  "1.0.2",
                                            "systems":  [
                                                            {
                                                                "host":  "x86_64-mingw32",
-                                                               "url":  "https://github.com/coloz/citool-cli/releases/download/v1.0.1/citool-cli-1.0.1-windows-x86_64.zip",
-                                                               "archiveFileName":  "citool-cli-1.0.1-windows-x86_64.zip",
-                                                               "checksum":  "SHA-256:434bdcf9369aedbf19c6fe60a002df636a751c71148db63ddcd49378c661db0c",
-                                                               "size":  "435506"
+                                                               "url":  "https://github.com/coloz/citool-cli/releases/download/v1.0.2/citool-cli-1.0.2-windows-x86_64.zip",
+                                                               "archiveFileName":  "citool-cli-1.0.2-windows-x86_64.zip",
+                                                               "checksum":  "SHA-256:b0cd5b6dc5348a5d5af70f920899f533b942a0a5347cee3385aa13fce2d4fcaa",
+                                                               "size":  "458353"
                                                            }
                                                        ]
                                        }

@@ -158,3 +158,24 @@ address probe and U8g2 initialization succeed, this validates the CI1303
 Arduino startup, full-firmware flash, UART0, Wire address probe and SSD1306
 refresh path. Display contents were `CI1303 OLED`, `Hello, U8g2!`, the detected
 address and a live counter.
+
+## Arduino 1.0.3 and citool-cli 1.0.2 release validation
+
+On 2026-07-23, `citool-cli@1.0.2` passed all 28 locked Rust tests, Clippy with
+warnings denied, and the GitHub Actions Windows x64 release build. The published
+458,353-byte archive has SHA-256
+`b0cd5b6dc5348a5d5af70f920899f533b942a0a5347cee3385aa13fce2d4fcaa`.
+This uploader adds validated MP3 insertion into `voice.bin` while retaining the
+existing compose, inspect and flash behavior.
+
+The Arduino `1.0.3` package was installed through its generated Boards Manager
+index into a new Arduino CLI 1.5.0 data directory. This exposed and fixed a GCC
+9.2.0 C++ multilib include lookup failure under deep Windows installation paths;
+the platform now supplies the normalized target include directory explicitly.
+
+From that clean installation, 18 CI1306 sketches covering the core, Serial,
+resource ownership, ASR, Audio, IR, Timer/Ticker, Watchdog, Preferences, SPI,
+Servo and Wire compiled and completed firmware post-processing. The CI1302 and
+CI1303 smoke sketches also passed. Result: 20 compiled, 20 passed, 0 failed and
+0 compiler warnings. No new physical-board regression claim is added by this
+release.

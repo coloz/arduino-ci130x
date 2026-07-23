@@ -12,10 +12,10 @@
         {
           "name": "ChipIntelli CI130X Arduino",
           "architecture": "ci13xx",
-          "version": "1.0.2",
+          "version": "1.0.3",
           "category": "Contributed",
           "url": "__PLATFORM_ARCHIVE_URL__",
-          "archiveFileName": "arduino-ci130x-1.0.2.zip",
+          "archiveFileName": "arduino-ci130x-1.0.3.zip",
           "checksum": "SHA-256:__PLATFORM_SHA256__",
           "size": "__PLATFORM_SIZE_BYTES__",
           "boards": [
@@ -38,7 +38,7 @@
             {
               "packager": "chipintelli",
               "name": "citool-cli",
-              "version": "1.0.1"
+              "version": "1.0.2"
             }
           ]
         }
@@ -59,12 +59,12 @@
         },
         {
           "name": "citool-cli",
-          "version": "1.0.1",
+          "version": "1.0.2",
           "systems": [
             {
               "host": "x86_64-mingw32",
               "url": "__CITOOL_CLI_ZIP_URL__",
-              "archiveFileName": "citool-cli-1.0.1-windows-x86_64.zip",
+              "archiveFileName": "citool-cli-1.0.2-windows-x86_64.zip",
               "checksum": "SHA-256:__CITOOL_CLI_SHA256__",
               "size": "__CITOOL_CLI_SIZE_BYTES__"
             }

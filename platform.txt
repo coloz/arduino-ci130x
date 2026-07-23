@@ -1,5 +1,5 @@
 name=ChipIntelli CI130X Arduino
-version=1.0.2
+version=1.0.3
 
 # CI130X SDK ALG V2.7.14 is ABI-locked to the vendor Nuclei GCC 9.2.0
 # distribution. Boards Manager removes the archive's single gcc_fix_raissrc/
@@ -20,7 +20,9 @@ compiler.sdk.defines=-DASR_CODE_VERSION=2 -DCORE_ID=0
 compiler.sdk.includes="-I{build.variant.path}" "-I{runtime.platform.path}/tools/sdk/include" "-I{runtime.platform.path}/tools/sdk/include/sdk"
 
 compiler.c.flags={compiler.common.flags} -g -std=gnu11 -MMD
-compiler.cpp.flags={compiler.common.flags} -g -std=gnu++17 -MMD -fno-exceptions -fno-rtti -fno-use-cxa-atexit -fno-threadsafe-statics
+# GCC 9.2 may fail to normalize its relative multilib C++ include path when
+# Boards Manager is installed below a deep Windows data directory.
+compiler.cpp.flags={compiler.common.flags} -g -std=gnu++17 -MMD -isystem "{runtime.tools.riscv-gcc.path}/riscv-nuclei-elf/include/c++/9.2.0/riscv-nuclei-elf/rv32imafc/ilp32f" -fno-exceptions -fno-rtti -fno-use-cxa-atexit -fno-threadsafe-statics
 compiler.S.flags={compiler.common.flags} -g -x assembler-with-cpp -MMD
 compiler.ar.flags=crs
 
