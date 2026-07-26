@@ -128,11 +128,14 @@ Before publishing:
    validate it with Arduino CLI on Windows x64.
 
 The uploader embeds the validated CI130X FW_V2 Bootloader; the platform archive
-contains only the four default resource partitions under `recursos/`. Arduino
-retains the vendor-confirmed 448 KiB (`0x70000`) upper limit for the final
-`user_code.bin`, because that image is loaded into SRAM at boot. Post-build
-processing rejects a larger container before composing firmware. Within that
-limit, `citool-cli compose` lays out User, ASR, DNN, Voice and UserFile from
+contains the standard-ASR resource set under `recursos/` and the official
+V2.7.14 CWSL-sample resource set under `recursos/cwsl/`. Arduino
+retains the vendor-confirmed 448 KiB (`0x70000`) SRAM upper limit for the final
+`user_code.bin`. CI1302 with the official CWSL resource set has a tighter
+2 MB Flash-layout limit of `0x39000` (233,472 bytes), while CI1303 and CI1306
+CWSL retain `0x70000`. Board-menu properties pass the applicable limit to
+post-build processing, which rejects a larger container before composition.
+Within that limit, `citool-cli compose` lays out User, ASR, DNN, Voice and UserFile from
 their final bin sizes, rounding each up to 4 KiB, and rejects any layout that
 would cross the NV/Flash boundary. It generates the V2 metadata and partition
 table for the selected 2 MB or 4 MB Flash and uploads the resulting complete

@@ -34,12 +34,13 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 | Arduino CLI | 已使用 1.5.0 验证 |
 | 主机系统 | Windows 10/11 x64 |
 | 编译器 | Nuclei RISC-V GCC 9.2.0（`rv32imafc / ilp32f`） |
-| 算法配置 | `USE_NULL=1` 基础离线 ASR profile |
+| 算法配置 | 工具菜单可选标准离线 ASR 或命令词自学习 CWSL profile |
 | 公共 Boards Manager 发布 | `v1.0.3`（Windows x64） |
 | 硬件运行验证 | CI1303：串口烧录、UART0、I2C/SSD1306 已通过；其余待验证 |
 
-当前版本在编译前检查 sketch 根目录的 `recursos/`；缺少 `asr.bin`、`dnn.bin`、
-`voice.bin` 或 `user_file.bin` 时，仅从 Arduino package 补齐缺失项，不覆盖项目文件。
+当前版本在编译前检查 sketch 根目录的 profile 资源；标准 ASR 使用 `recursos/*.bin`，
+CWSL 使用 `recursos/cwsl/*.bin`。缺少 `asr.bin`、`dnn.bin`、`voice.bin` 或
+`user_file.bin` 时，仅从 Arduino package 的对应 profile 补齐，不覆盖项目文件。
 原厂示例中可获得源码的 138 个编译单元随平台发布，并在 Arduino 首次构建时并行
 编译为非 LTO `.o` 后直接链接；同一构建目录后续编译会复用缓存，不再使用
 `libci13xx_sdk.a`。原厂 SDK 未提供源码的 ASR、TTS、BLE、FreeRTOS port、DSU 等
@@ -65,6 +66,7 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 - [硬件 Timer / Ticker 说明](libraries/ChipIntelliTimer/README.md)
 - [Watchdog 说明](libraries/ChipIntelliWatchdog/README.md)
 - [离线语音识别结果接口](libraries/ChipIntelliASR/README.md)
+- [命令词自学习接口](libraries/ChipIntelliCWSL/README.md)
 - [提示音播放接口](libraries/ChipIntelliAudio/README.md)
 - [红外收发与空调码库](libraries/ChipIntelliIR/README.md)
 
@@ -89,12 +91,14 @@ https://github.com/coloz/arduino-ci130x/releases/download/v1.0.3/package_chipint
 
 1. 在 Arduino IDE 中选择对应开发板：
    **ChipIntelli CI1302**、**ChipIntelli CI1303** 或 **ChipIntelli CI1306**。
-2. CI1302/CI1303 默认选择 **Internal RC (no crystal)**；只有板上确实安装
+2. 在 **工具 > 算法配置** 中选择 **标准离线 ASR**；需要命令词自学习时选择
+   **命令词自学习 CWSL**。该选项会一起切换编译宏、链接脚本和第二核算法镜像。
+3. CI1302/CI1303 默认选择 **Internal RC (no crystal)**；只有板上确实安装
    12.288 MHz 晶振时才选择 **External 12.288 MHz crystal**。
-3. PA4 接有 LED 时可打开 **文件 > 示例 > CI13XX > GPIO > PA4BlinkSerial**，
+4. PA4 接有 LED 时可打开 **文件 > 示例 > CI13XX > GPIO > PA4BlinkSerial**，
    并以 115200 波特率观察 UART0；其他接线可使用 **Blink** 并修改 LED 引脚。
-4. 按照开发板原理图确认 LED 极性与限流电阻。
-5. 执行验证/编译；平台会准备默认资源并生成经过校验的完整固件。
+5. 按照开发板原理图确认 LED 极性与限流电阻。
+6. 执行验证/编译；平台会准备默认资源并生成经过校验的完整固件。
 
 Arduino CLI 编译示例：
 
@@ -109,8 +113,9 @@ arduino-cli compile --fqbn chipintelli:ci13xx:ci1303 `
   examples\CI13XXSmoke
 ```
 
-第一次编译会在 sketch 根目录创建 `recursos/`，并复制 package 默认的四个分区文件。
-需要定制模型、播报音或用户文件时，直接替换对应文件；后续编译不会覆盖它们。构建目录
+第一次编译会在 sketch 根目录创建所选 profile 的资源目录：标准 ASR 为 `recursos/`，
+CWSL 为 `recursos/cwsl/`，并复制该 profile 的四个分区文件。需要定制模型、播报音或
+用户文件时，直接替换对应文件；后续编译不会覆盖它们。构建目录
 同时保留 `<sketch>.user_code.bin` 和最终的 `<sketch>.bin`，Arduino IDE 导出的
 `.firmware.bin` 是可直接烧录的完整固件。
 
@@ -143,6 +148,7 @@ arduino-cli compile --fqbn chipintelli:ci13xx:ci1303 `
 | SD 卡 | [`SD`](libraries/SD/README.md)、`File` | software SPI、SD/SDHC、FAT16/FAT32、8.3 短文件名 |
 | 持久化 | [`EEPROM`](libraries/EEPROM/README.md)、[`Preferences`](libraries/Preferences/README.md) | 基于 NVDM；EEPROM 缓冲提交，Preferences 提供 namespace/typed key-value |
 | 语音识别 | [`ChipIntelliASR`](libraries/ChipIntelliASR/README.md) | 命令 ID、语义 ID、得分、帧数、文本队列与回调 |
+| 命令词自学习 | [`ChipIntelliCWSL`](libraries/ChipIntelliCWSL/README.md) | 命令词/唤醒词学习、模板删除与计数、异步状态和识别事件 |
 | 提示音 | [`ChipIntelliAudio`](libraries/ChipIntelliAudio/README.md) | 播放 `voice.bin` 中已有的提示音，支持队列、停止、音量、静音和完成回调 |
 | 红外 | [`ChipIntelliIR`](libraries/ChipIntelliIR/README.md) | 38 kHz raw 收发、NEC、学习回放，以及官方 36 品牌空调码库和码组搜索 |
 | 资源管理 | `PeripheralManager` | 原子申请引脚与 UART/IIC/SPI/PWM/Timer 资源，冲突查询和安全释放 |
@@ -181,12 +187,40 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 | `ChipIntelliTimer` | `HardwareTimer`、`Ticker` | 硬件中断定时和 FreeRTOS 软件定时任务 |
 | `ChipIntelliWatchdog` | `BasicWatchdog` | 配置、喂养并测试芯片级 IWDG |
 | `ChipIntelliASR` | `ASRResults` | 读取离线语音识别结果 |
+| `ChipIntelliCWSL` | `SerialLearning` | 通过串口学习/删除命令词和唤醒词，并观察异步事件 |
 | `ChipIntelliAudio` | `PlayVoiceId`、`PromptControl` | 播放与控制已配置提示音 |
 | `ChipIntelliIR` | `RawSendReceive`、`AirConditioner` | 原始波形/NEC 收发，以及使用官方码库控制和匹配空调 |
 
 `examples/CI13XXSmoke` 是平台综合回归 sketch。
 
 ## 重要限制
+
+### 算法 Profile 与 CWSL
+
+- **标准离线 ASR** 使用 `USE_NULL=1`、`USE_CWSL=0`、NULL 专用链接脚本和
+  NULL 第二核镜像；**命令词自学习 CWSL** 使用 `USE_NULL=0`、`USE_CWSL=1`、
+  CWSL 专用链接脚本、CWSL 第二核镜像以及 V2.7.14 官方 CWSL sample 的完整
+  ASR/DNN/Voice/UserFile 资源。这是编译期选择，同一固件不能在运行时切换 profile；
+  标准 profile 中 `ChipIntelliCWSL.begin()` 会返回 `false`。CWSL `cmd_info` 和
+  提示音同时保留原厂 ID 199～208 的语音控制流程；Arduino API 可直接发起操作，
+  无需依赖这些控制词。为避免程序操作与语音控制互相触发，程序学习接口拒绝将
+  ID 199～208 作为目标命令。
+- `learnCommand()` / `learnWakeWord()` 接收的 command ID 必须已存在于当前
+  `cmd_info` 资源中，并分别匹配普通命令/唤醒词属性，且不得超过 65535；group ID
+  不得超过 255。自学习只建立新语音模板到已有命令的映射，不会创建命令元数据或
+  显示文本；ID 不存在、类型不匹配或越界时均返回 `false`。
+- 模板由原厂 NVDATA 管理并在复位后保留。当前 profile 预留 16 个模板；普通
+  command/group 只允许一个模板，而官方支持两个唤醒词模板同时映射到 ID 1、
+  group 0。此 SDK 的 CWSL 不支持 `MULT_INTENT > 1`。
+- Arduino 接口采用异步事件，不依赖原厂语音引导提示，可由 sketch 使用串口、LED、
+  显示屏或 `ChipIntelliAudio` 提供反馈。回调运行在 SDK task 中，不能阻塞；耗时
+  工作应在 `loop()` 中从事件队列读取后处理。所有 CWSL API 只能从 task 上下文
+  调用，不可从 ISR 或硬件定时器回调直接调用。
+- 原厂 record-end 回调没有会话 ID 或最终排空确认，因此 `cancelLearning()` 只在
+  `CWSLLearningStarted` 前受理。录音请求入队后的强制休眠/复位、官方语音流程在
+  record-end 回调内退出，或默认命令冲突触发原厂双 end 路径时，本次开机会保守地
+  禁止后续学习；识别和删除仍可用，重启 MCU 后恢复学习。该隔离避免旧 type6
+  回调落入新的学习任务。
 
 ### 外设与资源冲突
 
@@ -251,11 +285,15 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 代码、只读数据、读写数据、BSS、栈和运行时 heap 共用一段 `0x82000`
 （532480 B）host SRAM，代码在启动时从 Flash 加载到 SRAM。根据芯片厂家的确认，
 Arduino 保留原厂 SDK 的最终 `user_code.bin <= 0x70000`（448 KiB）硬限制；超过时
-后处理立即报错，不会生成或烧录完整固件。
+后处理立即报错，不会生成或烧录完整固件。CI1302 选择官方 CWSL 四件套时还受
+2 MB Flash 排布限制，菜单会把双核 `user_code.bin` 上限进一步收紧为 `0x39000`
+（233472 B），Arduino 显示的保守 host program 上限为 157233 B；CI1303/CI1306
+CWSL 仍使用 `0x70000` 上限。
 
 `citool-cli compose` 仍按 User、ASR、DNN、Voice、UserFile 五个最终 bin 的实际大小
 进行 4 KiB 对齐并顺序计算 Flash 地址，但这只优化 Flash 排布，不会放宽 User 的
-448 KiB SRAM/加载限制。Arduino CLI 报告的 program 与 dynamic memory 包含重叠的
+SRAM/加载限制以及 CI1302 CWSL 的 Flash 排布限制。Arduino CLI 报告的 program 与
+dynamic memory 包含重叠的
 `.data`，不能当作两块可分别用满的内存；最终以链接器和 `user_code.bin` 后处理检查
 为准。
 
@@ -275,6 +313,10 @@ Arduino 保留原厂 SDK 的最终 `user_code.bin <= 0x70000`（448 KiB）硬限
 - `ChipIntelliWatchdog`、`ChipIntelliTimer`/`Ticker`、`Preferences` 与
   `ChipIntelliAudio` 已在 CI1302、CI1303、CI1306 完成单库及合并编译、链接和完整
   固件后处理；定时精度、复位、Flash 掉电保持和音频输出仍待实体板验证；
+- `ChipIntelliCWSL/SerialLearning` 已在 CI1302、CI1303、CI1306 的标准离线 ASR
+  与 CWSL 两种 profile 完成 6/6 编译、链接、双核合并、`compose` 和 `inspect`；
+  链接映射与合并镜像均确认使用各自专用链接脚本和第二核镜像，自学习录音、模板
+  持久化和识别仍待实体板验证；
 - `v1.0.0` Boards Manager 发布包已在隔离 Arduino CLI 环境完成安装；CI1306 的
   16 个安装后示例以及 CI1302/CI1303 的综合冒烟示例均编译通过，共 18/18；
 - CI1302、CI1303 与 CI1306 已在隔离 Arduino CLI 环境验证资源准备、完整编译、

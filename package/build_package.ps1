@@ -118,16 +118,47 @@ $BaseUrl = $BaseUrl.TrimEnd('/')
 $AssetBaseUrl = if ($FlatAssetUrls) { $BaseUrl } else { "$BaseUrl/dist" }
 
 $resourceRoot = Join-Path $PlatformRoot 'recursos'
-$requiredResources = @(
-    'asr.bin',
-    'dnn.bin',
-    'voice.bin',
-    'user_file.bin'
-)
+$requiredResources = @('asr.bin', 'dnn.bin', 'voice.bin', 'user_file.bin')
+foreach ($profile in @('null', 'cwsl')) {
+    $profileResourceRoot = if ($profile -eq 'cwsl') {
+        Join-Path $resourceRoot 'cwsl'
+    }
+    else {
+        $resourceRoot
+    }
+    foreach ($resourceName in $requiredResources) {
+        $resourcePath = Join-Path $profileResourceRoot $resourceName
+        if (-not (Test-Path -LiteralPath $resourcePath -PathType Leaf)) {
+            throw "Missing Arduino package $profile profile firmware resource: $resourcePath"
+        }
+    }
+}
+
+$cwslManifestPath = Join-Path $resourceRoot 'cwsl\manifest.json'
+if (-not (Test-Path -LiteralPath $cwslManifestPath -PathType Leaf)) {
+    throw "Missing Arduino package CWSL resource manifest: $cwslManifestPath"
+}
+$cwslManifest = Get-Content -LiteralPath $cwslManifestPath -Raw | ConvertFrom-Json
+if ($cwslManifest.schemaVersion -ne 1 -or
+    $cwslManifest.profile -ne 'cwsl' -or
+    $cwslManifest.mode -ne 'vendor-sample' -or
+    $cwslManifest.source -ne 'CI130X_SDK_ALG_V2.7.14/projects/offline_asr_alg_pro_sample/firmware' -or
+    $cwslManifest.vendorSpokenControlIdsIncluded -ne $true) {
+    throw "Unexpected CWSL resource manifest metadata: $cwslManifestPath"
+}
 foreach ($resourceName in $requiredResources) {
-    $resourcePath = Join-Path $resourceRoot $resourceName
-    if (-not (Test-Path -LiteralPath $resourcePath -PathType Leaf)) {
-        throw "Missing Arduino package firmware resource: $resourcePath"
+    $manifestProperty = $cwslManifest.resources.PSObject.Properties[$resourceName]
+    if ($null -eq $manifestProperty) {
+        throw "CWSL resource manifest is missing $resourceName`: $cwslManifestPath"
+    }
+    $resourcePath = Join-Path $resourceRoot (Join-Path 'cwsl' $resourceName)
+    $resourceFile = Get-Item -LiteralPath $resourcePath
+    if ($resourceFile.Length -ne [long]$manifestProperty.Value.size) {
+        throw "CWSL resource size does not match manifest: $resourcePath"
+    }
+    $resourceHash = (Get-FileHash -LiteralPath $resourcePath -Algorithm SHA256).Hash
+    if ($resourceHash -ne $manifestProperty.Value.sha256) {
+        throw "CWSL resource SHA-256 does not match manifest: $resourcePath"
     }
 }
 

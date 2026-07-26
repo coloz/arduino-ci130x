@@ -178,6 +178,7 @@ if (-not [string]::IsNullOrWhiteSpace($BuildExtraFlags)) {
 }
 $preservedIncludeRoot = Join-Path $includeRoot 'sdk'
 $commonArguments += @('-I', $variantRoot)
+$commonArguments += @('-I', $preservedIncludeRoot)
 foreach ($relativePath in $includeRelativePaths) {
     $preservedPath = Join-Path $preservedIncludeRoot $relativePath
     $commonArguments += @('-I', $preservedPath)

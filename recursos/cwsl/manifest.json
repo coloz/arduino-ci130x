@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "profile": "cwsl",
+  "mode": "vendor-sample",
+  "source": "CI130X_SDK_ALG_V2.7.14/projects/offline_asr_alg_pro_sample/firmware",
+  "vendorSpokenControlIdsIncluded": true,
+  "resources": {
+    "asr.bin": { "size": 20038, "sha256": "08624f47c63858a4f57f31ba7e2cfa3c9e981b03c868047817ffda6522082b3e" },
+    "dnn.bin": { "size": 1410376, "sha256": "18f90809b641b02d3f2e9e10dc3d496ffe720d370410ec048b89691b56c19991" },
+    "voice.bin": { "size": 379741, "sha256": "c1948b068deebb58a455a27ca4b9941d331e613daf2baeb99422587ef9d58318" },
+    "user_file.bin": { "size": 12321, "sha256": "6359adf0da19a774bbe1e094bc2ac94e67272096a8c10fa9b0565514127661fd" }
+  }
+}

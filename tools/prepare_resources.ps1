@@ -4,7 +4,11 @@ param(
     [string]$ProjectPath,
 
     [Parameter(Mandatory = $true)]
-    [string]$PackageResources
+    [string]$PackageResources,
+
+    [Parameter(Mandatory = $true)]
+    [ValidateSet('null', 'cwsl')]
+    [string]$Algorithm
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,15 +16,28 @@ Set-StrictMode -Version Latest
 
 $projectRoot = (Resolve-Path -LiteralPath $ProjectPath).Path
 $packageRoot = (Resolve-Path -LiteralPath $PackageResources).Path
-$projectResources = Join-Path $projectRoot 'recursos'
+$profileSubdirectory = if ($Algorithm -eq 'cwsl') { 'cwsl' } else { '' }
+$packageProfileResources = if ($profileSubdirectory) {
+    Join-Path $packageRoot $profileSubdirectory
+}
+else {
+    $packageRoot
+}
+$projectResourcesBase = Join-Path $projectRoot 'recursos'
+$projectResources = if ($profileSubdirectory) {
+    Join-Path $projectResourcesBase $profileSubdirectory
+}
+else {
+    $projectResourcesBase
+}
 $requiredFiles = @('asr.bin', 'dnn.bin', 'voice.bin', 'user_file.bin')
 
 New-Item -ItemType Directory -Path $projectResources -Force | Out-Null
 foreach ($name in $requiredFiles) {
-    $source = Join-Path $packageRoot $name
+    $source = Join-Path $packageProfileResources $name
     $destination = Join-Path $projectResources $name
     if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
-        throw "Arduino package is missing the default resource: $source"
+        throw "Arduino package is missing the $Algorithm profile resource: $source"
     }
     if (Test-Path -LiteralPath $destination -PathType Leaf) {
         Write-Host "CI13XX resource kept: $destination"
@@ -31,5 +48,5 @@ foreach ($name in $requiredFiles) {
     }
 
     Copy-Item -LiteralPath $source -Destination $destination
-    Write-Host "CI13XX default resource copied: $destination"
+    Write-Host "CI13XX $Algorithm profile resource copied: $destination"
 }

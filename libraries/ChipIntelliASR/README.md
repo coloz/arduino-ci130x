@@ -30,6 +30,11 @@ for wake words and ordinary commands. `frames` is preserved when the normal
 command path provides the original message; it is `0` for results such as wake
 words where the canonical SDK hook does not expose a frame count.
 
+Results forwarded from a learned CWSL template have no vendor ASR confidence
+or frame count, so both `score` and `frames` are reported as `0`. Use the
+`distance` field of the corresponding `CWSLRecognized` event to evaluate the
+learned-template match.
+
 `end()` only detaches this library's result listener and clears its queue. It
 does not shut down the shared SDK because audio and other SDK services may be
 using it.

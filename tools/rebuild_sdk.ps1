@@ -349,6 +349,16 @@ foreach ($relativePath in $packagedSourcePaths) {
     Copy-Item -LiteralPath $source -Destination $destination -Force
 }
 
+# The Arduino payload extends the vendor CWSL application with a non-blocking
+# programmatic bridge. Keep that audited adaptation authoritative when the
+# surrounding SDK payload is regenerated from a clean upstream archive.
+$packagedCwslSource = Join-Path $sdkOutput 'src\projects\offline_asr_alg_pro_sample\app\app_cwsl\cwsl_app_handle.c'
+if (-not (Test-Path -LiteralPath $packagedCwslSource -PathType Leaf)) {
+    throw "The current Arduino CWSL bridge source is missing: $packagedCwslSource"
+}
+$stagedCwslSource = Join-Path $sourceOutput 'projects\offline_asr_alg_pro_sample\app\app_cwsl\cwsl_app_handle.c'
+Copy-Item -LiteralPath $packagedCwslSource -Destination $stagedCwslSource -Force
+
 # The closed IR database archive looks up user-file ID 0 during ir_init().
 # Arduino keeps ID 0 available for the default TTS dictionary, so add a
 # task-scoped compatibility alias that can map only that initialization lookup
@@ -985,9 +995,11 @@ Copy-RequiredFile -Source (Join-Path $sdkRoot 'components\ci_ble\stack\libOnMicr
 Copy-RequiredFile -Source (Join-Path $sdkRoot 'components\ci_ble\stack\libcias_crypto.a') -DestinationDirectory $libOutput
 
 Copy-RequiredFile -Source (Join-Path $sdkRoot 'projects\offline_asr_alg_pro_sample\lds\ci130x_alg_pro_null.lds') -DestinationDirectory $linkerOutput
+Copy-RequiredFile -Source (Join-Path $sdkRoot 'projects\offline_asr_alg_pro_sample\lds\ci130x_alg_pro_cwsl.lds') -DestinationDirectory $linkerOutput
 Copy-RequiredFile -Source (Join-Path $sdkRoot 'utils\common.lds') -DestinationDirectory $linkerOutput
 
 Copy-RequiredFile -Source (Join-Path $sdkRoot 'libs\libbnpu_core_alg_pro_null.a') -DestinationDirectory $binaryOutput
+Copy-RequiredFile -Source (Join-Path $sdkRoot 'libs\libbnpu_core_alg_pro_cwsl.a') -DestinationDirectory $binaryOutput
 $ciToolKitSource = Join-Path $sdkRoot 'tools\ci-tool-kit.exe'
 if (-not (Test-Path -LiteralPath $ciToolKitSource -PathType Leaf)) {
     # The official V2.7.14 archive omits the standalone executable while the
@@ -1019,6 +1031,14 @@ foreach ($header in $headers) {
     Copy-Item -LiteralPath $header.FullName -Destination $preservedDestination -Force
     Copy-Item -LiteralPath $header.FullName -Destination (Join-Path $includeOutput $header.Name) -Force
 }
+
+$packagedCwslBridgeHeader = Join-Path $sdkOutput 'include\sdk\chipintelli_cwsl_bridge.h'
+if (-not (Test-Path -LiteralPath $packagedCwslBridgeHeader -PathType Leaf)) {
+    throw "The current Arduino CWSL bridge header is missing: $packagedCwslBridgeHeader"
+}
+Copy-Item -LiteralPath $packagedCwslBridgeHeader `
+    -Destination (Join-Path $preservedIncludeOutput 'chipintelli_cwsl_bridge.h') `
+    -Force
 
 foreach ($systemMessageHeaderPath in @(
     (Join-Path $includeOutput 'system_msg_deal.h'),
@@ -1097,7 +1117,7 @@ Generated from: CI130X_SDK_ALG_V2.7.14
 Project: projects/offline_asr_alg_pro_sample
 Validated variant: $Variant
 Board: $($profile.Board) / $($profile.Chip) / $($profile.Flash)
-Algorithm profile: USE_NULL=1, NO_ASR_FLOW=0
+Algorithm profiles: standard USE_NULL=1 and command-word self-learning USE_CWSL=1
 SDK message UART: disabled; Arduino HardwareSerial owns UART2
 NVDM readiness: published only after cinv_init() completes
 Audio mute compatibility: weak gain hook for ChipIntelliAudio

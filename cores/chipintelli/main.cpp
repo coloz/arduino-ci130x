@@ -1,4 +1,5 @@
 #include "Arduino.h"
+#include "chipintelli_cwsl_bridge.h"
 
 extern "C" {
 #include "FreeRTOS.h"
@@ -11,6 +12,8 @@ static TaskHandle_t s_arduinoTask;
 static volatile chipintelli_sdk_state_t s_sdkState = CHIPINTELLI_SDK_NOT_STARTED;
 static chipintelli_asr_callback_t s_asrCallback;
 static void *s_asrCallbackArg;
+static chipintelli_cwsl_callback_t s_cwslCallback;
+static void *s_cwslCallbackArg;
 static cmd_handle_t s_pendingAsrHandle;
 static uint16_t s_pendingAsrFrames;
 static int16_t s_pendingAsrScore;
@@ -107,6 +110,155 @@ extern "C" void chipintelli_asr_set_callback(chipintelli_asr_callback_t callback
     s_asrCallback = callback;
     s_asrCallbackArg = arg;
     taskEXIT_CRITICAL();
+}
+
+static bool isValidCwslWordType(chipintelli_cwsl_word_type_t wordType,
+                                bool allowAll) {
+    return wordType == CHIPINTELLI_CWSL_COMMAND_WORD ||
+           wordType == CHIPINTELLI_CWSL_WAKE_WORD ||
+           (allowAll && wordType == CHIPINTELLI_CWSL_ALL_WORDS);
+}
+
+extern "C" bool chipintelli_cwsl_profile_enabled(void) {
+#if USE_CWSL
+    return true;
+#else
+    return false;
+#endif
+}
+
+extern "C" void chipintelli_cwsl_set_callback(chipintelli_cwsl_callback_t callback,
+                                                void *arg) {
+    taskENTER_CRITICAL();
+    s_cwslCallback = callback;
+    s_cwslCallbackArg = arg;
+    taskEXIT_CRITICAL();
+}
+
+extern "C" void chipintelli_cwsl_notify_event(uint8_t eventType,
+                                                uint32_t commandId,
+                                                uint16_t groupId,
+                                                uint8_t wordType,
+                                                uint8_t attempt,
+                                                uint8_t result,
+                                                uint32_t distance) {
+    static_assert(static_cast<int>(CHIPINTELLI_CWSL_LEARNING_STARTED) ==
+                      static_cast<int>(CI_ARDUINO_CWSL_EVENT_LEARNING_STARTED),
+                  "CWSL event ABI mismatch");
+    static_assert(static_cast<int>(CHIPINTELLI_CWSL_RECOGNIZED) ==
+                      static_cast<int>(CI_ARDUINO_CWSL_EVENT_RECOGNIZED),
+                  "CWSL event ABI mismatch");
+    static_assert(static_cast<int>(CHIPINTELLI_CWSL_DELETE_FAILED) ==
+                      static_cast<int>(CI_ARDUINO_CWSL_EVENT_DELETE_FAILED),
+                  "CWSL event ABI mismatch");
+
+    taskENTER_CRITICAL();
+    chipintelli_cwsl_callback_t callback = s_cwslCallback;
+    void *callbackArg = s_cwslCallbackArg;
+    taskEXIT_CRITICAL();
+    if (callback) {
+        const chipintelli_cwsl_event_t event = {
+            eventType,
+            wordType,
+            attempt,
+            result,
+            commandId,
+            groupId,
+            distance
+        };
+        callback(&event, callbackArg);
+    }
+}
+
+extern "C" bool chipintelli_cwsl_learn(uint32_t commandId,
+                                         uint16_t groupId,
+                                         chipintelli_cwsl_word_type_t wordType) {
+#if USE_CWSL
+    if (chipintelli_sdk_state() != CHIPINTELLI_SDK_READY ||
+        !isValidCwslWordType(wordType, false) ||
+        commandId > UINT16_MAX || groupId > UINT8_MAX) {
+        return false;
+    }
+    return ci_arduino_cwsl_learn_word(commandId, groupId, wordType) == 0;
+#else
+    (void)commandId;
+    (void)groupId;
+    (void)wordType;
+    return false;
+#endif
+}
+
+extern "C" bool chipintelli_cwsl_cancel(void) {
+#if USE_CWSL
+    return chipintelli_sdk_state() == CHIPINTELLI_SDK_READY &&
+           ci_arduino_cwsl_cancel_learning() == 0;
+#else
+    return false;
+#endif
+}
+
+extern "C" bool chipintelli_cwsl_erase(uint32_t commandId,
+                                         uint16_t groupId,
+                                         chipintelli_cwsl_word_type_t wordType) {
+#if USE_CWSL
+    if (chipintelli_sdk_state() != CHIPINTELLI_SDK_READY ||
+        !isValidCwslWordType(wordType, true) ||
+        (commandId != UINT32_MAX && commandId > UINT16_MAX) ||
+        (groupId != UINT16_MAX && groupId > UINT8_MAX)) {
+        return false;
+    }
+    return ci_arduino_cwsl_delete_word(commandId, groupId, wordType) == 0;
+#else
+    (void)commandId;
+    (void)groupId;
+    (void)wordType;
+    return false;
+#endif
+}
+
+extern "C" chipintelli_cwsl_state_t chipintelli_cwsl_state(void) {
+#if USE_CWSL
+    if (chipintelli_sdk_state() != CHIPINTELLI_SDK_READY) {
+        return CHIPINTELLI_CWSL_UNAVAILABLE;
+    }
+    return static_cast<chipintelli_cwsl_state_t>(ci_arduino_cwsl_get_status());
+#else
+    return CHIPINTELLI_CWSL_UNAVAILABLE;
+#endif
+}
+
+extern "C" int chipintelli_cwsl_template_count(
+    chipintelli_cwsl_word_type_t wordType) {
+#if USE_CWSL
+    if (chipintelli_sdk_state() != CHIPINTELLI_SDK_READY ||
+        !isValidCwslWordType(wordType, true)) {
+        return -1;
+    }
+    return ci_arduino_cwsl_get_template_count(wordType);
+#else
+    (void)wordType;
+    return -1;
+#endif
+}
+
+extern "C" int chipintelli_cwsl_remaining_templates(void) {
+#if USE_CWSL
+    return chipintelli_sdk_state() == CHIPINTELLI_SDK_READY
+               ? ci_arduino_cwsl_get_remaining_templates()
+               : -1;
+#else
+    return -1;
+#endif
+}
+
+extern "C" int chipintelli_cwsl_max_templates(void) {
+#if USE_CWSL
+    return chipintelli_sdk_state() == CHIPINTELLI_SDK_READY
+               ? ci_arduino_cwsl_get_max_templates()
+               : -1;
+#else
+    return -1;
+#endif
 }
 
 extern "C" uint32_t __real_deal_asr_msg_by_cmd_id(sys_msg_asr_data_t *, cmd_handle_t, uint16_t);

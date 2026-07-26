@@ -182,3 +182,51 @@ Servo and Wire compiled and completed firmware post-processing. The CI1302 and
 CI1303 smoke sketches also passed. Result: 20 compiled, 20 passed, 0 failed and
 0 compiler warnings. No new physical-board regression claim is added by this
 release.
+
+## Standard-ASR and CWSL profile build validation
+
+On 2026-07-26, the development platform added an `Algorithm` board menu with
+standard offline ASR (`USE_NULL=1`, `USE_CWSL=0`) and command-word
+self-learning (`USE_NULL=0`, `USE_CWSL=1`) profiles. The selected property is
+used by compilation, the profile-specific linker script, post-processing and
+the second-core image selection.
+
+`ChipIntelliCWSL/SerialLearning` was compiled with Arduino CLI 1.5.0 for CI1302,
+CI1303 and CI1306 under both profiles. All 6 clean builds passed SDK source
+compilation, Arduino compilation, linking, dual-core merge, complete-firmware
+`compose` and an independent strict `inspect`. The final CWSL bridge source also
+passed a separate `-Wall -Wextra -Werror` compile.
+
+| Chip | Profile | Sketch / host limit | `user_code.bin` / layout limit | Final firmware |
+| --- | --- | ---: | ---: | ---: |
+| CI1302 | Standard ASR | 69,873 / 382,577 | 146,048 / 458,752 | 1,537,559 |
+| CI1302 | CWSL | 155,393 / 157,233 | 231,360 / 233,472 | 2,076,705 |
+| CI1303 | Standard ASR | 69,873 / 382,577 | 146,048 / 458,752 | 1,537,559 |
+| CI1303 | CWSL | 155,393 / 382,513 | 231,360 / 458,752 | 2,076,705 |
+| CI1306 | Standard ASR | 66,379 / 382,577 | 142,560 / 458,752 | 1,533,463 |
+| CI1306 | CWSL | 151,947 / 382,513 | 227,920 / 458,752 | 2,072,609 |
+
+The three standard builds embedded the exact 76,128-byte NULL second-core image
+and their link maps selected `SDK_ALG_PRO_SRAM_HOST_NULL_END_ADDR`. The three
+CWSL builds embedded the exact 76,192-byte CWSL second-core image and selected
+`SDK_ALG_PRO_SRAM_HOST_CWSL_END_ADDR`. The largest generated user-code container
+was 231,360 bytes.
+
+The CWSL resource set was then replaced with the complete, single-source output
+of the V2.7.14 `offline_asr_alg_pro_sample`: ASR 20,038 bytes, DNN 1,410,376
+bytes, Voice 379,741 bytes and UserFile 12,321 bytes. The generation script
+reproduced all four expected SHA-256 values, and profile preparation copied the
+standard and CWSL sets to separate sketch-local paths without cross-profile
+reuse. Direct `compose` and strict `inspect` passed for CI1302, CI1303 and
+CI1306. All 12 resource payloads were also sliced back out of the three final
+CWSL firmware images at their inspected partition offsets; every payload hash
+matched its packaged source file byte for byte.
+
+CI1302's 2 MB boundary was checked with padded user-code inputs. Exactly
+`0x39000` (233,472) bytes composed and inspected with UserFile ending before
+NV data at `0x1FC000`; 233,473 bytes was rejected because 4 KiB alignment would
+require `0x3A000`, above the computed `0x39000` layout maximum. The CI1302 CWSL
+menu therefore enforces `build.user_code_max=233472` and the conservative host
+program limit 157,233. CI1303 and CI1306 CWSL retain the 458,752-byte user-code
+limit. This remains build-path validation only; learning capture, template
+persistence and learned-word recognition require physical-board testing.

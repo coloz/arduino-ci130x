@@ -188,6 +188,63 @@ chipintelli_sdk_state_t chipintelli_sdk_state(void);
 void chipintelli_asr_set_callback(chipintelli_asr_callback_t callback, void *arg);
 #endif
 
+#ifndef CHIPINTELLI_CWSL_CORE_HOOK_TYPES
+#define CHIPINTELLI_CWSL_CORE_HOOK_TYPES
+typedef uint8_t chipintelli_cwsl_word_type_t;
+enum {
+    CHIPINTELLI_CWSL_COMMAND_WORD = 0,
+    CHIPINTELLI_CWSL_WAKE_WORD,
+    CHIPINTELLI_CWSL_ALL_WORDS
+};
+
+typedef uint8_t chipintelli_cwsl_state_t;
+enum {
+    CHIPINTELLI_CWSL_IDLE = 0,
+    CHIPINTELLI_CWSL_RECOGNIZING,
+    CHIPINTELLI_CWSL_LEARNING,
+    CHIPINTELLI_CWSL_DELETING,
+    CHIPINTELLI_CWSL_UNAVAILABLE = 0xFF
+};
+
+typedef uint8_t chipintelli_cwsl_event_type_t;
+enum {
+    CHIPINTELLI_CWSL_LEARNING_STARTED = 1,
+    CHIPINTELLI_CWSL_RECORDING_STARTED,
+    CHIPINTELLI_CWSL_ATTEMPT_RESULT,
+    CHIPINTELLI_CWSL_LEARNING_SUCCEEDED,
+    CHIPINTELLI_CWSL_LEARNING_FAILED,
+    CHIPINTELLI_CWSL_LEARNING_CANCELLED,
+    CHIPINTELLI_CWSL_DELETE_SUCCEEDED,
+    CHIPINTELLI_CWSL_RECOGNIZED,
+    CHIPINTELLI_CWSL_DELETE_FAILED
+};
+
+typedef struct chipintelli_cwsl_event_t {
+    chipintelli_cwsl_event_type_t type;
+    chipintelli_cwsl_word_type_t word_type;
+    uint8_t attempt;
+    uint8_t result;
+    uint32_t command_id;
+    uint16_t group_id;
+    uint32_t distance;
+} chipintelli_cwsl_event_t;
+typedef void (*chipintelli_cwsl_callback_t)(const chipintelli_cwsl_event_t *, void *);
+
+bool chipintelli_cwsl_profile_enabled(void);
+void chipintelli_cwsl_set_callback(chipintelli_cwsl_callback_t callback, void *arg);
+bool chipintelli_cwsl_learn(uint32_t command_id,
+                            uint16_t group_id,
+                            chipintelli_cwsl_word_type_t word_type);
+bool chipintelli_cwsl_cancel(void);
+bool chipintelli_cwsl_erase(uint32_t command_id,
+                            uint16_t group_id,
+                            chipintelli_cwsl_word_type_t word_type);
+chipintelli_cwsl_state_t chipintelli_cwsl_state(void);
+int chipintelli_cwsl_template_count(chipintelli_cwsl_word_type_t word_type);
+int chipintelli_cwsl_remaining_templates(void);
+int chipintelli_cwsl_max_templates(void);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

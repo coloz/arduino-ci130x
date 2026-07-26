@@ -26,6 +26,10 @@ param(
     [string]$Chip,
 
     [Parameter(Mandatory = $true)]
+    [ValidateSet('null', 'cwsl')]
+    [string]$Algorithm,
+
+    [Parameter(Mandatory = $true)]
     [ValidateRange(1, [long]::MaxValue)]
     [long]$MaxUserCodeSize
 )
@@ -55,9 +59,15 @@ if (-not (Test-Path -LiteralPath $citoolCandidate -PathType Leaf) -and
 $citoolPath = (Resolve-Path -LiteralPath $citoolCandidate).Path
 $platformRoot = (Resolve-Path -LiteralPath $PlatformPath).Path
 $toolKit = Join-Path $platformRoot 'tools\sdk\bin\ci-tool-kit.exe'
-$secondCore = Join-Path $platformRoot 'tools\sdk\bin\libbnpu_core_alg_pro_null.a'
+$secondCore = Join-Path $platformRoot ("tools\sdk\bin\libbnpu_core_alg_pro_{0}.a" -f $Algorithm)
 $mergeUserFileEntries = Join-Path $platformRoot 'tools\merge_user_file_entries.ps1'
-$projectResourcesRoot = (Resolve-Path -LiteralPath $ProjectResources).Path
+$projectResourcesBase = (Resolve-Path -LiteralPath $ProjectResources).Path
+$projectResourcesRoot = if ($Algorithm -eq 'cwsl') {
+    (Resolve-Path -LiteralPath (Join-Path $projectResourcesBase 'cwsl')).Path
+}
+else {
+    $projectResourcesBase
+}
 
 foreach ($required in @($toolKit, $secondCore, $mergeUserFileEntries, $citoolPath)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
@@ -72,7 +82,7 @@ $resourceFiles = [ordered]@{
 }
 foreach ($resource in $resourceFiles.GetEnumerator()) {
     if (-not (Test-Path -LiteralPath $resource.Value -PathType Leaf)) {
-        throw "Missing project $($resource.Key) resource: $($resource.Value)"
+        throw "Missing project $Algorithm profile $($resource.Key) resource: $($resource.Value)"
     }
 }
 
