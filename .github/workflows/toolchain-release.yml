@@ -71,8 +71,9 @@ jobs:
           if ((& $gcc -dumpmachine) -ne 'riscv-nuclei-elf') {
             throw 'Unexpected Windows GCC target.'
           }
-          'int main(void) { return 0; }' | Set-Content -Encoding ascii smoke.c
-          & $gcc -march=rv32imafc -mabi=ilp32f -Os --specs=nano.specs smoke.c -o smoke.elf
+          'void _start(void) { for (;;) {} }' | Set-Content -Encoding ascii smoke.c
+          & $gcc -march=rv32imafc -mabi=ilp32f -Os --specs=nano.specs `
+            -nostdlib -nostartfiles '-Wl,-e,_start' smoke.c -o smoke.elf
           if ($LASTEXITCODE -ne 0) { throw 'Windows GCC smoke link failed.' }
           $archiveHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
           "$archiveHash  $(Split-Path -Leaf $archive)" | Set-Content -Encoding ascii "$archive.sha256"
