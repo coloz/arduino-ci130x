@@ -59,7 +59,36 @@ jobs:
             --format=zip \
             --prefix="arduino-ci130x-${{ steps.release.outputs.version }}/" \
             --output="dist/${{ steps.release.outputs.asset }}" \
-            "$GITHUB_SHA"
+            "$GITHUB_SHA" \
+            boards.txt \
+            platform.txt \
+            programmers.txt \
+            README.md \
+            cores \
+            examples \
+            libraries \
+            variants \
+            recursos/manifest.json \
+            recursos/asr.bin \
+            recursos/dnn.bin \
+            recursos/voice.bin \
+            recursos/user_file.bin \
+            recursos/cwsl/manifest.json \
+            recursos/cwsl/asr.bin \
+            recursos/cwsl/dnn.bin \
+            recursos/cwsl/voice.bin \
+            recursos/cwsl/user_file.bin \
+            tools/sdk \
+            tools/compile_sdk_sources.ps1 \
+            tools/merge_user_file_entries.ps1 \
+            tools/postbuild.ps1 \
+            tools/prepare_resources.ps1
+
+          if unzip -Z1 "dist/${{ steps.release.outputs.asset }}" \
+            | grep -Eq '/(\.agent|\.agents|\.git|\.github|package)(/|$)'; then
+            echo 'Release archive contains repository-only metadata.' >&2
+            exit 1
+          fi
 
       - name: Download citool-cli release archives
         shell: bash
