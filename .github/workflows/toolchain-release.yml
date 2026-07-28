@@ -152,7 +152,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git clone --branch "$NUCLEI_SOURCE_TAG" --recursive \
+          git clone --branch "$NUCLEI_SOURCE_TAG" --depth 1 --single-branch \
+            --recurse-submodules --shallow-submodules \
             https://github.com/riscv-mcu/riscv-gnu-toolchain.git source
 
       - name: Build Nuclei GCC 9.2.0
