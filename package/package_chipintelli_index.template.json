@@ -63,9 +63,9 @@
               "size": "__TOOLCHAIN_LINUX_SIZE_BYTES__"
             },
             {
-              "host": "x86_64-apple-darwin",
-              "url": "__ARDUINO_RELEASE_BASE_URL__/riscv-nuclei-elf-gcc-9.2.0-macos-x86_64.tar.gz",
-              "archiveFileName": "riscv-nuclei-elf-gcc-9.2.0-macos-x86_64.tar.gz",
+              "host": "arm64-apple-darwin",
+              "url": "__ARDUINO_RELEASE_BASE_URL__/riscv-nuclei-elf-gcc-9.2.0-macos-arm64.tar.gz",
+              "archiveFileName": "riscv-nuclei-elf-gcc-9.2.0-macos-arm64.tar.gz",
               "checksum": "SHA-256:__TOOLCHAIN_MACOS_SHA256__",
               "size": "__TOOLCHAIN_MACOS_SIZE_BYTES__"
             }

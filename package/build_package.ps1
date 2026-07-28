@@ -108,7 +108,7 @@ function Resolve-ToolchainArchives {
         $toolchainDist = Join-Path $PlatformPath 'package\toolchains'
         @(
             (Join-Path $toolchainDist 'riscv-nuclei-elf-gcc-9.2.0-linux-x86_64.tar.gz'),
-            (Join-Path $toolchainDist 'riscv-nuclei-elf-gcc-9.2.0-macos-x86_64.tar.gz')
+            (Join-Path $toolchainDist 'riscv-nuclei-elf-gcc-9.2.0-macos-arm64.tar.gz')
         ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
     }
 
@@ -328,9 +328,9 @@ $toolchainReleaseTargets = @(
         Source = 'external'
     },
     [pscustomobject]@{
-        ArchiveName = "riscv-nuclei-elf-gcc-$toolchainVersion-macos-x86_64.tar.gz"
+        ArchiveName = "riscv-nuclei-elf-gcc-$toolchainVersion-macos-arm64.tar.gz"
         Executable = 'riscv-gcc/bin/riscv-nuclei-elf-gcc'
-        Hosts = @('x86_64-apple-darwin')
+        Hosts = @('arm64-apple-darwin')
         Source = 'external'
     }
 )

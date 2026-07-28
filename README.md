@@ -33,10 +33,10 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 | 当前开发版本 | `1.0.4` |
 | Arduino IDE | Arduino IDE 2.x |
 | Arduino CLI | 已使用 1.5.0 验证 |
-| 主机系统 | GCC/`citool-cli` 发布：Windows x64、Linux x86_64、macOS x86_64；完整固件流程：Windows 10/11 x64 |
-| 编译器 | Nuclei RISC-V GCC 9.2.0（`rv32imafc / ilp32f`）；macOS 由官方 `v9.2RC` 源码构建 |
+| 主机系统 | GCC：Windows x64、Linux x86_64、macOS 15+ Apple Silicon；`citool-cli`：Windows x64、Linux x86_64、macOS Universal；完整固件流程：Windows 10/11 x64 |
+| 编译器 | Nuclei RISC-V GCC 9.2.0（`rv32imafc / ilp32f`）；macOS 由官方 `nuclei_9.2_fixjalr_forhw` 源码构建 |
 | 算法配置 | 工具菜单可选标准离线 ASR 或命令词自学习 CWSL profile |
-| 公共 Boards Manager 发布 | `v1.0.4`（Windows x64、Linux x86_64、macOS x86_64） |
+| 公共 Boards Manager 发布 | `v1.0.4`（Windows x64、Linux x86_64、macOS Apple Silicon） |
 | 硬件运行验证 | CI1303：Standard/CWSL 启动、音频提示回调、核心外设、I2C/SSD1306 已通过；其余待验证 |
 
 当前版本在编译前检查 sketch 根目录的 profile 资源；标准 ASR 使用 `recursos/*.bin`，
@@ -82,11 +82,11 @@ https://raw.githubusercontent.com/coloz/arduino-ci130x/main/package/package_chip
 
 随后打开开发板管理器，搜索并安装 **ChipIntelli CI130X Arduino**。发布流程会附带
 Windows x64、macOS Universal 和 Linux x86_64 的 `citool-cli`，以及 Windows x64、
-Linux x86_64、macOS x86_64 的 Nuclei GCC 9.2.0。Apple Silicon 会按 Arduino
-Boards Manager 的主机回退规则使用 macOS x86_64 GCC，因此系统需能运行 Intel
-程序。当前 SDK 预构建脚本和 `ci-tool-kit.exe` 后处理仍使完整固件流程仅支持
-Windows x64。Linux GCC 已通过真实 CI1306 编译、LTO 和链接；macOS 构建工作流
-会在发布前执行版本、目标、multilib 和链接冒烟检查。
+Linux x86_64、macOS 15+ Apple Silicon 的 Nuclei GCC 9.2.0。macOS 编译器在实体
+Apple Silicon Mac 上由 Nuclei 官方 `nuclei_9.2_fixjalr_forhw` 固定提交源码构建，
+并验证版本、目标、20 组 multilib 以及 C/C++ 链接；目前不提供 Intel Mac 编译器。
+当前 SDK 预构建脚本和 `ci-tool-kit.exe` 后处理仍使完整固件流程仅支持 Windows
+x64。Linux GCC 已通过真实 CI1306 编译、LTO 和链接。
 
 固定版本的索引也随 GitHub Release 发布：
 

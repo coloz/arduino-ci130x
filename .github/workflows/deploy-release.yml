@@ -119,7 +119,7 @@ jobs:
           archives=(
             "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-windows.zip"
             "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-linux-x86_64.tar.gz"
-            "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-x86_64.tar.gz"
+            "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-arm64.tar.gz"
           )
           patterns=()
           for archive in "${archives[@]}"; do
@@ -147,7 +147,7 @@ jobs:
             | grep -Fxq 'gcc_fix_raissrc/bin/riscv-nuclei-elf-gcc.exe'
           tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-linux-x86_64.tar.gz" \
             | sed 's#^\./##' | grep -Fxq 'riscv-gcc/bin/riscv-nuclei-elf-gcc'
-          tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-x86_64.tar.gz" \
+          tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-arm64.tar.gz" \
             | sed 's#^\./##' | grep -Fxq 'riscv-gcc/bin/riscv-nuclei-elf-gcc'
 
           sha256sum \
@@ -157,7 +157,7 @@ jobs:
             "citool-cli-${CITOOL_CLI_VERSION}-linux-x86_64.tar.gz" \
             "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-windows.zip" \
             "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-linux-x86_64.tar.gz" \
-            "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-x86_64.tar.gz" \
+            "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-arm64.tar.gz" \
             > SHA256SUMS.txt
 
       - name: Generate Boards Manager index

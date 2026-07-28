@@ -248,19 +248,35 @@ output SHA-256, and all output members were checked to contain no `.gnu.lto_*`
 sections.
 
 A real CI1306 standard-ASR firmware link then passed with both the pinned
-ChipIntelli Linux package and the official Nuclei `v9.2RC` Linux build. The
-probe compiled the 138 source SDK units plus 16 Arduino/C++ objects and linked
-the actual linker script and vendor archives. Loadable `.text` grew from
-56,186 bytes with the original Windows LTO libraries to 62,744 bytes with the
-cross-host archives. This validates target link compatibility, not device
-runtime behavior.
+ChipIntelli Linux package and a compatibility probe built from Nuclei's
+`v9.2RC` tag. That tag's GCC submodule actually reports 8.3.0, so the probe is
+not used or published as a GCC 9.2.0 compiler. The probe compiled the 138
+source SDK units plus 16 Arduino/C++ objects and linked the actual linker
+script and vendor archives. Loadable `.text` grew from 56,186 bytes with the
+original Windows LTO libraries to 62,744 bytes with the cross-host archives.
+This validates target link compatibility, not device runtime behavior.
 
 The package builder also passed archive/index generation with Windows, Linux
 and macOS compiler host records, plus Windows, Linux, Intel macOS and Apple
-Silicon `citool-cli` host records. The packaging-only macOS fixture reused the
-Linux archive to exercise archive routing; the real macOS compiler must still
-be produced and smoke-linked by `toolchain-release.yml` on
-`macos-15-intel` before publishing.
+Silicon `citool-cli` host records. That earlier packaging-only macOS fixture
+reused the Linux archive solely to exercise archive routing and was never a
+publishable macOS compiler.
+
+On 2026-07-28, the publishable macOS compiler was built on a physical Apple M4
+running macOS 15.7.1 from Nuclei's official `nuclei_9.2_fixjalr_forhw` source.
+The build pins top-level commit
+`b709d98b514136ab73118998518caa09aa9ddf22`, GCC commit
+`b2354399bb7175a7cefb86ed0ba870584ec0324f`, binutils commit
+`dbfcea998ba6f592566eda9f9288690d7a060c8f`, and newlib commit
+`b8d32e85025f863db1df73ce625c6fddeadb7c17`. The resulting Apple Silicon
+archive is pinned at SHA-256
+`30e8bb5fcb17066cfc3308774ebb880091de015fa7027ca4c74701d8e4daf4a5`.
+It reports GCC 9.2.0 and target `riscv-nuclei-elf`; all 20 multilib lines match
+the Windows compiler exactly. After extraction, both C and C++ linked
+`rv32imafc/ilp32f` nano-spec RISC-V ELFs under
+`env -i PATH=/usr/bin:/bin`. All 50 packaged Mach-O files were arm64, passed
+ad-hoc signature verification, and referenced no Homebrew or `/usr/local`
+absolute dependency.
 
 ## Arduino 1.0.4 Standard-resource and tone failure-path validation
 
