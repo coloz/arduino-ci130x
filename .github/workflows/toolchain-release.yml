@@ -81,6 +81,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: nuclei-gcc-windows
+          retention-days: 1
           path: |
             dist/riscv-nuclei-elf-gcc-9.2.0-windows.zip
             dist/riscv-nuclei-elf-gcc-9.2.0-windows.zip.sha256
@@ -128,6 +129,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: nuclei-gcc-linux
+          retention-days: 1
           path: |
             dist/riscv-nuclei-elf-gcc-9.2.0-linux-x86_64.tar.gz
             dist/riscv-nuclei-elf-gcc-9.2.0-linux-x86_64.tar.gz.sha256
@@ -145,8 +147,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          brew install gawk gnu-sed gmp mpfr libmpc isl zlib expat
+          brew install gawk gnu-sed gmp mpfr libmpc isl zlib expat texinfo
           echo "$(brew --prefix gnu-sed)/libexec/gnubin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix texinfo)/bin" >> "$GITHUB_PATH"
 
       - name: Check out Nuclei GCC source
         shell: bash
@@ -172,7 +175,9 @@ jobs:
             --enable-multilib \
             --disable-gdb \
             --disable-gcc-checking
-          make -j"$(sysctl -n hw.logicalcpu)" NEWLIB_TUPLE=riscv-nuclei-elf
+          make -j"$(sysctl -n hw.logicalcpu)" \
+            NEWLIB_TUPLE=riscv-nuclei-elf \
+            BINUTILS_TARGET_FLAGS_EXTRA=--with-system-zlib
 
       - name: Bundle Homebrew runtime libraries
         shell: bash
@@ -250,6 +255,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: nuclei-gcc-macos
+          retention-days: 1
           path: |
             dist/riscv-nuclei-elf-gcc-9.2.0-macos-x86_64.tar.gz
             dist/riscv-nuclei-elf-gcc-9.2.0-macos-x86_64.tar.gz.sha256

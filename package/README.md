@@ -148,6 +148,13 @@ directly inside that directory (including `boards.txt`, `platform.txt`,
 directory. Arduino's package manager ignores files placed directly at the ZIP
 root and does not extract RAR archives.
 
+`build_package.ps1` uses a runtime allowlist. It excludes repository-only
+entries such as `.agent`, `.agents`, `.git`, `.github`, `.gitignore`, `package/`
+and maintainer scripts for resource generation, SDK rebuilding and release
+assembly. The ZIP retains only the board metadata, core, variants, libraries,
+examples, verified resource payloads and scripts/SDK files invoked by
+`platform.txt`.
+
 Each `citool-cli` archive must contain one top-level `citool-cli/` directory.
 The Windows ZIP contains `citool-cli.exe`; the macOS/Linux tar.gz archives
 contain executable `citool-cli`. The macOS archive is universal and is mapped

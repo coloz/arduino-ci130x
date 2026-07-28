@@ -129,36 +129,62 @@ function Copy-PlatformTree {
     )
 
     New-Item -ItemType Directory -Path $Destination | Out-Null
-    foreach ($item in Get-ChildItem -LiteralPath $Source -Force) {
-        if ($item.Name -eq '.git') {
-            continue
-        }
 
-        if ($item.Name -eq 'package') {
-            $packageTarget = Join-Path $Destination 'package'
-            New-Item -ItemType Directory -Path $packageTarget | Out-Null
-            foreach ($packageItem in Get-ChildItem -LiteralPath $item.FullName -Force) {
-                if ($packageItem.Name -like 'dist*' -or $packageItem.Name -eq 'package_chipintelli_index.json') {
-                    continue
-                }
-                Copy-Item -LiteralPath $packageItem.FullName -Destination $packageTarget -Recurse -Force
-            }
-            continue
+    # Boards Manager receives only files needed to build examples and firmware.
+    # Repository metadata, release tooling and maintainer-only scripts stay out of
+    # the platform archive even when they exist in the source checkout.
+    foreach ($name in @(
+        'boards.txt',
+        'platform.txt',
+        'programmers.txt',
+        'README.md',
+        'cores',
+        'examples',
+        'libraries',
+        'variants'
+    )) {
+        $item = Join-Path $Source $name
+        if (-not (Test-Path -LiteralPath $item)) {
+            throw "Required platform release entry is missing: $item"
         }
+        Copy-Item -LiteralPath $item -Destination $Destination -Recurse -Force
+    }
 
-        if ($item.Name -eq 'recursos') {
-            $resourcesTarget = Join-Path $Destination 'recursos'
-            New-Item -ItemType Directory -Path $resourcesTarget | Out-Null
-            foreach ($resourceItem in Get-ChildItem -LiteralPath $item.FullName -Force) {
-                if ($resourceItem.Name -eq 'Firmware_V2.0.0.bin') {
-                    continue
-                }
-                Copy-Item -LiteralPath $resourceItem.FullName -Destination $resourcesTarget -Recurse -Force
-            }
-            continue
+    $resourcesTarget = Join-Path $Destination 'recursos'
+    New-Item -ItemType Directory -Path $resourcesTarget | Out-Null
+    $resourceNames = @('manifest.json', 'asr.bin', 'dnn.bin', 'voice.bin', 'user_file.bin')
+    foreach ($name in $resourceNames) {
+        $item = Join-Path (Join-Path $Source 'recursos') $name
+        if (-not (Test-Path -LiteralPath $item -PathType Leaf)) {
+            throw "Required Standard release resource is missing: $item"
         }
+        Copy-Item -LiteralPath $item -Destination $resourcesTarget -Force
+    }
 
-        Copy-Item -LiteralPath $item.FullName -Destination $Destination -Recurse -Force
+    $cwslTarget = Join-Path $resourcesTarget 'cwsl'
+    New-Item -ItemType Directory -Path $cwslTarget | Out-Null
+    foreach ($name in $resourceNames) {
+        $item = Join-Path (Join-Path (Join-Path $Source 'recursos') 'cwsl') $name
+        if (-not (Test-Path -LiteralPath $item -PathType Leaf)) {
+            throw "Required CWSL release resource is missing: $item"
+        }
+        Copy-Item -LiteralPath $item -Destination $cwslTarget -Force
+    }
+
+    $toolsTarget = Join-Path $Destination 'tools'
+    New-Item -ItemType Directory -Path $toolsTarget | Out-Null
+    foreach ($name in @(
+        'sdk',
+        'compile_sdk_sources.ps1',
+        'merge_user_file_entries.ps1',
+        'postbuild.ps1',
+        'prepare_resources.ps1'
+    )) {
+        $item = Join-Path (Join-Path $Source 'tools') $name
+        if (-not (Test-Path -LiteralPath $item)) {
+            throw "Required platform runtime tool is missing: $item"
+        }
+        Copy-Item -LiteralPath $item -Destination $toolsTarget -Recurse -Force
     }
 }
 
