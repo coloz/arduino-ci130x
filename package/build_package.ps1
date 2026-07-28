@@ -2,12 +2,16 @@
 param(
     [string]$PlatformRoot,
     [string]$ToolchainRoot,
+    [string[]]$ToolchainArchives,
     [string]$CitoolCliArchive,
-    [string]$CitoolCliVersion = '1.0.2',
+    [string[]]$CitoolCliArchives,
+    [string]$CitoolCliVersion = '1.1.1',
     [string]$BaseUrl = 'http://127.0.0.1:8765',
     [switch]$FlatAssetUrls,
-    [string]$Version = '1.0.3',
-    [string]$OutputDirectory
+    [string]$Version = '1.0.4',
+    [string]$OutputDirectory,
+    [string]$IndexOutputPath,
+    [switch]$RequireAllHostTools
 )
 
 $ErrorActionPreference = 'Stop'
@@ -17,6 +21,9 @@ if (-not $PlatformRoot) {
 }
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $PSScriptRoot 'dist'
+}
+if (-not $IndexOutputPath) {
+    $IndexOutputPath = Join-Path $PSScriptRoot 'package_chipintelli_index.json'
 }
 
 function Resolve-ToolchainRoot {
@@ -50,24 +57,69 @@ function Resolve-ToolchainRoot {
     throw 'GCC 9.2.0 was not found. Extract the official riscv-nuclei-elf-gcc-9.2.0 archive and pass -ToolchainRoot.'
 }
 
-function Resolve-CitoolCliArchive {
+function Resolve-CitoolCliArchives {
     param(
         [string]$PlatformPath,
         [string]$RequestedArchive,
+        [string[]]$RequestedArchives,
         [string]$Version
     )
 
-    $candidate = if ($RequestedArchive) {
-        $RequestedArchive
+    if ($RequestedArchive -and $RequestedArchives) {
+        throw 'Pass either -CitoolCliArchive or -CitoolCliArchives, not both.'
+    }
+
+    $candidates = if ($RequestedArchives) {
+        @($RequestedArchives)
+    }
+    elseif ($RequestedArchive) {
+        @($RequestedArchive)
     }
     else {
         $workspacePath = Split-Path -Parent $PlatformPath
-        Join-Path $workspacePath "citool-cli\dist\citool-cli-$Version-windows-x86_64.zip"
+        $distPath = Join-Path $workspacePath 'citool-cli\dist'
+        @(
+            (Join-Path $distPath "citool-cli-$Version-windows-x86_64.zip"),
+            (Join-Path $distPath "citool-cli-$Version-macos-universal.tar.gz"),
+            (Join-Path $distPath "citool-cli-$Version-linux-x86_64.tar.gz")
+        )
     }
-    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
-        throw "Prebuilt citool-cli release archive was not found: $candidate. Build the sibling project first with ..\citool-cli\package\build_release.ps1, or pass -CitoolCliArchive."
+
+    $resolvedArchives = @()
+    foreach ($candidate in $candidates) {
+        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            throw "Prebuilt citool-cli release archive was not found: $candidate. Download the three GitHub Actions release archives, or pass them with -CitoolCliArchives."
+        }
+        $resolvedArchives += (Resolve-Path -LiteralPath $candidate).Path
     }
-    return (Resolve-Path -LiteralPath $candidate).Path
+    return $resolvedArchives
+}
+
+function Resolve-ToolchainArchives {
+    param(
+        [string]$PlatformPath,
+        [string[]]$RequestedArchives
+    )
+
+    $candidates = if ($RequestedArchives) {
+        @($RequestedArchives)
+    }
+    else {
+        $toolchainDist = Join-Path $PlatformPath 'package\toolchains'
+        @(
+            (Join-Path $toolchainDist 'riscv-nuclei-elf-gcc-9.2.0-linux-x86_64.tar.gz'),
+            (Join-Path $toolchainDist 'riscv-nuclei-elf-gcc-9.2.0-macos-x86_64.tar.gz')
+        ) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
+    }
+
+    $resolvedArchives = @()
+    foreach ($candidate in $candidates) {
+        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            throw "Prebuilt Nuclei GCC host archive was not found: $candidate"
+        }
+        $resolvedArchives += (Resolve-Path -LiteralPath $candidate).Path
+    }
+    return $resolvedArchives
 }
 
 function Copy-PlatformTree {
@@ -112,53 +164,72 @@ function Copy-PlatformTree {
 
 $PlatformRoot = (Resolve-Path -LiteralPath $PlatformRoot).Path
 $ToolchainRoot = Resolve-ToolchainRoot -RequestedRoot $ToolchainRoot
-$CitoolCliArchive = Resolve-CitoolCliArchive -PlatformPath $PlatformRoot -RequestedArchive $CitoolCliArchive -Version $CitoolCliVersion
+$ToolchainArchives = @(
+    Resolve-ToolchainArchives `
+        -PlatformPath $PlatformRoot `
+        -RequestedArchives $ToolchainArchives
+)
+$CitoolCliArchives = @(
+    Resolve-CitoolCliArchives `
+        -PlatformPath $PlatformRoot `
+        -RequestedArchive $CitoolCliArchive `
+        -RequestedArchives $CitoolCliArchives `
+        -Version $CitoolCliVersion
+)
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
+$IndexOutputPath = [System.IO.Path]::GetFullPath($IndexOutputPath)
 $BaseUrl = $BaseUrl.TrimEnd('/')
 $AssetBaseUrl = if ($FlatAssetUrls) { $BaseUrl } else { "$BaseUrl/dist" }
 
 $resourceRoot = Join-Path $PlatformRoot 'recursos'
 $requiredResources = @('asr.bin', 'dnn.bin', 'voice.bin', 'user_file.bin')
-foreach ($profile in @('null', 'cwsl')) {
-    $profileResourceRoot = if ($profile -eq 'cwsl') {
-        Join-Path $resourceRoot 'cwsl'
+foreach ($profile in @(
+        [pscustomobject]@{
+            Name = 'Standard'
+            ManifestProfile = 'standard'
+            Root = $resourceRoot
+        },
+        [pscustomobject]@{
+            Name = 'CWSL'
+            ManifestProfile = 'cwsl'
+            Root = (Join-Path $resourceRoot 'cwsl')
+        }
+    )) {
+    $manifestPath = Join-Path $profile.Root 'manifest.json'
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        throw "Missing Arduino package $($profile.Name) resource manifest: $manifestPath"
     }
-    else {
-        $resourceRoot
+    try {
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    }
+    catch {
+        throw "Invalid Arduino package $($profile.Name) resource manifest '$manifestPath': $($_.Exception.Message)"
+    }
+    if ($manifest.schemaVersion -ne 1 -or
+        $manifest.profile -ne $profile.ManifestProfile -or
+        $manifest.mode -ne 'vendor-sample' -or
+        $manifest.source -ne 'CI130X_SDK_ALG_V2.7.14/projects/offline_asr_alg_pro_sample/firmware' -or
+        $manifest.vendorSpokenControlIdsIncluded -ne $true) {
+        throw "Unexpected $($profile.Name) resource manifest metadata: $manifestPath"
     }
     foreach ($resourceName in $requiredResources) {
-        $resourcePath = Join-Path $profileResourceRoot $resourceName
-        if (-not (Test-Path -LiteralPath $resourcePath -PathType Leaf)) {
-            throw "Missing Arduino package $profile profile firmware resource: $resourcePath"
+        $manifestProperty = $manifest.resources.PSObject.Properties[$resourceName]
+        if ($null -eq $manifestProperty -or
+            $manifestProperty.Value.sha256 -notmatch '^[0-9a-fA-F]{64}$') {
+            throw "$($profile.Name) resource manifest is missing valid metadata for $resourceName`: $manifestPath"
         }
-    }
-}
-
-$cwslManifestPath = Join-Path $resourceRoot 'cwsl\manifest.json'
-if (-not (Test-Path -LiteralPath $cwslManifestPath -PathType Leaf)) {
-    throw "Missing Arduino package CWSL resource manifest: $cwslManifestPath"
-}
-$cwslManifest = Get-Content -LiteralPath $cwslManifestPath -Raw | ConvertFrom-Json
-if ($cwslManifest.schemaVersion -ne 1 -or
-    $cwslManifest.profile -ne 'cwsl' -or
-    $cwslManifest.mode -ne 'vendor-sample' -or
-    $cwslManifest.source -ne 'CI130X_SDK_ALG_V2.7.14/projects/offline_asr_alg_pro_sample/firmware' -or
-    $cwslManifest.vendorSpokenControlIdsIncluded -ne $true) {
-    throw "Unexpected CWSL resource manifest metadata: $cwslManifestPath"
-}
-foreach ($resourceName in $requiredResources) {
-    $manifestProperty = $cwslManifest.resources.PSObject.Properties[$resourceName]
-    if ($null -eq $manifestProperty) {
-        throw "CWSL resource manifest is missing $resourceName`: $cwslManifestPath"
-    }
-    $resourcePath = Join-Path $resourceRoot (Join-Path 'cwsl' $resourceName)
-    $resourceFile = Get-Item -LiteralPath $resourcePath
-    if ($resourceFile.Length -ne [long]$manifestProperty.Value.size) {
-        throw "CWSL resource size does not match manifest: $resourcePath"
-    }
-    $resourceHash = (Get-FileHash -LiteralPath $resourcePath -Algorithm SHA256).Hash
-    if ($resourceHash -ne $manifestProperty.Value.sha256) {
-        throw "CWSL resource SHA-256 does not match manifest: $resourcePath"
+        $resourcePath = Join-Path $profile.Root $resourceName
+        if (-not (Test-Path -LiteralPath $resourcePath -PathType Leaf)) {
+            throw "Missing Arduino package $($profile.Name) firmware resource: $resourcePath"
+        }
+        $resourceFile = Get-Item -LiteralPath $resourcePath
+        if ($resourceFile.Length -ne [long]$manifestProperty.Value.size) {
+            throw "$($profile.Name) resource size does not match manifest: $resourcePath"
+        }
+        $resourceHash = (Get-FileHash -LiteralPath $resourcePath -Algorithm SHA256).Hash
+        if ($resourceHash -ne $manifestProperty.Value.sha256) {
+            throw "$($profile.Name) resource SHA-256 does not match manifest: $resourcePath"
+        }
     }
 }
 
@@ -167,24 +238,147 @@ if ($platformVersion -ne $Version) {
     throw "platform.txt version '$platformVersion' does not match package version '$Version'."
 }
 
+$crossHostLibraryRoot = Join-Path $PlatformRoot 'tools\sdk\lib-cross-host'
+$crossHostManifestPath = Join-Path $crossHostLibraryRoot 'BUILD-MANIFEST.txt'
+if (-not (Test-Path -LiteralPath $crossHostManifestPath -PathType Leaf)) {
+    throw "Missing cross-host vendor-library manifest: $crossHostManifestPath"
+}
+$crossHostManifest = @(Get-Content -LiteralPath $crossHostManifestPath)
+$crossHostArchiveLines = @($crossHostManifest | Where-Object { $_ -like 'archive=*' })
+if ($crossHostArchiveLines.Count -eq 0) {
+    throw "Cross-host vendor-library manifest has no archive records: $crossHostManifestPath"
+}
+foreach ($line in $crossHostArchiveLines) {
+    if ($line -notmatch '^archive=(?<archive>\S+) members=(?<members>[0-9]+) source\.sha256=(?<source>[0-9a-f]{64}) output\.sha256=(?<output>[0-9a-f]{64})$') {
+        throw "Invalid cross-host vendor-library manifest entry: $line"
+    }
+    $relativeArchive = $Matches.archive.Replace('/', '\')
+    $sourceArchive = Join-Path (Join-Path $PlatformRoot 'tools\sdk\lib') $relativeArchive
+    $outputArchive = Join-Path $crossHostLibraryRoot $relativeArchive
+    foreach ($archivePath in @($sourceArchive, $outputArchive)) {
+        if (-not (Test-Path -LiteralPath $archivePath -PathType Leaf)) {
+            throw "Cross-host vendor-library manifest references a missing archive: $archivePath"
+        }
+    }
+    $sourceHash = (Get-FileHash -LiteralPath $sourceArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+    $outputHash = (Get-FileHash -LiteralPath $outputArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($sourceHash -ne $Matches.source -or $outputHash -ne $Matches.output) {
+        throw "Cross-host vendor-library manifest hash mismatch: $relativeArchive"
+    }
+}
+
 $citoolVersion = $CitoolCliVersion
-$citoolArchiveName = "citool-cli-$citoolVersion-windows-x86_64.zip"
-if ((Split-Path -Leaf $CitoolCliArchive) -ne $citoolArchiveName) {
-    throw "citool-cli archive must be named '$citoolArchiveName': $CitoolCliArchive"
+$citoolReleaseTargets = @(
+    [pscustomobject]@{
+        ArchiveName = "citool-cli-$citoolVersion-windows-x86_64.zip"
+        Executable = 'citool-cli/citool-cli.exe'
+        Hosts = @('x86_64-mingw32')
+    },
+    [pscustomobject]@{
+        ArchiveName = "citool-cli-$citoolVersion-macos-universal.tar.gz"
+        Executable = 'citool-cli/citool-cli'
+        Hosts = @('x86_64-apple-darwin', 'arm64-apple-darwin')
+    },
+    [pscustomobject]@{
+        ArchiveName = "citool-cli-$citoolVersion-linux-x86_64.tar.gz"
+        Executable = 'citool-cli/citool-cli'
+        Hosts = @('x86_64-pc-linux-gnu')
+    }
+)
+
+$toolchainVersion = '9.2.0'
+$windowsToolchainArchiveName = "riscv-nuclei-elf-gcc-$toolchainVersion-windows.zip"
+$toolchainReleaseTargets = @(
+    [pscustomobject]@{
+        ArchiveName = $windowsToolchainArchiveName
+        Executable = 'gcc_fix_raissrc/bin/riscv-nuclei-elf-gcc.exe'
+        Hosts = @('x86_64-mingw32')
+        Source = 'generated'
+    },
+    [pscustomobject]@{
+        ArchiveName = "riscv-nuclei-elf-gcc-$toolchainVersion-linux-x86_64.tar.gz"
+        Executable = 'riscv-gcc/bin/riscv-nuclei-elf-gcc'
+        Hosts = @('x86_64-pc-linux-gnu')
+        Source = 'external'
+    },
+    [pscustomobject]@{
+        ArchiveName = "riscv-nuclei-elf-gcc-$toolchainVersion-macos-x86_64.tar.gz"
+        Executable = 'riscv-gcc/bin/riscv-nuclei-elf-gcc'
+        Hosts = @('x86_64-apple-darwin')
+        Source = 'external'
+    }
+)
+
+$toolchainArchiveByName = @{}
+foreach ($archivePath in $ToolchainArchives) {
+    $archiveName = Split-Path -Leaf $archivePath
+    if ($toolchainArchiveByName.ContainsKey($archiveName)) {
+        throw "Duplicate Nuclei GCC host archive: $archiveName"
+    }
+    $toolchainArchiveByName[$archiveName] = $archivePath
+}
+foreach ($target in @($toolchainReleaseTargets | Where-Object Source -eq 'external')) {
+    if (-not $toolchainArchiveByName.ContainsKey($target.ArchiveName)) {
+        if ($RequireAllHostTools) {
+            throw "Missing Nuclei GCC host archive '$($target.ArchiveName)'."
+        }
+        continue
+    }
+    $archivePath = $toolchainArchiveByName[$target.ArchiveName]
+    $entries = @(& tar -tzf $archivePath)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to inspect Nuclei GCC host archive: $archivePath"
+    }
+    $entries = @($entries | ForEach-Object { $_.Replace('\', '/').TrimStart([char[]]'./') })
+    if ($entries -notcontains $target.Executable) {
+        throw "Nuclei GCC host archive must contain $($target.Executable): $archivePath"
+    }
+}
+$linuxToolchainName = "riscv-nuclei-elf-gcc-$toolchainVersion-linux-x86_64.tar.gz"
+if ($toolchainArchiveByName.ContainsKey($linuxToolchainName)) {
+    $expectedLinuxToolchainHash = '0EE91C983F2CF3EAA26B444EB553847A7DDA34F3FB5D97C34B977CA43E593CA5'
+    $linuxToolchainHash = (Get-FileHash -LiteralPath $toolchainArchiveByName[$linuxToolchainName] -Algorithm SHA256).Hash
+    if ($linuxToolchainHash -ne $expectedLinuxToolchainHash) {
+        throw "Unexpected ChipIntelli Linux GCC archive SHA-256: $linuxToolchainHash"
+    }
+}
+
+$citoolArchiveByName = @{}
+foreach ($archivePath in $CitoolCliArchives) {
+    $archiveName = Split-Path -Leaf $archivePath
+    if ($citoolArchiveByName.ContainsKey($archiveName)) {
+        throw "Duplicate citool-cli archive: $archiveName"
+    }
+    $citoolArchiveByName[$archiveName] = $archivePath
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$citoolZip = [System.IO.Compression.ZipFile]::OpenRead($CitoolCliArchive)
-try {
-    $citoolExecutableEntry = $citoolZip.Entries | Where-Object {
-        $_.FullName.Replace('\', '/') -eq 'citool-cli/citool-cli.exe'
+foreach ($target in $citoolReleaseTargets) {
+    if (-not $citoolArchiveByName.ContainsKey($target.ArchiveName)) {
+        throw "Missing citool-cli release archive '$($target.ArchiveName)'."
     }
-    if ($null -eq $citoolExecutableEntry) {
-        throw "citool-cli archive must contain citool-cli/citool-cli.exe: $CitoolCliArchive"
+
+    $archivePath = $citoolArchiveByName[$target.ArchiveName]
+    if ($target.ArchiveName.EndsWith('.zip')) {
+        $zip = [System.IO.Compression.ZipFile]::OpenRead($archivePath)
+        try {
+            $entries = @($zip.Entries | ForEach-Object { $_.FullName.Replace('\', '/').TrimStart([char[]]'./') })
+        }
+        finally {
+            $zip.Dispose()
+        }
     }
-}
-finally {
-    $citoolZip.Dispose()
+    else {
+        $entries = @(& tar -tzf $archivePath)
+        if ($LASTEXITCODE -ne 0) {
+            throw "Unable to inspect citool-cli archive: $archivePath"
+        }
+        $entries = @($entries | ForEach-Object { $_.Replace('\', '/').TrimStart([char[]]'./') })
+    }
+
+    if ($entries -notcontains $target.Executable) {
+        throw "citool-cli archive must contain $($target.Executable): $archivePath"
+    }
 }
 
 $compiler = Join-Path $ToolchainRoot 'bin\riscv-nuclei-elf-gcc.exe'
@@ -214,18 +408,28 @@ try {
     Copy-Item -LiteralPath $ToolchainRoot -Destination $toolStageParent -Recurse -Force
 
     $platformArchiveName = "arduino-ci130x-$Version.zip"
-    $toolchainArchiveName = 'riscv-nuclei-elf-gcc-9.2.0-windows.zip'
     $platformArchive = Join-Path $OutputDirectory $platformArchiveName
-    $toolchainArchive = Join-Path $OutputDirectory $toolchainArchiveName
-    $citoolArchive = Join-Path $OutputDirectory $citoolArchiveName
+    $windowsToolchainArchive = Join-Path $OutputDirectory $windowsToolchainArchiveName
+    $toolchainPackageFiles = @()
+    $citoolPackageFiles = @()
 
-    foreach ($archive in @($platformArchive, $toolchainArchive)) {
+    foreach ($archive in @($platformArchive, $windowsToolchainArchive)) {
         if (Test-Path -LiteralPath $archive) {
             Remove-Item -LiteralPath $archive -Force
         }
     }
-    if ([System.IO.Path]::GetFullPath($CitoolCliArchive) -ne [System.IO.Path]::GetFullPath($citoolArchive)) {
-        Copy-Item -LiteralPath $CitoolCliArchive -Destination $citoolArchive -Force
+    foreach ($target in $citoolReleaseTargets) {
+        $sourceArchive = $citoolArchiveByName[$target.ArchiveName]
+        $destinationArchive = Join-Path $OutputDirectory $target.ArchiveName
+        if ([System.IO.Path]::GetFullPath($sourceArchive) -ne [System.IO.Path]::GetFullPath($destinationArchive)) {
+            Copy-Item -LiteralPath $sourceArchive -Destination $destinationArchive -Force
+        }
+        $archiveFile = Get-Item -LiteralPath $destinationArchive
+        $citoolPackageFiles += [pscustomobject]@{
+            Target = $target
+            File = $archiveFile
+            Sha256 = (Get-FileHash -LiteralPath $destinationArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
     }
 
     [System.IO.Compression.ZipFile]::CreateFromDirectory(
@@ -236,16 +440,61 @@ try {
     )
     [System.IO.Compression.ZipFile]::CreateFromDirectory(
         $toolStageParent,
-        $toolchainArchive,
+        $windowsToolchainArchive,
         [System.IO.Compression.CompressionLevel]::Optimal,
         $false
     )
     $platformFile = Get-Item -LiteralPath $platformArchive
-    $toolchainFile = Get-Item -LiteralPath $toolchainArchive
-    $citoolFile = Get-Item -LiteralPath $citoolArchive
     $platformHash = (Get-FileHash -LiteralPath $platformArchive -Algorithm SHA256).Hash.ToLowerInvariant()
-    $toolchainHash = (Get-FileHash -LiteralPath $toolchainArchive -Algorithm SHA256).Hash.ToLowerInvariant()
-    $citoolHash = (Get-FileHash -LiteralPath $citoolArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+
+    $windowsToolchainTarget = $toolchainReleaseTargets | Where-Object ArchiveName -eq $windowsToolchainArchiveName
+    $windowsToolchainFile = Get-Item -LiteralPath $windowsToolchainArchive
+    $toolchainPackageFiles += [pscustomobject]@{
+        Target = $windowsToolchainTarget
+        File = $windowsToolchainFile
+        Sha256 = (Get-FileHash -LiteralPath $windowsToolchainArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+    foreach ($target in @($toolchainReleaseTargets | Where-Object Source -eq 'external')) {
+        if (-not $toolchainArchiveByName.ContainsKey($target.ArchiveName)) {
+            continue
+        }
+        $sourceArchive = $toolchainArchiveByName[$target.ArchiveName]
+        $destinationArchive = Join-Path $OutputDirectory $target.ArchiveName
+        if ([IO.Path]::GetFullPath($sourceArchive) -ne [IO.Path]::GetFullPath($destinationArchive)) {
+            Copy-Item -LiteralPath $sourceArchive -Destination $destinationArchive -Force
+        }
+        $archiveFile = Get-Item -LiteralPath $destinationArchive
+        $toolchainPackageFiles += [pscustomobject]@{
+            Target = $target
+            File = $archiveFile
+            Sha256 = (Get-FileHash -LiteralPath $destinationArchive -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+    }
+
+    $toolchainSystems = @()
+    foreach ($packageFile in $toolchainPackageFiles) {
+        foreach ($hostName in $packageFile.Target.Hosts) {
+            $toolchainSystems += [ordered]@{
+                host = $hostName
+                url = "$AssetBaseUrl/$($packageFile.File.Name)"
+                archiveFileName = $packageFile.File.Name
+                checksum = "SHA-256:$($packageFile.Sha256)"
+                size = $packageFile.File.Length.ToString()
+            }
+        }
+    }
+    $citoolSystems = @()
+    foreach ($packageFile in $citoolPackageFiles) {
+        foreach ($hostName in $packageFile.Target.Hosts) {
+            $citoolSystems += [ordered]@{
+                host = $hostName
+                url = "$AssetBaseUrl/$($packageFile.File.Name)"
+                archiveFileName = $packageFile.File.Name
+                checksum = "SHA-256:$($packageFile.Sha256)"
+                size = $packageFile.File.Length.ToString()
+            }
+        }
+    }
 
     $index = [ordered]@{
         packages = @(
@@ -298,51 +547,32 @@ try {
                 tools = @(
                     [ordered]@{
                         name = 'riscv-gcc'
-                        version = '9.2.0'
-                        systems = @(
-                            [ordered]@{
-                                host = 'x86_64-mingw32'
-                                url = "$AssetBaseUrl/$toolchainArchiveName"
-                                archiveFileName = $toolchainArchiveName
-                                checksum = "SHA-256:$toolchainHash"
-                                size = $toolchainFile.Length.ToString()
-                            }
-                        )
+                        version = $toolchainVersion
+                        systems = $toolchainSystems
                     },
                     [ordered]@{
                         name = 'citool-cli'
                         version = $citoolVersion
-                        systems = @(
-                            [ordered]@{
-                                host = 'x86_64-mingw32'
-                                url = "$AssetBaseUrl/$citoolArchiveName"
-                                archiveFileName = $citoolArchiveName
-                                checksum = "SHA-256:$citoolHash"
-                                size = $citoolFile.Length.ToString()
-                            }
-                        )
+                        systems = $citoolSystems
                     }
                 )
             }
         )
     }
 
-    $indexPath = Join-Path $PSScriptRoot 'package_chipintelli_index.json'
     $indexJson = $index | ConvertTo-Json -Depth 12
     $utf8WithoutBom = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($indexPath, $indexJson + [Environment]::NewLine, $utf8WithoutBom)
+    $indexParent = Split-Path -Parent $IndexOutputPath
+    New-Item -ItemType Directory -Path $indexParent -Force | Out-Null
+    [System.IO.File]::WriteAllText($IndexOutputPath, $indexJson + [Environment]::NewLine, $utf8WithoutBom)
 
     [pscustomobject]@{
-        Index = $indexPath
+        Index = $IndexOutputPath
         PlatformArchive = $platformArchive
         PlatformSize = $platformFile.Length
         PlatformSha256 = $platformHash
-        ToolchainArchive = $toolchainArchive
-        ToolchainSize = $toolchainFile.Length
-        ToolchainSha256 = $toolchainHash
-        CitoolCliArchive = $citoolArchive
-        CitoolCliSize = $citoolFile.Length
-        CitoolCliSha256 = $citoolHash
+        ToolchainArchives = @($toolchainPackageFiles | ForEach-Object { $_.File.FullName })
+        CitoolCliArchives = @($citoolPackageFiles | ForEach-Object { $_.File.FullName })
     } | Format-List
 }
 finally {

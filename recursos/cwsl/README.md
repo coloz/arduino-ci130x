@@ -24,3 +24,9 @@ start operations directly, so sketches do not need to invoke those spoken
 controls. Resource generation and firmware composition are reproducible checks;
 microphone capture, persistence, wake behavior and learned-word recognition
 still require physical-board tests.
+
+The Standard profile currently uses independently generated copies of the same
+V2.7.14 vendor-sample resource payloads. Profile selection remains meaningful:
+it chooses separate compile-time features, linker memory limits and second-core
+algorithm images, while separate directories keep future model revisions and
+sketch-local overrides isolated.

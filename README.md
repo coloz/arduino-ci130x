@@ -7,8 +7,9 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 
 > [!IMPORTANT]
 > 当前项目仍处于开发预览阶段。源码编译、链接、双核镜像后处理和本地
-> Boards Manager 安装流程已经验证；CI1303 已完成实体烧录以及 I2C/SSD1306
-> 运行测试，CI1302、CI1306 和音频/离线语音仍待实体回归。请勿直接用于量产固件。
+> Boards Manager 安装流程已经验证；CI1303 已完成 Standard/CWSL 启动、音频提示
+> 回调、核心外设以及 I2C/SSD1306 实体测试。CI1302、CI1306 和受控说词识别仍待
+> 实体回归。请勿直接用于量产固件。
 
 ## 目录
 
@@ -29,18 +30,19 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前开发版本 | `1.0.3` |
+| 当前开发版本 | `1.0.4` |
 | Arduino IDE | Arduino IDE 2.x |
 | Arduino CLI | 已使用 1.5.0 验证 |
-| 主机系统 | Windows 10/11 x64 |
-| 编译器 | Nuclei RISC-V GCC 9.2.0（`rv32imafc / ilp32f`） |
+| 主机系统 | GCC/`citool-cli` 发布：Windows x64、Linux x86_64、macOS x86_64；完整固件流程：Windows 10/11 x64 |
+| 编译器 | Nuclei RISC-V GCC 9.2.0（`rv32imafc / ilp32f`）；macOS 由官方 `v9.2RC` 源码构建 |
 | 算法配置 | 工具菜单可选标准离线 ASR 或命令词自学习 CWSL profile |
-| 公共 Boards Manager 发布 | `v1.0.3`（Windows x64） |
-| 硬件运行验证 | CI1303：串口烧录、UART0、I2C/SSD1306 已通过；其余待验证 |
+| 公共 Boards Manager 发布 | `v1.0.4`（Windows x64、Linux x86_64、macOS x86_64） |
+| 硬件运行验证 | CI1303：Standard/CWSL 启动、音频提示回调、核心外设、I2C/SSD1306 已通过；其余待验证 |
 
 当前版本在编译前检查 sketch 根目录的 profile 资源；标准 ASR 使用 `recursos/*.bin`，
-CWSL 使用 `recursos/cwsl/*.bin`。缺少 `asr.bin`、`dnn.bin`、`voice.bin` 或
-`user_file.bin` 时，仅从 Arduino package 的对应 profile 补齐，不覆盖项目文件。
+CWSL 使用 `recursos/cwsl/*.bin`。缺少分区时从 Arduino package 的对应 profile 补齐。
+精确匹配 1.0.3 及更早版本已知不兼容 Standard 四文件哈希的完整集合会安全升级；
+任何自定义、修改过或混合的资源集都不会被覆盖，并会给出兼容性警告。
 原厂示例中可获得源码的 138 个编译单元随平台发布，并在 Arduino 首次构建时并行
 编译为非 LTO `.o` 后直接链接；同一构建目录后续编译会复用缓存，不再使用
 `libci13xx_sdk.a`。原厂 SDK 未提供源码的 ASR、TTS、BLE、FreeRTOS port、DSU 等
@@ -78,13 +80,18 @@ CWSL 使用 `recursos/cwsl/*.bin`。缺少 `asr.bin`、`dnn.bin`、`voice.bin` �
 https://raw.githubusercontent.com/coloz/arduino-ci130x/main/package/package_chipintelli_index.json
 ```
 
-随后打开开发板管理器，搜索并安装 **ChipIntelli CI130X Arduino**。当前发布包仅
-提供 Windows x64 编译器和 `citool-cli` 烧录工具。
+随后打开开发板管理器，搜索并安装 **ChipIntelli CI130X Arduino**。发布流程会附带
+Windows x64、macOS Universal 和 Linux x86_64 的 `citool-cli`，以及 Windows x64、
+Linux x86_64、macOS x86_64 的 Nuclei GCC 9.2.0。Apple Silicon 会按 Arduino
+Boards Manager 的主机回退规则使用 macOS x86_64 GCC，因此系统需能运行 Intel
+程序。当前 SDK 预构建脚本和 `ci-tool-kit.exe` 后处理仍使完整固件流程仅支持
+Windows x64。Linux GCC 已通过真实 CI1306 编译、LTO 和链接；macOS 构建工作流
+会在发布前执行版本、目标、multilib 和链接冒烟检查。
 
 固定版本的索引也随 GitHub Release 发布：
 
 ```text
-https://github.com/coloz/arduino-ci130x/releases/download/v1.0.3/package_chipintelli_index.json
+https://github.com/coloz/arduino-ci130x/releases/download/v1.0.4/package_chipintelli_index.json
 ```
 
 ## 快速开始
@@ -114,8 +121,9 @@ arduino-cli compile --fqbn chipintelli:ci13xx:ci1303 `
 ```
 
 第一次编译会在 sketch 根目录创建所选 profile 的资源目录：标准 ASR 为 `recursos/`，
-CWSL 为 `recursos/cwsl/`，并复制该 profile 的四个分区文件。需要定制模型、播报音或
-用户文件时，直接替换对应文件；后续编译不会覆盖它们。构建目录
+CWSL 为 `recursos/cwsl/`，并复制该 profile 的四个分区文件和 package-managed 清单。
+需要定制模型、播报音或用户文件时，直接替换对应文件；检测到修改后，后续编译不会
+覆盖它们。构建目录
 同时保留 `<sketch>.user_code.bin` 和最终的 `<sketch>.bin`，Arduino IDE 导出的
 `.firmware.bin` 是可直接烧录的完整固件。
 
@@ -199,8 +207,9 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 
 - **标准离线 ASR** 使用 `USE_NULL=1`、`USE_CWSL=0`、NULL 专用链接脚本和
   NULL 第二核镜像；**命令词自学习 CWSL** 使用 `USE_NULL=0`、`USE_CWSL=1`、
-  CWSL 专用链接脚本、CWSL 第二核镜像以及 V2.7.14 官方 CWSL sample 的完整
-  ASR/DNN/Voice/UserFile 资源。这是编译期选择，同一固件不能在运行时切换 profile；
+  CWSL 专用链接脚本和 CWSL 第二核镜像。两个 profile 的分区均由 V2.7.14 官方
+  `offline_asr_alg_pro_sample` 输入独立生成；当前 vendor sample 生成相同的
+  ASR/DNN/Voice/UserFile payload。这是编译期选择，同一固件不能在运行时切换 profile；
   标准 profile 中 `ChipIntelliCWSL.begin()` 会返回 `false`。CWSL `cmd_info` 和
   提示音同时保留原厂 ID 199～208 的语音控制流程；Arduino API 可直接发起操作，
   无需依赖这些控制词。为避免程序操作与语音控制互相触发，程序学习接口拒绝将
@@ -312,16 +321,18 @@ dynamic memory 包含重叠的
   后处理；实体 SD 卡的初始化、FAT16/FAT32 读写和吞吐量仍待硬件验证；
 - `ChipIntelliWatchdog`、`ChipIntelliTimer`/`Ticker`、`Preferences` 与
   `ChipIntelliAudio` 已在 CI1302、CI1303、CI1306 完成单库及合并编译、链接和完整
-  固件后处理；定时精度、复位、Flash 掉电保持和音频输出仍待实体板验证；
+  固件后处理；CI1303 已通过 Timer/Ticker、Watchdog 控制、EEPROM/Preferences 跨复位
+  保持、音频初始化和提示音完成回调，Watchdog 实际超时复位及其余芯片仍待验证；
 - `ChipIntelliCWSL/SerialLearning` 已在 CI1302、CI1303、CI1306 的标准离线 ASR
   与 CWSL 两种 profile 完成 6/6 编译、链接、双核合并、`compose` 和 `inspect`；
-  链接映射与合并镜像均确认使用各自专用链接脚本和第二核镜像，自学习录音、模板
-  持久化和识别仍待实体板验证；
+  链接映射与合并镜像均确认使用各自专用链接脚本和第二核镜像；CI1303 CWSL 已完成
+  实体启动和模板容量查询，自学习录音、模板持久化和识别仍待受控说词验证；
 - `v1.0.0` Boards Manager 发布包已在隔离 Arduino CLI 环境完成安装；CI1306 的
   16 个安装后示例以及 CI1302/CI1303 的综合冒烟示例均编译通过，共 18/18；
 - CI1302、CI1303 与 CI1306 已在隔离 Arduino CLI 环境验证资源准备、完整编译、
   `compose` 和 `inspect`；CI1303 已使用 `citool-cli` 完成实体板上传、固件 CRC、
-  UART0 和 I2C/SSD1306 运行验证，CI1302、CI1306、音频和离线语音仍待验证。
+  Standard/CWSL SDK 启动、UART0、音频提示回调和 I2C/SSD1306 运行验证，CI1302、
+  CI1306 与受控说词识别仍待验证。
 
 详细环境、步骤与已知工具链问题见 [package/VALIDATION.md](package/VALIDATION.md)。
 

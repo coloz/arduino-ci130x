@@ -3,7 +3,9 @@ param(
     [string]$SdkRoot = (Join-Path $PSScriptRoot '..\..\CI130X_SDK_ALG_V2.7.14'),
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\recursos\cwsl'),
     [string]$CiToolKit = (Join-Path $PSScriptRoot 'sdk\bin\ci-tool-kit.exe'),
-    [string]$LamePath
+    [string]$LamePath,
+    [ValidateSet('standard', 'cwsl')]
+    [string]$Profile = 'cwsl'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,7 +42,7 @@ function Assert-Output {
 $sdkPath = (Resolve-Path -LiteralPath $SdkRoot).Path
 $firmwareRoot = Join-Path $sdkPath 'projects\offline_asr_alg_pro_sample\firmware'
 if (-not (Test-Path -LiteralPath $firmwareRoot -PathType Container)) {
-    throw "The SDK does not contain the official CWSL sample firmware tree: $firmwareRoot"
+    throw "The SDK does not contain the official V2.7.14 offline-ASR sample firmware tree: $firmwareRoot"
 }
 $ciToolPath = Resolve-RequiredFile -Path $CiToolKit -Description 'vendor ci-tool-kit.exe'
 
@@ -58,21 +60,21 @@ $lameExe = Resolve-RequiredFile -Path $LamePath -Description 'vendor lame.exe'
     -Description 'vendor libmp3lame.dll')
 
 $asrSource0 = Resolve-RequiredFile -Path (Join-Path $firmwareRoot 'asr\[0]asr_chinese_CI1306_V00874.dat') `
-    -Description 'official CWSL ASR model 0'
+    -Description 'official V2.7.14 offline-ASR model 0'
 $asrSource1 = Resolve-RequiredFile -Path (Join-Path $firmwareRoot 'asr\[1]asr_chinese_CI1306_V00874.dat') `
-    -Description 'official CWSL ASR model 1'
+    -Description 'official V2.7.14 offline-ASR model 1'
 $dnnSource = Resolve-RequiredFile -Path (Join-Path $firmwareRoot 'dnn\[0]G3-NLP-CH-S-PRO-V00874.fefixbin458') `
-    -Description 'official CWSL DNN model'
+    -Description 'official V2.7.14 offline-ASR DNN model'
 $cmdInfoSource = Resolve-RequiredFile -Path (Join-Path $firmwareRoot 'user_file\cmd_info\[60000]{cmd_info}.xlsx.bin') `
-    -Description 'official CWSL cmd_info resource'
+    -Description 'official V2.7.14 offline-ASR cmd_info resource'
 $voiceSource = Join-Path $firmwareRoot 'voice\src'
 $voiceSources = @(Get-ChildItem -LiteralPath $voiceSource -File | Sort-Object Name)
 if ($voiceSources.Count -ne 130) {
-    throw "Expected 130 official CWSL voice source files, found $($voiceSources.Count)."
+    throw "Expected 130 official V2.7.14 voice source files, found $($voiceSources.Count)."
 }
 
 $tempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd('\') + '\'
-$stagingRoot = Join-Path $tempRoot ("ci130x-cwsl-resources-{0}-{1}" -f $PID, [guid]::NewGuid().ToString('N'))
+$stagingRoot = Join-Path $tempRoot ("ci130x-{0}-resources-{1}-{2}" -f $Profile, $PID, [guid]::NewGuid().ToString('N'))
 $stagingRoot = [System.IO.Path]::GetFullPath($stagingRoot)
 if (-not $stagingRoot.StartsWith($tempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "Refusing to use a staging directory outside TEMP: $stagingRoot"
@@ -90,9 +92,9 @@ try {
     Copy-Item -LiteralPath $asrSource0, $asrSource1 -Destination $asrWork
     Copy-Item -LiteralPath $dnnSource -Destination $dnnWork
     Copy-Item -LiteralPath $cmdInfoSource -Destination $userFileWork
-    Invoke-NativeTool $ciToolPath @('merge', 'asr-file', '-i', $asrWork) 'CWSL asr.bin generation'
-    Invoke-NativeTool $ciToolPath @('merge', 'nn-file', '-i', $dnnWork, '-a', $asrWork) 'CWSL dnn.bin generation'
-    Invoke-NativeTool $ciToolPath @('merge', 'user-file', '-i', $userFileWork) 'CWSL user_file.bin generation'
+    Invoke-NativeTool $ciToolPath @('merge', 'asr-file', '-i', $asrWork) "$Profile asr.bin generation"
+    Invoke-NativeTool $ciToolPath @('merge', 'nn-file', '-i', $dnnWork, '-a', $asrWork) "$Profile dnn.bin generation"
+    Invoke-NativeTool $ciToolPath @('merge', 'user-file', '-i', $userFileWork) "$Profile user_file.bin generation"
 
     foreach ($source in $voiceSources) {
         $baseName = [System.IO.Path]::GetFileNameWithoutExtension($source.Name)
@@ -106,8 +108,8 @@ try {
                 "MP3 conversion for $($source.Name)"
         }
     }
-    Invoke-NativeTool $ciToolPath @('ID3-editor', '--input-dir', $voiceWork) 'CWSL voice ID tagging'
-    Invoke-NativeTool $ciToolPath @('merge', 'user-file', '-i', $voiceWork, '-o', $voiceWork) 'CWSL voice.bin generation'
+    Invoke-NativeTool $ciToolPath @('ID3-editor', '--input-dir', $voiceWork) "$Profile voice ID tagging"
+    Invoke-NativeTool $ciToolPath @('merge', 'user-file', '-i', $voiceWork, '-o', $voiceWork) "$Profile voice.bin generation"
 
     $generated = [ordered]@{
         'asr.bin' = @((Join-Path $asrWork 'asr.bin'), 20038, '08624F47C63858A4F57F31BA7E2CFA3C9E981B03C868047817FFDA6522082B3E')
@@ -123,6 +125,28 @@ try {
         Copy-Item -LiteralPath $item.Value[0] -Destination $destination -Force
         Write-Host ("Generated {0}: {1} bytes, SHA-256 {2}" -f $destination, $item.Value[1], $item.Value[2])
     }
+
+    $manifest = [ordered]@{
+        schemaVersion = 1
+        profile = $Profile
+        mode = 'vendor-sample'
+        source = 'CI130X_SDK_ALG_V2.7.14/projects/offline_asr_alg_pro_sample/firmware'
+        vendorSpokenControlIdsIncluded = $true
+        resources = [ordered]@{
+            'asr.bin' = [ordered]@{ size = 20038; sha256 = '08624f47c63858a4f57f31ba7e2cfa3c9e981b03c868047817ffda6522082b3e' }
+            'dnn.bin' = [ordered]@{ size = 1410376; sha256 = '18f90809b641b02d3f2e9e10dc3d496ffe720d370410ec048b89691b56c19991' }
+            'voice.bin' = [ordered]@{ size = 379741; sha256 = 'c1948b068deebb58a455a27ca4b9941d331e613daf2baeb99422587ef9d58318' }
+            'user_file.bin' = [ordered]@{ size = 12321; sha256 = '6359adf0da19a774bbe1e094bc2ac94e67272096a8c10fa9b0565514127661fd' }
+        }
+    }
+    $manifestJson = $manifest | ConvertTo-Json -Depth 4
+    $manifestPath = Join-Path $outputRoot 'manifest.json'
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText(
+        $manifestPath,
+        $manifestJson + [Environment]::NewLine,
+        $utf8NoBom)
+    Write-Host "Generated $Profile resource manifest: $manifestPath"
 }
 finally {
     if (Test-Path -LiteralPath $stagingRoot) {
@@ -133,4 +157,4 @@ finally {
     }
 }
 
-Write-Host 'CWSL resources match CI130X SDK ALG V2.7.14 offline_asr_alg_pro_sample outputs.'
+Write-Host "$Profile resources match CI130X SDK ALG V2.7.14 offline_asr_alg_pro_sample outputs."

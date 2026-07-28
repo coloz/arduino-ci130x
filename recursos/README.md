@@ -2,24 +2,34 @@
 
 This directory is shipped in the Arduino platform package. Before compilation,
 `tools/prepare_resources.ps1` creates the sketch-local `recursos/` directory and
-copies only missing `asr.bin`, `dnn.bin`, `voice.bin` and `user_file.bin` files
-from the selected algorithm profile. Standard ASR uses the files directly in
-this directory; CWSL uses the files under `cwsl/`. They are copied to the same
-relative paths below the sketch's `recursos/` directory. Sketch-local files are
-never overwritten, and switching the Arduino Algorithm menu never reuses the
-other profile's model files.
+copies missing `asr.bin`, `dnn.bin`, `voice.bin` and `user_file.bin` files from
+the selected algorithm profile. Standard ASR uses the files directly in this
+directory; CWSL uses the files under `cwsl/`. Package-managed or exact known-
+legacy sets can be upgraded as described below; user-owned files are never
+overwritten. Switching the Arduino Algorithm menu never reuses the other
+profile's model files.
 
 `citool-cli` embeds the validated 8 KiB CI130X FW_V2 Bootloader and generates
 the metadata and partition table itself. The installed Arduino platform does
 not require or ship a complete `Firmware_V2.0.0.bin` template.
 
-The four standard-ASR partition files are reproducibly extracted from the SDK's
-TTS reference firmware by running `tools/generate_package_resources.ps1`. The
-script verifies the source partition-table checksum and every extracted
-partition CRC16. The four CWSL files reproduce the official V2.7.14
-`offline_asr_alg_pro_sample` pipeline. Generate them with
-`tools/generate_cwsl_package_resources.ps1`; see `cwsl/README.md` for the exact
-source and hashes.
+Both resource profiles reproduce the official V2.7.14
+`offline_asr_alg_pro_sample` pipeline. The older compact partitions embedded in
+the SDK's TTS reference firmware do not bring up the V2.7.14 offline-ASR
+host/algorithm pair and must not be used here. Generate Standard ASR with
+`tools/generate_package_resources.ps1` and CWSL with
+`tools/generate_cwsl_package_resources.ps1`. Each profile is generated into its
+own directory with a source manifest and locked SHA-256 values. The current
+vendor sample produces identical resource payloads for both profiles; the
+Arduino menu still selects different compile flags, linker scripts and
+second-core images.
+
+When the package first copies a complete profile set into a sketch, it also
+writes `.chipintelli-package-resources.json`. A later package can upgrade that
+set only while every file still matches the recorded size and hash. Version
+1.0.4 additionally recognizes and upgrades the exact four-file Standard set
+copied by version 1.0.3 and earlier. A changed, partial or mixed set is treated
+as user-owned and is never overwritten.
 
 ## Sketch-local user-file entries
 

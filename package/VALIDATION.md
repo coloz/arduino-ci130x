@@ -230,3 +230,71 @@ menu therefore enforces `build.user_code_max=233472` and the conservative host
 program limit 157,233. CI1303 and CI1306 CWSL retain the 458,752-byte user-code
 limit. This remains build-path validation only; learning capture, template
 persistence and learned-word recognition require physical-board testing.
+
+## Cross-host Nuclei GCC validation
+
+On 2026-07-26, the ChipIntelli Linux `riscv-gcc-9.2.0.tar.gz` archive was
+downloaded from the vendor API and pinned at SHA-256
+`0ee91c983f2cf3eaa26b444eb553847a7dda34f3fb5d97c34b977ca43e593ca5`.
+It reported GCC 9.2.0, target `riscv-nuclei-elf`, and the required
+`rv32imafc/ilp32f` multilib.
+
+Directly linking the vendor's binary-only archives with a 64-bit Linux process
+failed because their GCC LTO bytecode was produced by the validated 32-bit
+Windows compiler. All 91 members of the 12 retained vendor archives were
+therefore materialized once as ordinary RISC-V ELF relocatable objects. The
+generated `tools/sdk/lib-cross-host/BUILD-MANIFEST.txt` pins every input and
+output SHA-256, and all output members were checked to contain no `.gnu.lto_*`
+sections.
+
+A real CI1306 standard-ASR firmware link then passed with both the pinned
+ChipIntelli Linux package and the official Nuclei `v9.2RC` Linux build. The
+probe compiled the 138 source SDK units plus 16 Arduino/C++ objects and linked
+the actual linker script and vendor archives. Loadable `.text` grew from
+56,186 bytes with the original Windows LTO libraries to 62,744 bytes with the
+cross-host archives. This validates target link compatibility, not device
+runtime behavior.
+
+The package builder also passed archive/index generation with Windows, Linux
+and macOS compiler host records, plus Windows, Linux, Intel macOS and Apple
+Silicon `citool-cli` host records. The packaging-only macOS fixture reused the
+Linux archive to exercise archive routing; the real macOS compiler must still
+be produced and smoke-linked by `toolchain-release.yml` on
+`macos-15-intel` before publishing.
+
+## Arduino 1.0.4 Standard-resource and tone failure-path validation
+
+On 2026-07-28, the Standard resource generator stopped extracting the compact
+partitions from the SDK TTS reference image. Those files were byte-identical in
+V2.7.12 and V2.7.14 but left the current offline-ASR SDK in STARTING state on a
+CI1303. Standard and CWSL resources are now independently reproduced from the
+V2.7.14 `offline_asr_alg_pro_sample` raw inputs. Both regeneration paths matched
+their manifests byte for byte: ASR 20,038 bytes, DNN 1,410,376 bytes, Voice
+379,741 bytes and UserFile 12,321 bytes. The package builder now rejects either
+profile when its manifest source, profile, size or SHA-256 does not match.
+
+The resource-preparation migration was exercised with three isolated sketches:
+a new sketch received the current files and managed manifest; the exact legacy
+four-file Standard set was upgraded; and a deliberately modified resource was
+preserved while only missing files were filled. The custom/mixed case did not
+receive a managed marker and emitted a compatibility warning.
+
+Warning-enabled clean builds of `CI13XXSmoke` under Standard and
+`ChipIntelliCWSL/SerialLearning` under CWSL completed SDK compilation, Arduino
+compilation, linking, dual-core merge, `compose` and strict `inspect` for
+CI1302, CI1303 and CI1306. No compiler diagnostics were emitted. The largest
+new Standard image was the CI1302/CI1303 2,056,225-byte firmware; CI1302 stayed
+within its 2 MB Flash/NV layout.
+
+The CI1303 on COM31 then passed CRC-verified uploads with both profiles. The
+Standard hardware diagnostic reached SDK READY and passed GPIO, PWM endpoints,
+finite tone release, Wire/Serial1 resource exclusion, Timer, Ticker, Watchdog
+control, EEPROM, Preferences, audio initialization, volume/mute and voice-ID 1
+completion. The CWSL example reported `templates=0 remaining=16 max=16`.
+
+Finally, a fault-injection sketch allocated FreeRTOS heap until
+`xPortGetFreeHeapSize()` returned zero, forcing `tone()` software-timer
+allocation to fail. Servo immediately claimed the same PWM pin and reported
+`resource_released=PASS`, verifying that a finite tone now fails closed instead
+of running indefinitely. The board was restored to the fixed Standard
+diagnostic firmware after testing.

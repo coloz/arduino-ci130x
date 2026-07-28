@@ -212,23 +212,35 @@ extern "C" void tone(uint8_t pin, unsigned int frequency, unsigned long duration
     pwm_init(pwm, config);
     pwm_set_restart_md(pwm, 0);
     pwm_start(pwm);
-    if (duration && xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
-        const uint8_t channel = desc.pwmChannel;
-        TickType_t ticks = static_cast<TickType_t>(
-            (static_cast<uint64_t>(duration) + portTICK_PERIOD_MS - 1U) / portTICK_PERIOD_MS);
-        if (!ticks) ticks = 1;
-        if (!s_toneTimers[channel]) {
-            s_toneTimers[channel] = xTimerCreate(
-                "tone", ticks, pdFALSE,
-                reinterpret_cast<void *>(static_cast<uintptr_t>(channel)), toneTimerCallback);
-        }
-        if (s_toneTimers[channel]) {
-            s_tonePins[channel] = pin;
-            if (xTimerChangePeriod(s_toneTimers[channel], ticks, 0) == pdPASS) {
-                s_toneActive[channel] = true;
-            }
+    if (!duration) return;
+
+    const uint8_t channel = desc.pwmChannel;
+    if (xTaskGetSchedulerState() != taskSCHEDULER_RUNNING) {
+        releasePwmPin(pin, PeripheralOwner::Tone);
+        return;
+    }
+
+    TickType_t ticks = static_cast<TickType_t>(
+        (static_cast<uint64_t>(duration) + portTICK_PERIOD_MS - 1U) /
+        portTICK_PERIOD_MS);
+    if (!ticks) ticks = 1;
+    if (!s_toneTimers[channel]) {
+        s_toneTimers[channel] = xTimerCreate(
+            "tone", ticks, pdFALSE,
+            reinterpret_cast<void *>(static_cast<uintptr_t>(channel)),
+            toneTimerCallback);
+    }
+    if (s_toneTimers[channel]) {
+        s_tonePins[channel] = pin;
+        if (xTimerChangePeriod(s_toneTimers[channel], ticks, 0) == pdPASS) {
+            s_toneActive[channel] = true;
+            return;
         }
     }
+
+    // A finite-duration tone must fail closed. Otherwise heap exhaustion or a
+    // full timer command queue would leave the PWM running indefinitely.
+    releasePwmPin(pin, PeripheralOwner::Tone);
 }
 
 extern "C" void noTone(uint8_t pin) {

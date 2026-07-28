@@ -20,6 +20,10 @@ jobs:
 
     env:
       GH_TOKEN: ${{ github.token }}
+      CITOOL_CLI_REPOSITORY: coloz/citool-cli
+      CITOOL_CLI_VERSION: 1.1.1
+      NUCLEI_GCC_RELEASE_TAG: nuclei-gcc-v9.2.0-host1
+      NUCLEI_GCC_VERSION: 9.2.0
 
     steps:
       - name: Check out deploy branch
@@ -57,8 +61,126 @@ jobs:
             --output="dist/${{ steps.release.outputs.asset }}" \
             "$GITHUB_SHA"
 
+      - name: Download citool-cli release archives
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.CITOOL_CLI_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+
+          archives=(
+            "citool-cli-${CITOOL_CLI_VERSION}-windows-x86_64.zip"
+            "citool-cli-${CITOOL_CLI_VERSION}-macos-universal.tar.gz"
+            "citool-cli-${CITOOL_CLI_VERSION}-linux-x86_64.tar.gz"
+          )
+          patterns=()
+          for archive in "${archives[@]}"; do
+            patterns+=(--pattern "$archive" --pattern "$archive.sha256")
+          done
+          gh release download "v${CITOOL_CLI_VERSION}" \
+            --repo "$CITOOL_CLI_REPOSITORY" \
+            --dir dist \
+            "${patterns[@]}"
+
+      - name: Download Nuclei GCC host archives
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          archives=(
+            "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-windows.zip"
+            "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-linux-x86_64.tar.gz"
+            "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-x86_64.tar.gz"
+          )
+          patterns=()
+          for archive in "${archives[@]}"; do
+            patterns+=(--pattern "$archive" --pattern "$archive.sha256")
+          done
+          gh release download "$NUCLEI_GCC_RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir dist \
+            "${patterns[@]}"
+
+      - name: Verify and checksum release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
           cd dist
-          sha256sum '${{ steps.release.outputs.asset }}' > SHA256SUMS.txt
+          sha256sum --check ./*.sha256
+          unzip -Z1 "citool-cli-${CITOOL_CLI_VERSION}-windows-x86_64.zip" \
+            | grep -Fxq 'citool-cli/citool-cli.exe'
+          tar -tzf "citool-cli-${CITOOL_CLI_VERSION}-macos-universal.tar.gz" \
+            | sed 's#^\./##' | grep -Fxq 'citool-cli/citool-cli'
+          tar -tzf "citool-cli-${CITOOL_CLI_VERSION}-linux-x86_64.tar.gz" \
+            | sed 's#^\./##' | grep -Fxq 'citool-cli/citool-cli'
+          unzip -Z1 "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-windows.zip" \
+            | grep -Fxq 'gcc_fix_raissrc/bin/riscv-nuclei-elf-gcc.exe'
+          tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-linux-x86_64.tar.gz" \
+            | sed 's#^\./##' | grep -Fxq 'riscv-gcc/bin/riscv-nuclei-elf-gcc'
+          tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-x86_64.tar.gz" \
+            | sed 's#^\./##' | grep -Fxq 'riscv-gcc/bin/riscv-nuclei-elf-gcc'
+
+          sha256sum \
+            '${{ steps.release.outputs.asset }}' \
+            "citool-cli-${CITOOL_CLI_VERSION}-windows-x86_64.zip" \
+            "citool-cli-${CITOOL_CLI_VERSION}-macos-universal.tar.gz" \
+            "citool-cli-${CITOOL_CLI_VERSION}-linux-x86_64.tar.gz" \
+            "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-windows.zip" \
+            "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-linux-x86_64.tar.gz" \
+            "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-x86_64.tar.gz" \
+            > SHA256SUMS.txt
+
+      - name: Generate Boards Manager index
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          PLATFORM_ASSET: ${{ steps.release.outputs.asset }}
+          PLATFORM_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          dist = Path('dist')
+          index = json.loads(Path('package/package_chipintelli_index.template.json').read_text(encoding='utf-8'))
+          release_base = (
+              f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/"
+              f"{os.environ['RELEASE_TAG']}"
+          )
+
+          def metadata(name):
+              path = dist / name
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              return {
+                  'url': f'{release_base}/{name}',
+                  'archiveFileName': name,
+                  'checksum': f'SHA-256:{digest}',
+                  'size': str(path.stat().st_size),
+              }
+
+          package = index['packages'][0]
+          package['email'] = 'support@chipintelli.com'
+          platform = package['platforms'][0]
+          platform['version'] = os.environ['PLATFORM_VERSION']
+          platform.update(metadata(os.environ['PLATFORM_ASSET']))
+
+          for tool in package['tools']:
+              for system in tool['systems']:
+                  system.update(metadata(system['archiveFileName']))
+
+          output = json.dumps(index, indent=2, ensure_ascii=False) + '\n'
+          if '__' in output:
+              raise SystemExit('Boards Manager index still contains template placeholders.')
+          (dist / 'package_chipintelli_index.json').write_text(output, encoding='utf-8', newline='\n')
+          PY
+
+          cd dist
+          sha256sum package_chipintelli_index.json >> SHA256SUMS.txt
 
       - name: Publish GitHub Release
         shell: bash
@@ -66,8 +188,7 @@ jobs:
           set -euo pipefail
 
           gh release create '${{ steps.release.outputs.tag }}' \
-            "dist/${{ steps.release.outputs.asset }}" \
-            dist/SHA256SUMS.txt \
+            dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "Deploy ${{ steps.release.outputs.version }} ($GITHUB_RUN_NUMBER)" \

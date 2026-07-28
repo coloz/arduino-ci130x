@@ -1,6 +1,6 @@
 {
     "schemaVersion":  1,
-    "profile":  "cwsl",
+    "profile":  "standard",
     "mode":  "vendor-sample",
     "source":  "CI130X_SDK_ALG_V2.7.14/projects/offline_asr_alg_pro_sample/firmware",
     "vendorSpokenControlIdsIncluded":  true,

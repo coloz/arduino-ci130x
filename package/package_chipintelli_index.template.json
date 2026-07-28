@@ -12,10 +12,10 @@
         {
           "name": "ChipIntelli CI130X Arduino",
           "architecture": "ci13xx",
-          "version": "1.0.3",
+          "version": "1.0.4",
           "category": "Contributed",
           "url": "__PLATFORM_ARCHIVE_URL__",
-          "archiveFileName": "arduino-ci130x-1.0.3.zip",
+          "archiveFileName": "arduino-ci130x-1.0.4.zip",
           "checksum": "SHA-256:__PLATFORM_SHA256__",
           "size": "__PLATFORM_SIZE_BYTES__",
           "boards": [
@@ -38,7 +38,7 @@
             {
               "packager": "chipintelli",
               "name": "citool-cli",
-              "version": "1.0.2"
+              "version": "1.1.1"
             }
           ]
         }
@@ -52,21 +52,56 @@
               "host": "x86_64-mingw32",
               "url": "__AUTHORIZED_REPACKED_TOOLCHAIN_ZIP_URL__",
               "archiveFileName": "riscv-nuclei-elf-gcc-9.2.0-windows.zip",
-              "checksum": "SHA-256:__TOOLCHAIN_SHA256__",
-              "size": "__TOOLCHAIN_SIZE_BYTES__"
+              "checksum": "SHA-256:__TOOLCHAIN_WINDOWS_SHA256__",
+              "size": "__TOOLCHAIN_WINDOWS_SIZE_BYTES__"
+            },
+            {
+              "host": "x86_64-pc-linux-gnu",
+              "url": "__ARDUINO_RELEASE_BASE_URL__/riscv-nuclei-elf-gcc-9.2.0-linux-x86_64.tar.gz",
+              "archiveFileName": "riscv-nuclei-elf-gcc-9.2.0-linux-x86_64.tar.gz",
+              "checksum": "SHA-256:__TOOLCHAIN_LINUX_SHA256__",
+              "size": "__TOOLCHAIN_LINUX_SIZE_BYTES__"
+            },
+            {
+              "host": "x86_64-apple-darwin",
+              "url": "__ARDUINO_RELEASE_BASE_URL__/riscv-nuclei-elf-gcc-9.2.0-macos-x86_64.tar.gz",
+              "archiveFileName": "riscv-nuclei-elf-gcc-9.2.0-macos-x86_64.tar.gz",
+              "checksum": "SHA-256:__TOOLCHAIN_MACOS_SHA256__",
+              "size": "__TOOLCHAIN_MACOS_SIZE_BYTES__"
             }
           ]
         },
         {
           "name": "citool-cli",
-          "version": "1.0.2",
+          "version": "1.1.1",
           "systems": [
             {
               "host": "x86_64-mingw32",
-              "url": "__ARDUINO_RELEASE_BASE_URL__/citool-cli-1.0.2-windows-x86_64.zip",
-              "archiveFileName": "citool-cli-1.0.2-windows-x86_64.zip",
-              "checksum": "SHA-256:__CITOOL_CLI_SHA256__",
-              "size": "__CITOOL_CLI_SIZE_BYTES__"
+              "url": "__ARDUINO_RELEASE_BASE_URL__/citool-cli-1.1.1-windows-x86_64.zip",
+              "archiveFileName": "citool-cli-1.1.1-windows-x86_64.zip",
+              "checksum": "SHA-256:__CITOOL_CLI_WINDOWS_SHA256__",
+              "size": "__CITOOL_CLI_WINDOWS_SIZE_BYTES__"
+            },
+            {
+              "host": "x86_64-apple-darwin",
+              "url": "__ARDUINO_RELEASE_BASE_URL__/citool-cli-1.1.1-macos-universal.tar.gz",
+              "archiveFileName": "citool-cli-1.1.1-macos-universal.tar.gz",
+              "checksum": "SHA-256:__CITOOL_CLI_MACOS_SHA256__",
+              "size": "__CITOOL_CLI_MACOS_SIZE_BYTES__"
+            },
+            {
+              "host": "arm64-apple-darwin",
+              "url": "__ARDUINO_RELEASE_BASE_URL__/citool-cli-1.1.1-macos-universal.tar.gz",
+              "archiveFileName": "citool-cli-1.1.1-macos-universal.tar.gz",
+              "checksum": "SHA-256:__CITOOL_CLI_MACOS_SHA256__",
+              "size": "__CITOOL_CLI_MACOS_SIZE_BYTES__"
+            },
+            {
+              "host": "x86_64-pc-linux-gnu",
+              "url": "__ARDUINO_RELEASE_BASE_URL__/citool-cli-1.1.1-linux-x86_64.tar.gz",
+              "archiveFileName": "citool-cli-1.1.1-linux-x86_64.tar.gz",
+              "checksum": "SHA-256:__CITOOL_CLI_LINUX_SHA256__",
+              "size": "__CITOOL_CLI_LINUX_SIZE_BYTES__"
             }
           ]
         }
