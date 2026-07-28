@@ -21,7 +21,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       CITOOL_CLI_REPOSITORY: coloz/citool-cli
-      CITOOL_CLI_VERSION: 1.1.1
+      CITOOL_CLI_VERSION: 1.1.2
       NUCLEI_GCC_RELEASE_TAG: nuclei-gcc-v9.2.0-host1
       NUCLEI_GCC_VERSION: 9.2.0
 

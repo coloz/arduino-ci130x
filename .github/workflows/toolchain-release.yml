@@ -147,7 +147,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          brew install gawk gnu-sed gmp mpfr libmpc isl zlib expat texinfo
+          brew install gawk gnu-sed gmp mpfr libmpc isl zlib expat texinfo gcc@14
           echo "$(brew --prefix gnu-sed)/libexec/gnubin" >> "$GITHUB_PATH"
           echo "$(brew --prefix texinfo)/bin" >> "$GITHUB_PATH"
 
@@ -156,8 +156,9 @@ jobs:
         run: |
           set -euo pipefail
           git clone --branch "$NUCLEI_SOURCE_TAG" --depth 1 --single-branch \
-            --recurse-submodules --shallow-submodules \
             https://github.com/riscv-mcu/riscv-gnu-toolchain.git source
+          git -C source submodule update --init --depth 1 \
+            riscv-binutils riscv-gcc riscv-newlib
 
       - name: Add Nuclei target alias to legacy GCC config.sub
         shell: bash
@@ -175,7 +176,8 @@ jobs:
           replacement = '| riscv-* | riscv32-* | riscv64-* \\\n'
           if source.count(needle) != 1:
               raise SystemExit(f'Unable to locate the legacy RISC-V machine pattern in {path}')
-          path.write_text(source.replace(needle, replacement), encoding='utf-8', newline='\n')
+          with path.open('w', encoding='utf-8', newline='\n') as stream:
+              stream.write(source.replace(needle, replacement))
           PY
           fi
           test "$("$config_sub" riscv-nuclei-elf)" = riscv-nuclei-elf
@@ -185,6 +187,12 @@ jobs:
         run: |
           set -euo pipefail
           prefix="$RUNNER_TEMP/riscv-gcc"
+          host_gcc="$(brew --prefix gcc@14)/bin/gcc-14"
+          host_gxx="$(brew --prefix gcc@14)/bin/g++-14"
+          test -x "$host_gcc"
+          test -x "$host_gxx"
+          export CC="$host_gcc"
+          export CXX="$host_gxx"
           export CPPFLAGS="-I$(brew --prefix gmp)/include -I$(brew --prefix mpfr)/include -I$(brew --prefix libmpc)/include -I$(brew --prefix isl)/include -I$(brew --prefix zlib)/include -I$(brew --prefix expat)/include"
           export LDFLAGS="-L$(brew --prefix gmp)/lib -L$(brew --prefix mpfr)/lib -L$(brew --prefix libmpc)/lib -L$(brew --prefix isl)/lib -L$(brew --prefix zlib)/lib -L$(brew --prefix expat)/lib"
           mkdir build
@@ -267,6 +275,7 @@ jobs:
             "target=riscv-nuclei-elf" \
             "gcc=$TOOLCHAIN_VERSION" \
             "host=x86_64-apple-darwin" \
+            "builder=gcc-14" \
             > package/riscv-gcc/BUILD-INFO.txt
           archive="dist/riscv-nuclei-elf-gcc-$TOOLCHAIN_VERSION-macos-x86_64.tar.gz"
           COPYFILE_DISABLE=1 tar -czf "$archive" -C package riscv-gcc

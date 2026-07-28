@@ -16,13 +16,13 @@ The version-pinned `v1.0.4` index is also published as a GitHub Release asset:
 https://github.com/coloz/arduino-ci130x/releases/download/v1.0.4/package_chipintelli_index.json
 ```
 
-The release pipeline mirrors `citool-cli` for Windows x64, macOS Universal
-(Intel and Apple Silicon), and Linux x86_64. It also publishes Nuclei GCC 9.2.0
-for Windows x64, Linux x86_64, and macOS x86_64. Arduino's supported host
-fallback lets Apple Silicon select the Intel macOS compiler archive.
+The release mirrors `citool-cli` for Windows x64, macOS Universal (Intel and
+Apple Silicon), and Linux x86_64. It also publishes Nuclei GCC 9.2.0 for
+Windows x64, Linux x86_64, and macOS x86_64. Arduino's supported host fallback
+lets Apple Silicon select the Intel macOS compiler archive.
 
 `.github/workflows/deploy-release.yml` downloads the three immutable archives
-from `coloz/citool-cli@v1.1.1`, verifies their publisher-provided SHA-256 files,
+from `coloz/citool-cli@v1.1.2`, verifies their publisher-provided SHA-256 files,
 downloads the three compiler archives from the dedicated toolchain release,
 and republishes all six as `arduino-ci130x` Release assets. It generates a
 Boards Manager index whose host records, sizes and hashes point at that exact
@@ -63,9 +63,9 @@ The script validates the official GCC 9.2.0 executable against the SDK build
 manifest, consumes these prebuilt sibling artifacts:
 
 ```text
-..\citool-cli\dist\citool-cli-1.1.1-windows-x86_64.zip
-..\citool-cli\dist\citool-cli-1.1.1-macos-universal.tar.gz
-..\citool-cli\dist\citool-cli-1.1.1-linux-x86_64.tar.gz
+..\citool-cli\dist\citool-cli-1.1.2-windows-x86_64.zip
+..\citool-cli\dist\citool-cli-1.1.2-macos-universal.tar.gz
+..\citool-cli\dist\citool-cli-1.1.2-linux-x86_64.tar.gz
 C:\downloads\riscv-nuclei-elf-gcc-9.2.0-linux-x86_64.tar.gz
 C:\downloads\riscv-nuclei-elf-gcc-9.2.0-macos-x86_64.tar.gz
 ```
@@ -159,7 +159,7 @@ Each `citool-cli` archive must contain one top-level `citool-cli/` directory.
 The Windows ZIP contains `citool-cli.exe`; the macOS/Linux tar.gz archives
 contain executable `citool-cli`. The macOS archive is universal and is mapped
 to both `x86_64-apple-darwin` and `arm64-apple-darwin`; Linux maps to
-`x86_64-pc-linux-gnu`. The platform declares `citool-cli@1.1.1`
+`x86_64-pc-linux-gnu`. The platform declares `citool-cli@1.1.2`
 as a tool dependency. Each build composes the generated `user_code.bin` and the
 sketch's four resource partitions into a complete firmware image; normal Arduino
 upload then uses `citool-cli flash` to write that verified image from Flash

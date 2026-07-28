@@ -5,7 +5,7 @@ param(
     [string[]]$ToolchainArchives,
     [string]$CitoolCliArchive,
     [string[]]$CitoolCliArchives,
-    [string]$CitoolCliVersion = '1.1.1',
+    [string]$CitoolCliVersion = '1.1.2',
     [string]$BaseUrl = 'http://127.0.0.1:8765',
     [switch]$FlatAssetUrls,
     [string]$Version = '1.0.4',
@@ -88,7 +88,7 @@ function Resolve-CitoolCliArchives {
     $resolvedArchives = @()
     foreach ($candidate in $candidates) {
         if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
-            throw "Prebuilt citool-cli release archive was not found: $candidate. Download the three GitHub Actions release archives, or pass them with -CitoolCliArchives."
+            throw "Prebuilt citool-cli release archive was not found: $candidate. Download the three release archives, or pass them with -CitoolCliArchives."
         }
         $resolvedArchives += (Resolve-Path -LiteralPath $candidate).Path
     }
