@@ -159,6 +159,27 @@ jobs:
             --recurse-submodules --shallow-submodules \
             https://github.com/riscv-mcu/riscv-gnu-toolchain.git source
 
+      - name: Add Nuclei target alias to legacy GCC config.sub
+        shell: bash
+        run: |
+          set -euo pipefail
+          config_sub=source/riscv-gcc/config.sub
+          if ! "$config_sub" riscv-nuclei-elf >/dev/null 2>&1; then
+            python3 - "$config_sub" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          source = path.read_text(encoding='utf-8')
+          needle = '| riscv32-* | riscv64-* \\\n'
+          replacement = '| riscv-* | riscv32-* | riscv64-* \\\n'
+          if source.count(needle) != 1:
+              raise SystemExit(f'Unable to locate the legacy RISC-V machine pattern in {path}')
+          path.write_text(source.replace(needle, replacement), encoding='utf-8', newline='\n')
+          PY
+          fi
+          test "$("$config_sub" riscv-nuclei-elf)" = riscv-nuclei-elf
+
       - name: Build Nuclei GCC 9.2.0
         shell: bash
         run: |
