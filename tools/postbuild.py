@@ -6,6 +6,7 @@ Port of postbuild.ps1
 
 import argparse
 import os
+import struct
 import subprocess
 import sys
 import shutil
@@ -24,6 +25,48 @@ def run_command(args, description="Command"):
     if result.returncode != 0:
         raise RuntimeError(f"{description} failed with exit code {result.returncode}")
     return result
+
+
+def align_up(value, alignment):
+    """Round value up to the next alignment boundary."""
+    return (value + alignment - 1) // alignment * alignment
+
+
+def build_user_code_container(host_code, algorithm_code):
+    """Build the two-image container emitted by ci-tool-kit merge user-file.
+
+    The vendor format begins with a 16-bit little-endian image count followed
+    by one packed 10-byte record per image: 16-bit file ID, payload offset and
+    unpadded payload size.  The record table and payload gaps are padded with
+    0xff to 16 bytes.  CI13XX uses file IDs 0 and 1 for the host and algorithm
+    images respectively.
+    """
+    alignment = 16
+    record_format = '<HII'
+    images = (host_code, algorithm_code)
+    header_size = align_up(
+        struct.calcsize('<H') + len(images) * struct.calcsize(record_format),
+        alignment,
+    )
+
+    records = []
+    next_offset = header_size
+    for file_id, image in enumerate(images):
+        if len(image) > 0xffffffff:
+            raise ValueError('CI13XX user-code image exceeds the container format limit.')
+        records.append((file_id, next_offset, len(image)))
+        next_offset = align_up(next_offset + len(image), alignment)
+
+    header = bytearray(struct.pack('<H', len(images)))
+    for record in records:
+        header.extend(struct.pack(record_format, *record))
+    header.extend(b'\xff' * (header_size - len(header)))
+
+    container = header
+    for image, (_, offset, _) in zip(images, records):
+        container.extend(b'\xff' * (offset - len(container)))
+        container.extend(image)
+    return bytes(container)
 
 
 def main():
@@ -167,28 +210,26 @@ def main():
     # If ci-tool-kit is not available (or failed), we need to manually create user_code.bin
     if not merge_cmd:
         print("Using manual user_code.bin construction")
-        # user_code.bin format: [code0.bin][code1.bin]
-        # We need to align properly and create the container format
-
         merged_image = staging / 'user_code.bin'
-
-        # Read the two code images
         code0 = host_image.read_bytes()
         code1 = algorithm_image.read_bytes()
-
-        # Align code0 to 16 bytes, then append code1
-        align = 16
-        padded_size0 = ((len(code0) + align - 1) // align) * align
-        padded_code0 = code0 + b'\x00' * (padded_size0 - len(code0))
-
-        merged_data = padded_code0 + code1
-        merged_image.write_bytes(merged_data)
+        merged_image.write_bytes(build_user_code_container(code0, code1))
     else:
         # ci-tool-kit ran, check for output
         merged_image = staging / 'user_code.bin'
 
     if not merged_image.is_file():
         raise ValueError(f"Merge did not create the expected image: {merged_image}")
+
+    expected_container = build_user_code_container(
+        host_image.read_bytes(),
+        algorithm_image.read_bytes(),
+    )
+    if merged_image.read_bytes() != expected_container:
+        raise ValueError(
+            'Merged user_code.bin does not match the CI13XX dual-core '
+            'container format.'
+        )
 
     merged_image_size = merged_image.stat().st_size
     if merged_image_size > args.max_user_code_size:

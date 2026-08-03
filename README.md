@@ -33,11 +33,11 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 | 当前开发版本 | `1.0.4` |
 | Arduino IDE | Arduino IDE 2.x |
 | Arduino CLI | 已使用 1.5.0 验证 |
-| 主机系统 | GCC：Windows x64、Linux x86_64、macOS 15+ Apple Silicon；`citool-cli`：Windows x64、Linux x86_64、macOS Universal；完整固件流程：Windows 10/11 x64 |
+| 主机系统 | 完整固件流程：Windows 10/11 x64、macOS 15+ Apple Silicon；Linux x86_64 已通过编译/链接验证，完整回归待补充 |
 | 编译器 | Nuclei RISC-V GCC 9.2.0（`rv32imafc / ilp32f`）；macOS 由官方 `nuclei_9.2_fixjalr_forhw` 源码构建 |
 | 算法配置 | 工具菜单可选标准离线 ASR 或命令词自学习 CWSL profile |
 | 公共 Boards Manager 发布 | `v1.0.4`（Windows x64、Linux x86_64、macOS Apple Silicon） |
-| 硬件运行验证 | CI1303：Standard/CWSL 启动、音频提示回调、核心外设、I2C/SSD1306 已通过；其余待验证 |
+| 硬件运行验证 | CI1303：Windows/macOS Standard 启动和音频、CWSL 启动、核心外设、I2C/SSD1306 已通过；其余待验证 |
 
 当前版本在编译前检查 sketch 根目录的 profile 资源；标准 ASR 使用 `recursos/*.bin`，
 CWSL 使用 `recursos/cwsl/*.bin`。缺少分区时从 Arduino package 的对应 profile 补齐。
@@ -85,8 +85,10 @@ Windows x64、macOS Universal 和 Linux x86_64 的 `citool-cli`，以及 Windows
 Linux x86_64、macOS 15+ Apple Silicon 的 Nuclei GCC 9.2.0。macOS 编译器在实体
 Apple Silicon Mac 上由 Nuclei 官方 `nuclei_9.2_fixjalr_forhw` 固定提交源码构建，
 并验证版本、目标、20 组 multilib 以及 C/C++ 链接；目前不提供 Intel Mac 编译器。
-当前 SDK 预构建脚本和 `ci-tool-kit.exe` 后处理仍使完整固件流程仅支持 Windows
-x64。Linux GCC 已通过真实 CI1306 编译、LTO 和链接。
+Windows 使用 PowerShell 和厂家 `ci-tool-kit.exe`，Linux/macOS 使用等价的 Python
+构建钩子以及逐字节兼容的双核容器生成器。macOS Apple Silicon 已完成 CI1303
+内部晶振配置的编译、CH343 串口烧录和三段提示音实机验证；Linux GCC 已通过真实
+CI1306 编译和链接，完整后处理与实体板回归仍待补充。
 
 固定版本的索引也随 GitHub Release 发布：
 
@@ -195,7 +197,7 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 | `ChipIntelliTimer` | `HardwareTimer`、`Ticker` | 硬件中断定时和 FreeRTOS 软件定时任务 |
 | `ChipIntelliWatchdog` | `BasicWatchdog` | 配置、喂养并测试芯片级 IWDG |
 | `ChipIntelliASR` | `ASRResults` | 读取离线语音识别结果 |
-| `ChipIntelliCWSL` | `SerialLearning` | 通过串口学习/删除命令词和唤醒词，并观察异步事件 |
+| `ChipIntelliCWSL` | `BasicLearning`、`SerialLearning` | 最小命令词学习，以及通过串口学习/删除命令词和唤醒词并观察异步事件 |
 | `ChipIntelliAudio` | `PlayVoiceId`、`PromptControl` | 播放与控制已配置提示音 |
 | `ChipIntelliIR` | `RawSendReceive`、`AirConditioner` | 原始波形/NEC 收发，以及使用官方码库控制和匹配空调 |
 
@@ -323,16 +325,19 @@ dynamic memory 包含重叠的
   `ChipIntelliAudio` 已在 CI1302、CI1303、CI1306 完成单库及合并编译、链接和完整
   固件后处理；CI1303 已通过 Timer/Ticker、Watchdog 控制、EEPROM/Preferences 跨复位
   保持、音频初始化和提示音完成回调，Watchdog 实际超时复位及其余芯片仍待验证；
-- `ChipIntelliCWSL/SerialLearning` 已在 CI1302、CI1303、CI1306 的标准离线 ASR
-  与 CWSL 两种 profile 完成 6/6 编译、链接、双核合并、`compose` 和 `inspect`；
-  链接映射与合并镜像均确认使用各自专用链接脚本和第二核镜像；CI1303 CWSL 已完成
-  实体启动和模板容量查询，自学习录音、模板持久化和识别仍待受控说词验证；
+- Windows 上的 `ChipIntelliCWSL/SerialLearning` 已在 CI1302、CI1303、CI1306
+  的标准离线 ASR 与 CWSL 两种 profile 完成 6/6 编译、链接、双核合并、`compose`
+  和 `inspect`。macOS/Linux 使用函数级 section 的非 LTO 厂家库，程序会比 Windows
+  LTO 构建稍大；CI1302 CWSL 应使用最小的 `BasicLearning` 起步，完整
+  `SerialLearning` 适用于 CI1303/CI1306。CI1303 CWSL 已完成实体启动和模板容量
+  查询，自学习录音、模板持久化和识别仍待受控说词验证；
 - `v1.0.0` Boards Manager 发布包已在隔离 Arduino CLI 环境完成安装；CI1306 的
   16 个安装后示例以及 CI1302/CI1303 的综合冒烟示例均编译通过，共 18/18；
 - CI1302、CI1303 与 CI1306 已在隔离 Arduino CLI 环境验证资源准备、完整编译、
   `compose` 和 `inspect`；CI1303 已使用 `citool-cli` 完成实体板上传、固件 CRC、
   Standard/CWSL SDK 启动、UART0、音频提示回调和 I2C/SSD1306 运行验证，CI1302、
-  CI1306 与受控说词识别仍待验证。
+  CI1306 与受控说词识别仍待验证。macOS Apple Silicon 的内部晶振 Standard 构建
+  还通过了 CH343 上传、双核启动以及 voice ID 1/2/3 顺序播放。
 
 详细环境、步骤与已知工具链问题见 [package/VALIDATION.md](package/VALIDATION.md)。
 

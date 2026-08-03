@@ -50,8 +50,8 @@ with `inspect`. The CI130X FW_V2 Bootloader is embedded in `citool-cli`; the
 platform archive no longer contains or requires `Firmware_V2.0.0.bin`.
 The upload and programmer recipes then invoke `citool-cli flash` on that complete
 image. Cargo unit tests and package/index checks cover this integration. The
-CI1303 physical-board upload and I2C runtime path is validated below; CI1302,
-CI1306, audio and offline-ASR hardware regression remain outstanding.
+CI1303 physical-board upload, I2C and audio runtime paths are validated below;
+CI1302, CI1306 and controlled offline-ASR hardware regression remain outstanding.
 
 Before compact automatic partition layout was enabled, the updated Arduino
 recipe was exercised with `CI13XXSmoke` for CI1302, CI1303 and CI1306. All three
@@ -101,9 +101,10 @@ its 246 MHz external-crystal profile.
 The CI1302 build generated a 167,664-byte `user_code.bin` containing file IDs
 0 and 1, then composed and inspected a 1,848,855-byte complete V2 firmware using
 the former fixed User reservation.
-The independently built `citool-cli` validation rejects a raw `[0]code.bin` as
-a user-code partition, preventing the packaging mistake reproduced during the
-hardware diagnosis.
+`citool-cli` treats the User partition as opaque and therefore does not reject
+a raw `[0]code.bin` or a malformed inner dual-core directory. The Arduino
+post-build step must generate and validate that inner container before calling
+`compose`.
 
 ## Automatic partition layout validation
 
@@ -314,3 +315,42 @@ allocation to fail. Servo immediately claimed the same PWM pin and reported
 `resource_released=PASS`, verifying that a finite tone now fails closed instead
 of running indefinitely. The board was restored to the fixed Standard
 diagnostic firmware after testing.
+
+## Apple Silicon full-build validation
+
+On 2026-08-03, the Python build hooks and cross-host libraries were exercised
+on an Apple Silicon host running macOS 15.7.1 with Arduino CLI 1.5.1 and the
+published arm64 GCC 9.2.0 toolchain. The previous cross-host archives had
+materialized each vendor LTO member into monolithic `.text`/`.data` sections;
+that made disabled CWSL/TTS callbacks mandatory and broke the final link.
+
+The archives were regenerated with `-ffunction-sections -fdata-sections` and
+the platform code-generation flags. All 91 vendor members contain no GCC LTO
+sections; every code-bearing member retains named function sections. Clean,
+warning-enabled Standard builds of `CI13XXSmoke` passed for CI1302, CI1303 and
+CI1306. CWSL builds passed with the size-constrained `BasicLearning` example on
+CI1302 and the full `SerialLearning` example on CI1303 and CI1306. Every build
+completed SDK compilation, Arduino compilation, final link, dual-core merge,
+firmware `compose`, and strict `inspect` without compiler diagnostics.
+
+The first macOS runtime image exposed a post-build defect that compile and
+outer-firmware inspection could not detect: the no-Wine fallback concatenated
+the Host and BNPU payloads but omitted the vendor's 32-byte two-file directory.
+The Host core could print diagnostics, while the BNPU image was not loaded and
+startup waited indefinitely in `mailboxboot_sync()`. The Python implementation
+now emits the actual little-endian `<H` file count plus packed `<HII>`
+file-ID/offset/size records, with vendor-compatible 16-byte `0xff` alignment.
+Its output matched 152 retained `ci-tool-kit merge user-file` results byte for
+byte, including aligned and unaligned CI1302, CI1303 and CI1306 Host images.
+Post-build now rejects any generated or vendor-tool result that differs from
+that exact construction.
+
+The corrected installed package was then tested on the same Apple Silicon Mac
+and a physical CI1303 connected through a CH343 USB serial adapter. A clean
+Standard build used `Clock=internal`, produced a 217,392-byte dual-core
+`user_code.bin` and a 2,064,417-byte complete firmware, and flashed successfully
+with CRC verification. At 115200 baud the board reported `Playing voice ID 1`,
+`Playing voice ID 2`, `Playing voice ID 3`, and
+`All three test voices completed`; all three prompts were audible. This covers
+macOS-native compilation with the cross-host archives, Python post-build,
+complete-image composition, CH343 upload, dual-core startup and audio runtime.

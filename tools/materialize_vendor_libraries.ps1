@@ -70,11 +70,15 @@ $stageWork = Join-Path $stageRoot 'work'
 New-Item -ItemType Directory -Force -Path $stageOutput, $stageWork | Out-Null
 
 $manifestLines = [Collections.Generic.List[string]]::new()
-$manifestLines.Add('format=ci13xx-cross-host-native-archives-v1')
+$manifestLines.Add('format=ci13xx-cross-host-native-archives-v2')
 $manifestLines.Add("compiler.sha256=$($compilerHash.ToLowerInvariant())")
 $manifestLines.Add('compiler.target=riscv-nuclei-elf')
 $manifestLines.Add('compiler.version=9.2.0')
-$manifestLines.Add('materialization.flags=-march=rv32imafc -mabi=ilp32f -mcmodel=medlow -Os -flto -r -nostdlib -flinker-output=nolto-rel')
+$manifestLines.Add('materialization.flags=-march=rv32imafc -mabi=ilp32f -mcmodel=medlow -msmall-data-limit=8 -msave-restore -mfdiv -Os -fsigned-char -ffunction-sections -fdata-sections -fno-common -fno-delete-null-pointer-checks -fno-unroll-loops -fshort-enums -flto -r -nostdlib -flinker-output=nolto-rel')
+$membersWithoutCode = @(
+    'libOnMicroBLE.a/exe_host_smp.o',
+    'libOnMicroBLE.a/exe_ll_sec.o'
+)
 
 try {
     foreach ($archive in $archives) {
@@ -105,14 +109,36 @@ try {
         }
 
         $nativeMembers = @()
+        $materializedCount = 0
+        $passthroughCount = 0
         foreach ($member in $members) {
             $sourceMember = Join-Path $sourceMembers $member
             $nativeMember = Join-Path $nativeMembersRoot $member
-            & $gcc @(
+            $sourceSections = @(& $readelf -W -S $sourceMember)
+            if ($LASTEXITCODE -ne 0) {
+                throw "Unable to inspect source archive member: $sourceMember"
+            }
+            $sourceHasLto = $sourceSections -match '\.gnu\.lto_'
+            if ($sourceHasLto) {
+                & $gcc @(
                 '-march=rv32imafc',
                 '-mabi=ilp32f',
                 '-mcmodel=medlow',
+                '-msmall-data-limit=8',
+                '-msave-restore',
+                '-mfdiv',
                 '-Os',
+                '-fsigned-char',
+                # Materializing an LTO member without these flags collapses all
+                # generated code and data into monolithic .text/.data sections.
+                # Linux/macOS then cannot garbage-collect optional CWSL/TTS
+                # functions whose source-side callbacks are compiled out.
+                '-ffunction-sections',
+                '-fdata-sections',
+                '-fno-common',
+                '-fno-delete-null-pointer-checks',
+                '-fno-unroll-loops',
+                '-fshort-enums',
                 '-flto',
                 '-r',
                 '-nostdlib',
@@ -120,35 +146,50 @@ try {
                 $sourceMember,
                 '-o',
                 $nativeMember
-            )
-            if ($LASTEXITCODE -ne 0) {
-                throw "Unable to materialize $member from $($archive.FullName)"
+                )
+                if ($LASTEXITCODE -ne 0) {
+                    throw "Unable to materialize $member from $($archive.FullName)"
+                }
+                $materializedCount++
             }
-            $sections = @(& $readelf -S $nativeMember)
+            else {
+                # Assembly and any other already-native members must not be
+                # relinked: doing so embeds the randomized staging path in an
+                # ELF FILE symbol and makes otherwise identical archives vary.
+                Copy-Item -LiteralPath $sourceMember -Destination $nativeMember
+                $passthroughCount++
+            }
+            $sections = @(& $readelf -W -S $nativeMember)
             if ($LASTEXITCODE -ne 0) {
                 throw "Unable to inspect materialized object: $nativeMember"
             }
             if ($sections -match '\.gnu\.lto_') {
                 throw "Materialized object still contains GCC LTO bytecode: $nativeMember"
             }
+            $memberKey = "$relativeUnix/$member"
+            if ($sourceHasLto -and
+                -not ($sections -match '\.text\.[^\s]+\s+PROGBITS') -and
+                $memberKey -notin $membersWithoutCode) {
+                throw "Materialized code is missing function sections: $nativeMember"
+            }
             $nativeMembers += $nativeMember
         }
 
         $outputArchive = Join-Path $stageOutput $relativeArchive
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $outputArchive) | Out-Null
-        & $ar qc $outputArchive @nativeMembers
+        & $ar qcD $outputArchive @nativeMembers
         if ($LASTEXITCODE -ne 0) {
             throw "Unable to create materialized archive: $outputArchive"
         }
-        & $ranlib $outputArchive
+        & $ranlib -D $outputArchive
         if ($LASTEXITCODE -ne 0) {
             throw "Unable to index materialized archive: $outputArchive"
         }
 
         $sourceHash = (Get-FileHash -LiteralPath $archive.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
         $outputHash = (Get-FileHash -LiteralPath $outputArchive -Algorithm SHA256).Hash.ToLowerInvariant()
-        $manifestLines.Add("archive=$relativeUnix members=$($members.Count) source.sha256=$sourceHash output.sha256=$outputHash")
-        Write-Host "Materialized $relativeUnix ($($members.Count) members)"
+        $manifestLines.Add("archive=$relativeUnix members=$($members.Count) materialized=$materializedCount passthrough=$passthroughCount source.sha256=$sourceHash output.sha256=$outputHash")
+        Write-Host "Materialized $relativeUnix ($materializedCount LTO, $passthroughCount native members)"
     }
 
     [IO.File]::WriteAllLines(

@@ -175,9 +175,13 @@ function Copy-PlatformTree {
     New-Item -ItemType Directory -Path $toolsTarget | Out-Null
     foreach ($name in @(
         'sdk',
+        'compile_sdk_sources.py',
         'compile_sdk_sources.ps1',
+        'merge_user_file_entries.py',
         'merge_user_file_entries.ps1',
+        'postbuild.py',
         'postbuild.ps1',
+        'prepare_resources.py',
         'prepare_resources.ps1'
     )) {
         $item = Join-Path (Join-Path $Source 'tools') $name
@@ -185,6 +189,56 @@ function Copy-PlatformTree {
             throw "Required platform runtime tool is missing: $item"
         }
         Copy-Item -LiteralPath $item -Destination $toolsTarget -Recurse -Force
+    }
+}
+
+function New-PortableZipArchive {
+    param(
+        [string]$SourceDirectory,
+        [string]$DestinationArchive
+    )
+
+    $sourceRoot = [System.IO.Path]::GetFullPath($SourceDirectory).TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    $archiveStream = [System.IO.File]::Open(
+        $DestinationArchive,
+        [System.IO.FileMode]::Create,
+        [System.IO.FileAccess]::ReadWrite,
+        [System.IO.FileShare]::None
+    )
+    try {
+        $archive = New-Object System.IO.Compression.ZipArchive(
+            $archiveStream,
+            [System.IO.Compression.ZipArchiveMode]::Create,
+            $true
+        )
+        try {
+            $fixedTimestamp = [System.DateTimeOffset]::new(2000, 1, 1, 0, 0, 0, [System.TimeSpan]::Zero)
+            $files = Get-ChildItem -LiteralPath $sourceRoot -File -Recurse | Sort-Object FullName
+            foreach ($file in $files) {
+                $entryName = $file.FullName.Substring($sourceRoot.Length).Replace('\', '/')
+                $entry = $archive.CreateEntry(
+                    $entryName,
+                    [System.IO.Compression.CompressionLevel]::Optimal
+                )
+                $entry.LastWriteTime = $fixedTimestamp
+
+                $inputStream = $file.OpenRead()
+                $outputStream = $entry.Open()
+                try {
+                    $inputStream.CopyTo($outputStream)
+                }
+                finally {
+                    $outputStream.Dispose()
+                    $inputStream.Dispose()
+                }
+            }
+        }
+        finally {
+            $archive.Dispose()
+        }
+    }
+    finally {
+        $archiveStream.Dispose()
     }
 }
 
@@ -270,13 +324,20 @@ if (-not (Test-Path -LiteralPath $crossHostManifestPath -PathType Leaf)) {
     throw "Missing cross-host vendor-library manifest: $crossHostManifestPath"
 }
 $crossHostManifest = @(Get-Content -LiteralPath $crossHostManifestPath)
+if ($crossHostManifest -notcontains 'format=ci13xx-cross-host-native-archives-v2' -or
+    -not ($crossHostManifest -match 'materialization\.flags=.*-ffunction-sections.*-fdata-sections')) {
+    throw "Cross-host vendor-library manifest does not preserve function/data sections: $crossHostManifestPath"
+}
 $crossHostArchiveLines = @($crossHostManifest | Where-Object { $_ -like 'archive=*' })
 if ($crossHostArchiveLines.Count -eq 0) {
     throw "Cross-host vendor-library manifest has no archive records: $crossHostManifestPath"
 }
 foreach ($line in $crossHostArchiveLines) {
-    if ($line -notmatch '^archive=(?<archive>\S+) members=(?<members>[0-9]+) source\.sha256=(?<source>[0-9a-f]{64}) output\.sha256=(?<output>[0-9a-f]{64})$') {
+    if ($line -notmatch '^archive=(?<archive>\S+) members=(?<members>[0-9]+) materialized=(?<materialized>[0-9]+) passthrough=(?<passthrough>[0-9]+) source\.sha256=(?<source>[0-9a-f]{64}) output\.sha256=(?<output>[0-9a-f]{64})$') {
         throw "Invalid cross-host vendor-library manifest entry: $line"
+    }
+    if ([int]$Matches.materialized + [int]$Matches.passthrough -ne [int]$Matches.members) {
+        throw "Cross-host vendor-library member counts do not add up: $line"
     }
     $relativeArchive = $Matches.archive.Replace('/', '\')
     $sourceArchive = Join-Path (Join-Path $PlatformRoot 'tools\sdk\lib') $relativeArchive
@@ -458,18 +519,8 @@ try {
         }
     }
 
-    [System.IO.Compression.ZipFile]::CreateFromDirectory(
-        $platformStageParent,
-        $platformArchive,
-        [System.IO.Compression.CompressionLevel]::Optimal,
-        $false
-    )
-    [System.IO.Compression.ZipFile]::CreateFromDirectory(
-        $toolStageParent,
-        $windowsToolchainArchive,
-        [System.IO.Compression.CompressionLevel]::Optimal,
-        $false
-    )
+    New-PortableZipArchive -SourceDirectory $platformStageParent -DestinationArchive $platformArchive
+    New-PortableZipArchive -SourceDirectory $toolStageParent -DestinationArchive $windowsToolchainArchive
     $platformFile = Get-Item -LiteralPath $platformArchive
     $platformHash = (Get-FileHash -LiteralPath $platformArchive -Algorithm SHA256).Hash.ToLowerInvariant()
 

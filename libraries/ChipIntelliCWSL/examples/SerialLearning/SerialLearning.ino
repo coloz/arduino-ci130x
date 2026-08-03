@@ -1,7 +1,36 @@
+#include <ChipIntelliAudio.h>
 #include <ChipIntelliCWSL.h>
 
 static constexpr uint32_t kWakeWordCommandId = 1;
 static constexpr uint32_t kLearnedCommandId = 2;
+// Official CI130X SDK defaults: CWSL_REGISTRATION_WAKE is command 200.
+// Non-continuous command learning first plays CWSL_REGISTRATION_CMD (201),
+// then reg_cmd_list maps learnable command 2 to spoken prompt command 1001.
+static constexpr uint16_t kWakeWordLearningPromptId = 200;
+static constexpr uint16_t kCommandLearningIntroPromptId = 201;
+static constexpr uint16_t kCommandLearningPromptId = 1001;
+static constexpr uint8_t kPromptVolume = 70;
+
+enum PendingLearning : uint8_t {
+  PendingNone,
+  PendingCommand,
+  PendingWakeWord,
+};
+
+enum LearningPromptStage : uint8_t {
+  PromptIdle,
+  PromptCommandIntro,
+  PromptFinal,
+};
+
+static PendingLearning pendingLearning = PendingNone;
+static LearningPromptStage promptStage = PromptIdle;
+static volatile bool promptFinished = false;
+
+static void onPromptFinished(void *context) {
+  (void)context;
+  promptFinished = true;
+}
 
 static const char *eventName(ChipIntelliCWSLEventType type) {
   switch (type) {
@@ -36,6 +65,62 @@ static void printStatus() {
   Serial.println(ChipIntelliCWSL.maxTemplates());
 }
 
+static void requestPromptedLearning(PendingLearning request) {
+  if (pendingLearning != PendingNone) {
+    Serial.println("A learning prompt is already active.");
+    return;
+  }
+
+  promptFinished = false;
+  pendingLearning = request;
+  promptStage = request == PendingCommand ? PromptCommandIntro : PromptFinal;
+  const uint16_t promptId = request == PendingCommand
+                                ? kCommandLearningIntroPromptId
+                                : kWakeWordLearningPromptId;
+  if (!ChipIntelliAudio.playCommand(promptId)) {
+    pendingLearning = PendingNone;
+    promptStage = PromptIdle;
+    Serial.println("Could not play the learning prompt.");
+    return;
+  }
+  Serial.println("Listen for the official learning prompts, then speak.");
+}
+
+static void servicePromptedLearning() {
+  if (!promptFinished) {
+    return;
+  }
+
+  promptFinished = false;
+
+  if (pendingLearning == PendingCommand &&
+      promptStage == PromptCommandIntro) {
+    promptStage = PromptFinal;
+    if (!ChipIntelliAudio.playCommand(kCommandLearningPromptId)) {
+      pendingLearning = PendingNone;
+      promptStage = PromptIdle;
+      Serial.println("Could not play the command-specific learning prompt.");
+    } else {
+      Serial.println("Playing the command-specific learning prompt.");
+    }
+    return;
+  }
+
+  const PendingLearning request = pendingLearning;
+  pendingLearning = PendingNone;
+  promptStage = PromptIdle;
+
+  if (request == PendingCommand) {
+    Serial.println(ChipIntelliCWSL.learnCommand(kLearnedCommandId)
+                       ? "Prompts finished. Say the new command now."
+                       : "Could not start command learning.");
+  } else if (request == PendingWakeWord) {
+    Serial.println(ChipIntelliCWSL.learnWakeWord(kWakeWordCommandId)
+                       ? "Prompt finished. Say the new wake word now."
+                       : "Could not start wake-word learning.");
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   if (!ChipIntelliCWSL.profileEnabled()) {
@@ -46,11 +131,19 @@ void setup() {
     Serial.println("CWSL initialization failed or timed out.");
     return;
   }
+  if (!ChipIntelliAudio.begin()) {
+    Serial.println("Learning-prompt audio initialization failed.");
+    return;
+  }
+  ChipIntelliAudio.setVolume(kPromptVolume);
+  ChipIntelliAudio.onFinished(onPromptFinished);
   printHelp();
   printStatus();
 }
 
 void loop() {
+  servicePromptedLearning();
+
   ChipIntelliCWSLEvent event;
   while (ChipIntelliCWSL.read(event)) {
     Serial.print(eventName(event.type));
@@ -67,19 +160,23 @@ void loop() {
   if (Serial.available()) {
     switch (Serial.read()) {
       case 'l':
-        Serial.println(ChipIntelliCWSL.learnCommand(kLearnedCommandId)
-                           ? "Say the new command now."
-                           : "Could not start command learning.");
+        requestPromptedLearning(PendingCommand);
         break;
       case 'w':
-        Serial.println(ChipIntelliCWSL.learnWakeWord(kWakeWordCommandId)
-                           ? "Say the new wake word now."
-                           : "Could not start wake-word learning.");
+        requestPromptedLearning(PendingWakeWord);
         break;
       case 'c':
-        Serial.println(ChipIntelliCWSL.cancelLearning()
-                           ? "Learning cancelled."
-                           : "No active learning operation.");
+        if (pendingLearning != PendingNone) {
+          pendingLearning = PendingNone;
+          promptStage = PromptIdle;
+          promptFinished = false;
+          ChipIntelliAudio.stop();
+          Serial.println("Pending learning cancelled.");
+        } else {
+          Serial.println(ChipIntelliCWSL.cancelLearning()
+                             ? "Learning cancelled."
+                             : "No active learning operation.");
+        }
         break;
       case 'd':
         Serial.println(ChipIntelliCWSL.eraseCommand(kLearnedCommandId)

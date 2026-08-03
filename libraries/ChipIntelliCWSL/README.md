@@ -18,6 +18,10 @@ start callback.
 All CWSL APIs use task-only SDK services and must be called from `setup()`,
 `loop()`, or another RTOS task—not from an ISR or hardware-timer callback.
 
+`BasicLearning` is the size-constrained starting point for CI1302 CWSL builds
+on Linux/macOS. The richer `SerialLearning` example fits CI1303 and CI1306;
+Windows LTO builds can also fit it on CI1302.
+
 ```cpp
 #include <ChipIntelliCWSL.h>
 
