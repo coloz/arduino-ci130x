@@ -10,10 +10,10 @@ from Boards Manager:
 https://raw.githubusercontent.com/coloz/arduino-ci130x/main/package/package_chipintelli_index.json
 ```
 
-The version-pinned `v1.0.4` index is also published as a GitHub Release asset:
+The version-pinned `v1.0.5` index is also published as a GitHub Release asset:
 
 ```text
-https://github.com/coloz/arduino-ci130x/releases/download/v1.0.4/package_chipintelli_index.json
+https://github.com/coloz/arduino-ci130x/releases/download/v1.0.5/package_chipintelli_index.json
 ```
 
 The release mirrors `citool-cli` for Windows x64, macOS Universal (Intel and
@@ -124,8 +124,8 @@ than a `dist/` subdirectory, add `-FlatAssetUrls`:
   -ToolchainRoot C:\path\to\riscv-nuclei-elf-gcc-9.2.0 `
   -ToolchainArchives $downloadedHostToolchains `
   -RequireAllHostTools `
-  -Version 1.0.4 `
-  -BaseUrl https://github.com/OWNER/arduino-ci130x/releases/download/v1.0.4 `
+  -Version 1.0.5 `
+  -BaseUrl https://github.com/OWNER/arduino-ci130x/releases/download/v1.0.5 `
   -FlatAssetUrls
 ```
 
@@ -148,7 +148,7 @@ index. Replace every `__...__` value after release artifacts are hosted and
 redistribution permission has been confirmed.
 
 The platform archive must have exactly one top-level directory, for example
-`arduino-ci130x-1.0.4/`. Put the contents of `arduino-ci130x`
+`arduino-ci130x-1.0.5/`. Put the contents of `arduino-ci130x`
 directly inside that directory (including `boards.txt`, `platform.txt`,
 `cores/` and the generated `tools/sdk/`); do not add another architecture
 directory. Arduino's package manager ignores files placed directly at the ZIP

@@ -8,7 +8,7 @@ param(
     [string]$CitoolCliVersion = '1.1.2',
     [string]$BaseUrl = 'http://127.0.0.1:8765',
     [switch]$FlatAssetUrls,
-    [string]$Version = '1.0.4',
+    [string]$Version = '1.0.5',
     [string]$OutputDirectory,
     [string]$IndexOutputPath,
     [switch]$RequireAllHostTools

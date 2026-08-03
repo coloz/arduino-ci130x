@@ -79,16 +79,41 @@ jobs:
             recursos/cwsl/voice.bin \
             recursos/cwsl/user_file.bin \
             tools/sdk \
+            tools/compile_sdk_sources.py \
             tools/compile_sdk_sources.ps1 \
+            tools/merge_user_file_entries.py \
             tools/merge_user_file_entries.ps1 \
+            tools/postbuild.py \
             tools/postbuild.ps1 \
+            tools/prepare_resources.py \
             tools/prepare_resources.ps1
 
-          if unzip -Z1 "dist/${{ steps.release.outputs.asset }}" \
-            | grep -Eq '/(\.agent|\.agents|\.git|\.github|package)(/|$)'; then
+          archive="dist/${{ steps.release.outputs.asset }}"
+          archive_prefix="arduino-ci130x-${{ steps.release.outputs.version }}"
+          archive_entries="$(unzip -Z1 "$archive")"
+
+          if grep -Eq '/(\.agent|\.agents|\.git|\.github|package)(/|$)' \
+            <<< "$archive_entries"; then
             echo 'Release archive contains repository-only metadata.' >&2
             exit 1
           fi
+
+          runtime_hooks=(
+            tools/compile_sdk_sources.py
+            tools/compile_sdk_sources.ps1
+            tools/merge_user_file_entries.py
+            tools/merge_user_file_entries.ps1
+            tools/postbuild.py
+            tools/postbuild.ps1
+            tools/prepare_resources.py
+            tools/prepare_resources.ps1
+          )
+          for hook in "${runtime_hooks[@]}"; do
+            if ! grep -Fxq "$archive_prefix/$hook" <<< "$archive_entries"; then
+              echo "Release archive is missing runtime hook: $hook" >&2
+              exit 1
+            fi
+          done
 
       - name: Download citool-cli release archives
         shell: bash

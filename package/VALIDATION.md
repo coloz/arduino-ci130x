@@ -354,3 +354,43 @@ with CRC verification. At 115200 baud the board reported `Playing voice ID 1`,
 `All three test voices completed`; all three prompts were audible. This covers
 macOS-native compilation with the cross-host archives, Python post-build,
 complete-image composition, CH343 upload, dual-core startup and audio runtime.
+
+## Ubuntu current-package full-build validation
+
+On 2026-08-03, the current working tree was packaged directly with
+`package/build_package.ps1` and installed through a local Boards Manager index
+into a fresh Arduino CLI data directory on Ubuntu 26.04 LTS x86_64. The tested
+20,401,579-byte platform archive had SHA-256
+`8013871b02c952709ea295b4990cf50525c9ffa59ff2cb1df40e7c70379700f9`.
+The installed platform was the generated archive itself, not the published
+platform, a source-tree overlay, or a symlink. It contained all four Python and
+all four PowerShell runtime hooks. The package also contained the working-tree
+`ASRResults` example that initializes `ChipIntelliAudio` and plays the response
+associated with each recognized command.
+
+Arduino CLI 1.5.1 installed the package with the Linux Nuclei GCC 9.2.0 and
+`citool-cli` 1.1.2 dependencies. Warning-enabled clean builds passed for the
+following chip/profile matrix:
+
+| Chip | Profile | Sketch | `user_code.bin` | Complete firmware |
+| --- | --- | --- | ---: | ---: |
+| CI1302 | Standard ASR | `CI13XXSmoke` | 219,200 | 2,064,417 |
+| CI1303 | Standard ASR | `CI13XXSmoke` | 219,200 | 2,064,417 |
+| CI1306 | Standard ASR | `CI13XXSmoke` | 215,760 | 2,060,321 |
+| CI1302 | CWSL | `BasicLearning` | 231,856 | 2,076,705 |
+| CI1303 | CWSL | `SerialLearning` | 237,216 | 2,080,801 |
+| CI1306 | CWSL | `SerialLearning` | 233,776 | 2,080,801 |
+
+All 41 self-contained examples then passed clean CI1306 builds from the same
+installed package. The two external-library examples also passed after an
+isolated installation of U8g2 2.36.19 and DHT20 0.3.3, for 43/43 CI1306
+examples in total. Across the six chip/profile builds and 43-example suite,
+there were no compiler warnings. Every build completed SDK source compilation,
+Arduino compilation, final link, dual-core merge, firmware `compose`, and a
+separate `citool-cli inspect` of the complete image.
+
+This validation exposed and fixed a release-archive defect: the deploy workflow
+previously selected only the PowerShell hooks even though Linux and macOS invoke
+the Python hooks from `platform.txt`. The workflow now includes all eight hooks
+and rejects an archive when any one is missing. This was package/build-path
+validation only; no physical board was connected to the Ubuntu host.
