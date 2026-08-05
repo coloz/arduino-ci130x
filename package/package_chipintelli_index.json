@@ -80,31 +80,31 @@
                                            "systems":  [
                                                            {
                                                                "host":  "x86_64-mingw32",
-                                                               "url":  "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.4/citool-cli-1.1.2-windows-x86_64.zip",
+                                                               "url":  "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.5/citool-cli-1.1.2-windows-x86_64.zip",
                                                                "archiveFileName":  "citool-cli-1.1.2-windows-x86_64.zip",
-                                                               "checksum":  "SHA-256:339de42dd13ea79691404c11c2865d8c54a46260bb9f92902413cdc605e0b2e0",
-                                                               "size":  "440941"
+                                                               "checksum":  "SHA-256:cda90025312b3b3e9669c523d780a75d4c48c58408a6cf86346bbc13f989a474",
+                                                               "size":  "442401"
                                                            },
                                                            {
                                                                "host":  "x86_64-apple-darwin",
-                                                               "url":  "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.4/citool-cli-1.1.2-macos-universal.tar.gz",
+                                                               "url":  "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.5/citool-cli-1.1.2-macos-universal.tar.gz",
                                                                "archiveFileName":  "citool-cli-1.1.2-macos-universal.tar.gz",
-                                                               "checksum":  "SHA-256:304593f10e772e701d092989b38fa4cae072e3a44bdb30fe4a183fa6c3abca05",
-                                                               "size":  "875851"
+                                                               "checksum":  "SHA-256:c3108c79969b3fdeb7407bfdbfb113c0a41b010062f80139ea9a0054303066b3",
+                                                               "size":  "874168"
                                                            },
                                                            {
                                                                "host":  "arm64-apple-darwin",
-                                                               "url":  "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.4/citool-cli-1.1.2-macos-universal.tar.gz",
+                                                               "url":  "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.5/citool-cli-1.1.2-macos-universal.tar.gz",
                                                                "archiveFileName":  "citool-cli-1.1.2-macos-universal.tar.gz",
-                                                               "checksum":  "SHA-256:304593f10e772e701d092989b38fa4cae072e3a44bdb30fe4a183fa6c3abca05",
-                                                               "size":  "875851"
+                                                               "checksum":  "SHA-256:c3108c79969b3fdeb7407bfdbfb113c0a41b010062f80139ea9a0054303066b3",
+                                                               "size":  "874168"
                                                            },
                                                            {
                                                                "host":  "x86_64-pc-linux-gnu",
-                                                               "url":  "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.4/citool-cli-1.1.2-linux-x86_64.tar.gz",
+                                                               "url":  "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.5/citool-cli-1.1.2-linux-x86_64.tar.gz",
                                                                "archiveFileName":  "citool-cli-1.1.2-linux-x86_64.tar.gz",
-                                                               "checksum":  "SHA-256:a84ba284ef8c98fd520145ce9aab5b9049d771de10d35f6fda0ccc57084e23f3",
-                                                               "size":  "471754"
+                                                               "checksum":  "SHA-256:98dca9b0dde767bf8fd6f21063fec60e81c7aee1c689100fed73c95a6ed78c20",
+                                                               "size":  "471584"
                                                            }
                                                        ]
                                        }

@@ -27,7 +27,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       CITOOL_CLI_REPOSITORY: coloz/arduino-ci130x
-      CITOOL_CLI_RELEASE_TAG: v1.0.4
+      CITOOL_CLI_RELEASE_TAG: v1.0.5
       CITOOL_CLI_VERSION: 1.1.2
       NUCLEI_GCC_RELEASE_TAG: nuclei-gcc-v9.2.0-host1
       NUCLEI_GCC_VERSION: 9.2.0
@@ -147,13 +147,13 @@ jobs:
             "${patterns[@]}"
 
           cat > "dist/${archives[0]}.sha256" <<EOF
-          339de42dd13ea79691404c11c2865d8c54a46260bb9f92902413cdc605e0b2e0  ${archives[0]}
+          cda90025312b3b3e9669c523d780a75d4c48c58408a6cf86346bbc13f989a474  ${archives[0]}
           EOF
           cat > "dist/${archives[1]}.sha256" <<EOF
-          304593f10e772e701d092989b38fa4cae072e3a44bdb30fe4a183fa6c3abca05  ${archives[1]}
+          c3108c79969b3fdeb7407bfdbfb113c0a41b010062f80139ea9a0054303066b3  ${archives[1]}
           EOF
           cat > "dist/${archives[2]}.sha256" <<EOF
-          a84ba284ef8c98fd520145ce9aab5b9049d771de10d35f6fda0ccc57084e23f3  ${archives[2]}
+          98dca9b0dde767bf8fd6f21063fec60e81c7aee1c689100fed73c95a6ed78c20  ${archives[2]}
           EOF
 
       - name: Download Nuclei GCC host archives

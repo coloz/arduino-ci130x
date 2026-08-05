@@ -16,14 +16,15 @@ The version-pinned `v1.0.6` index is also published as a GitHub Release asset:
 https://github.com/coloz/arduino-ci130x/releases/download/v1.0.6/package_chipintelli_index.json
 ```
 
-The package index reuses `citool-cli` from Arduino release `v1.0.4` for Windows
+The package index reuses the public `citool-cli@1.1.2` mirrors from Arduino
+release `v1.0.5` for Windows
 x64, macOS Universal (Intel and Apple Silicon), and Linux x86_64. It also
 reuses Nuclei GCC 9.2.0 from the dedicated toolchain release for Windows x64,
 Linux x86_64, and macOS Apple Silicon. There is currently no matching Intel
 macOS compiler archive.
 
 `.github/workflows/deploy-release.yml` downloads and verifies the already
-published `citool-cli@1.1.2` archives from Arduino release `v1.0.4` and the
+published `citool-cli@1.1.2` mirrors from Arduino release `v1.0.5` and the
 three compiler archives from the dedicated toolchain release. It publishes
 only the new Arduino platform archive, Boards Manager index and checksum file;
 the index points its tool records at those immutable shared releases instead
@@ -126,14 +127,14 @@ than a `dist/` subdirectory, add `-FlatAssetUrls`:
   -Version 1.0.6 `
   -BaseUrl https://github.com/OWNER/arduino-ci130x/releases/download/v1.0.6 `
   -ToolchainBaseUrl https://github.com/coloz/arduino-ci130x/releases/download/nuclei-gcc-v9.2.0-host1 `
-  -CitoolCliBaseUrl https://github.com/coloz/arduino-ci130x/releases/download/v1.0.4 `
+  -CitoolCliBaseUrl https://github.com/coloz/arduino-ci130x/releases/download/v1.0.5 `
   -FlatAssetUrls
 ```
 
 Upload the generated platform archive and `package_chipintelli_index.json` to
 the new public Arduino GitHub Release. Reuse the immutable GCC archives from
-`nuclei-gcc-v9.2.0-host1` and the public `citool-cli@1.1.2` archives from
-Arduino release `v1.0.4`; do not upload duplicate tool archives or reference
+`nuclei-gcc-v9.2.0-host1` and the public `citool-cli@1.1.2` mirrors from
+Arduino release `v1.0.5`; do not upload duplicate tool archives or reference
 the private `citool-cli` repository from a public Boards Manager index.
 
 The official compiler source is documented at

@@ -77,28 +77,28 @@
           "systems": [
             {
               "host": "x86_64-mingw32",
-              "url": "__ARDUINO_RELEASE_BASE_URL__/citool-cli-1.1.2-windows-x86_64.zip",
+              "url": "__CITOOL_CLI_RELEASE_BASE_URL__/citool-cli-1.1.2-windows-x86_64.zip",
               "archiveFileName": "citool-cli-1.1.2-windows-x86_64.zip",
               "checksum": "SHA-256:__CITOOL_CLI_WINDOWS_SHA256__",
               "size": "__CITOOL_CLI_WINDOWS_SIZE_BYTES__"
             },
             {
               "host": "x86_64-apple-darwin",
-              "url": "__ARDUINO_RELEASE_BASE_URL__/citool-cli-1.1.2-macos-universal.tar.gz",
+              "url": "__CITOOL_CLI_RELEASE_BASE_URL__/citool-cli-1.1.2-macos-universal.tar.gz",
               "archiveFileName": "citool-cli-1.1.2-macos-universal.tar.gz",
               "checksum": "SHA-256:__CITOOL_CLI_MACOS_SHA256__",
               "size": "__CITOOL_CLI_MACOS_SIZE_BYTES__"
             },
             {
               "host": "arm64-apple-darwin",
-              "url": "__ARDUINO_RELEASE_BASE_URL__/citool-cli-1.1.2-macos-universal.tar.gz",
+              "url": "__CITOOL_CLI_RELEASE_BASE_URL__/citool-cli-1.1.2-macos-universal.tar.gz",
               "archiveFileName": "citool-cli-1.1.2-macos-universal.tar.gz",
               "checksum": "SHA-256:__CITOOL_CLI_MACOS_SHA256__",
               "size": "__CITOOL_CLI_MACOS_SIZE_BYTES__"
             },
             {
               "host": "x86_64-pc-linux-gnu",
-              "url": "__ARDUINO_RELEASE_BASE_URL__/citool-cli-1.1.2-linux-x86_64.tar.gz",
+              "url": "__CITOOL_CLI_RELEASE_BASE_URL__/citool-cli-1.1.2-linux-x86_64.tar.gz",
               "archiveFileName": "citool-cli-1.1.2-linux-x86_64.tar.gz",
               "checksum": "SHA-256:__CITOOL_CLI_LINUX_SHA256__",
               "size": "__CITOOL_CLI_LINUX_SIZE_BYTES__"
