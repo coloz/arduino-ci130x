@@ -480,9 +480,17 @@ The local package builder then generated a 38,549,211-byte
 `b9f2ff6fa3d74a02a71ed97c54b094890abc534f2d4d20de841edccd3de8735a`.
 Its 967 entries contained both AEC linker scripts and the `BargeIn` example,
 with zero repository-only `.agent`, `.agents`, `.git`, `.github`, or `package`
-entries. All three Nuclei GCC archives and all three `citool-cli` archives were
-reused byte for byte from the previously validated assets; every old/new
-SHA-256 pair matched. Neither GCC nor `citool-cli` was recompiled.
+entries. All three Nuclei GCC archives and the then-selected `citool-cli`
+archives were reused byte for byte from previously validated assets; neither
+GCC nor `citool-cli` was recompiled.
+
+On 2026-08-06, the `citool-cli` source records were corrected from the previous
+Arduino release tag to the public mirrors under Arduino release `v1.0.5`. The
+Windows, macOS Universal and Linux archives have the same sizes and SHA-256
+values as the independently released private `citool-cli@1.1.2` artifacts.
+Their archive layouts and the corrected Boards Manager records were verified;
+the release workflow pins those matching hashes without recompiling or
+uploading another copy.
 
 The tag-triggered release workflow independently generates the final platform
 ZIP from the tagged Git tree, so its compression-level-dependent size and hash

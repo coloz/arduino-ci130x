@@ -82,9 +82,11 @@ Arduino package 的对应 profile 补齐。
 https://raw.githubusercontent.com/coloz/arduino-ci130x/main/package/package_chipintelli_index.json
 ```
 
-随后打开开发板管理器，搜索并安装 **ChipIntelli CI130X Arduino**。发布流程会附带
-Windows x64、macOS Universal 和 Linux x86_64 的 `citool-cli`，以及 Windows x64、
-Linux x86_64、macOS 15+ Apple Silicon 的 Nuclei GCC 9.2.0。macOS 编译器在实体
+随后打开开发板管理器，搜索并安装 **ChipIntelli CI130X Arduino**。开发板索引会引用
+Arduino `v1.0.5` Release 中公开镜像的 `citool-cli 1.1.2` Windows x64、macOS
+Universal 和 Linux x86_64 归档，以及专用工具链 Release 中的 Windows x64、Linux
+x86_64、macOS 15+ Apple Silicon Nuclei GCC 9.2.0 归档；新 Arduino Release 不重复
+附带这些工具。macOS 编译器在实体
 Apple Silicon Mac 上由 Nuclei 官方 `nuclei_9.2_fixjalr_forhw` 固定提交源码构建，
 并验证版本、目标、20 组 multilib 以及 C/C++ 链接；目前不提供 Intel Mac 编译器。
 Windows 使用 PowerShell 和厂家 `ci-tool-kit.exe`，Linux/macOS 使用等价的 Python

@@ -17,8 +17,8 @@ https://github.com/coloz/arduino-ci130x/releases/download/v1.0.6/package_chipint
 ```
 
 The package index reuses the public `citool-cli@1.1.2` mirrors from Arduino
-release `v1.0.5` for Windows
-x64, macOS Universal (Intel and Apple Silicon), and Linux x86_64. It also
+release `v1.0.5` for Windows x64, macOS Universal (Intel and Apple Silicon),
+and Linux x86_64. It also
 reuses Nuclei GCC 9.2.0 from the dedicated toolchain release for Windows x64,
 Linux x86_64, and macOS Apple Silicon. There is currently no matching Intel
 macOS compiler archive.
