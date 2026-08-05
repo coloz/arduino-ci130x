@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to update
+        required: true
+        default: v1.0.6
 
 permissions:
   contents: write
@@ -20,7 +26,8 @@ jobs:
 
     env:
       GH_TOKEN: ${{ github.token }}
-      CITOOL_CLI_REPOSITORY: coloz/citool-cli
+      CITOOL_CLI_REPOSITORY: coloz/arduino-ci130x
+      CITOOL_CLI_RELEASE_TAG: v1.0.6
       CITOOL_CLI_VERSION: 1.1.2
       NUCLEI_GCC_RELEASE_TAG: nuclei-gcc-v9.2.0-host1
       NUCLEI_GCC_VERSION: 9.2.0
@@ -32,6 +39,8 @@ jobs:
       - name: Prepare release metadata
         id: release
         shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
 
@@ -41,7 +50,7 @@ jobs:
             exit 1
           fi
 
-          tag="$GITHUB_REF_NAME"
+          tag="${REQUESTED_TAG:-$GITHUB_REF_NAME}"
           if [[ "$tag" != "v${version}" ]]; then
             echo "Release tag '$tag' does not match platform version '$version'." >&2
             exit 1
@@ -120,8 +129,6 @@ jobs:
 
       - name: Download citool-cli release archives
         shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.CITOOL_CLI_TOKEN || github.token }}
         run: |
           set -euo pipefail
 
@@ -132,12 +139,22 @@ jobs:
           )
           patterns=()
           for archive in "${archives[@]}"; do
-            patterns+=(--pattern "$archive" --pattern "$archive.sha256")
+            patterns+=(--pattern "$archive")
           done
-          gh release download "v${CITOOL_CLI_VERSION}" \
+          gh release download "$CITOOL_CLI_RELEASE_TAG" \
             --repo "$CITOOL_CLI_REPOSITORY" \
             --dir dist \
             "${patterns[@]}"
+
+          cat > "dist/${archives[0]}.sha256" <<EOF
+          cda90025312b3b3e9669c523d780a75d4c48c58408a6cf86346bbc13f989a474  ${archives[0]}
+          EOF
+          cat > "dist/${archives[1]}.sha256" <<EOF
+          c3108c79969b3fdeb7407bfdbfb113c0a41b010062f80139ea9a0054303066b3  ${archives[1]}
+          EOF
+          cat > "dist/${archives[2]}.sha256" <<EOF
+          98dca9b0dde767bf8fd6f21063fec60e81c7aee1c689100fed73c95a6ed78c20  ${archives[2]}
+          EOF
 
       - name: Download Nuclei GCC host archives
         shell: bash
@@ -178,15 +195,7 @@ jobs:
           tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-arm64.tar.gz" \
             | sed 's#^\./##' | grep -Fxq 'riscv-gcc/bin/riscv-nuclei-elf-gcc'
 
-          sha256sum \
-            '${{ steps.release.outputs.asset }}' \
-            "citool-cli-${CITOOL_CLI_VERSION}-windows-x86_64.zip" \
-            "citool-cli-${CITOOL_CLI_VERSION}-macos-universal.tar.gz" \
-            "citool-cli-${CITOOL_CLI_VERSION}-linux-x86_64.tar.gz" \
-            "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-windows.zip" \
-            "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-linux-x86_64.tar.gz" \
-            "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-arm64.tar.gz" \
-            > SHA256SUMS.txt
+          sha256sum '${{ steps.release.outputs.asset }}' > SHA256SUMS.txt
 
       - name: Generate Boards Manager index
         shell: bash
@@ -210,11 +219,11 @@ jobs:
               f"{os.environ['RELEASE_TAG']}"
           )
 
-          def metadata(name):
+          def metadata(name, base_url=release_base):
               path = dist / name
               digest = hashlib.sha256(path.read_bytes()).hexdigest()
               return {
-                  'url': f'{release_base}/{name}',
+                  'url': f'{base_url}/{name}',
                   'archiveFileName': name,
                   'checksum': f'SHA-256:{digest}',
                   'size': str(path.stat().st_size),
@@ -226,9 +235,19 @@ jobs:
           platform['version'] = os.environ['PLATFORM_VERSION']
           platform.update(metadata(os.environ['PLATFORM_ASSET']))
 
+          tool_release_bases = {
+              'riscv-gcc': (
+                  f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/"
+                  f"{os.environ['NUCLEI_GCC_RELEASE_TAG']}"
+              ),
+              'citool-cli': (
+                  f"https://github.com/{os.environ['CITOOL_CLI_REPOSITORY']}/releases/download/"
+                  f"{os.environ['CITOOL_CLI_RELEASE_TAG']}"
+              ),
+          }
           for tool in package['tools']:
               for system in tool['systems']:
-                  system.update(metadata(system['archiveFileName']))
+                  system.update(metadata(system['archiveFileName'], tool_release_bases[tool['name']]))
 
           output = json.dumps(index, indent=2, ensure_ascii=False) + '\n'
           if '__' in output:
@@ -256,24 +275,31 @@ jobs:
 
           - CI1302、CI1303、CI1306 的 Standard ASR + AEC 构建、链接、双核合并、compose 与 inspect 全部通过。
           - CI1302、CI1303、CI1306 的 CWSL + AEC 路径全部通过，并保留 Standard/CWSL 无 AEC 兼容构建。
-          - GCC 9.2.0 与 `citool-cli` 1.1.2 没有源码变更；本 Release 直接复用并校验既有三平台归档，不重新编译。
+          - GCC 9.2.0 与 `citool-cli` 1.1.2 没有源码变更；Boards Manager 索引直接复用并校验既有 Release 归档，不重新编译或重复上传。
 
           AEC 的声学消除质量和实时打断仍需在接入播放参考信号的实体硬件上验证。
           EOF
 
+          release_assets=(
+            "dist/${{ steps.release.outputs.asset }}"
+            dist/package_chipintelli_index.json
+            dist/SHA256SUMS.txt
+          )
+
           if gh release view '${{ steps.release.outputs.tag }}' --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload '${{ steps.release.outputs.tag }}' \
-              dist/* \
+              "${release_assets[@]}" \
               --repo "$GITHUB_REPOSITORY" \
               --clobber
             gh release edit '${{ steps.release.outputs.tag }}' \
               --repo "$GITHUB_REPOSITORY" \
               --title "ChipIntelli CI130X Arduino v${{ steps.release.outputs.version }}" \
               --notes-file release-notes.md \
+              --draft=false \
               --latest
           else
             gh release create '${{ steps.release.outputs.tag }}' \
-              dist/* \
+              "${release_assets[@]}" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
               --title "ChipIntelli CI130X Arduino v${{ steps.release.outputs.version }}" \

@@ -7,6 +7,8 @@ param(
     [string[]]$CitoolCliArchives,
     [string]$CitoolCliVersion = '1.1.2',
     [string]$BaseUrl = 'http://127.0.0.1:8765',
+    [string]$ToolchainBaseUrl,
+    [string]$CitoolCliBaseUrl,
     [switch]$FlatAssetUrls,
     [string]$Version = '1.0.6',
     [string]$OutputDirectory,
@@ -260,6 +262,18 @@ $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 $IndexOutputPath = [System.IO.Path]::GetFullPath($IndexOutputPath)
 $BaseUrl = $BaseUrl.TrimEnd('/')
 $AssetBaseUrl = if ($FlatAssetUrls) { $BaseUrl } else { "$BaseUrl/dist" }
+$ToolchainAssetBaseUrl = if ($ToolchainBaseUrl) {
+    $ToolchainBaseUrl.TrimEnd('/')
+}
+else {
+    $AssetBaseUrl
+}
+$CitoolCliAssetBaseUrl = if ($CitoolCliBaseUrl) {
+    $CitoolCliBaseUrl.TrimEnd('/')
+}
+else {
+    $AssetBaseUrl
+}
 
 $resourceRoot = Join-Path $PlatformRoot 'recursos'
 $requiredResources = @('asr.bin', 'dnn.bin', 'voice.bin', 'user_file.bin')
@@ -553,7 +567,7 @@ try {
         foreach ($hostName in $packageFile.Target.Hosts) {
             $toolchainSystems += [ordered]@{
                 host = $hostName
-                url = "$AssetBaseUrl/$($packageFile.File.Name)"
+                url = "$ToolchainAssetBaseUrl/$($packageFile.File.Name)"
                 archiveFileName = $packageFile.File.Name
                 checksum = "SHA-256:$($packageFile.Sha256)"
                 size = $packageFile.File.Length.ToString()
@@ -565,7 +579,7 @@ try {
         foreach ($hostName in $packageFile.Target.Hosts) {
             $citoolSystems += [ordered]@{
                 host = $hostName
-                url = "$AssetBaseUrl/$($packageFile.File.Name)"
+                url = "$CitoolCliAssetBaseUrl/$($packageFile.File.Name)"
                 archiveFileName = $packageFile.File.Name
                 checksum = "SHA-256:$($packageFile.Sha256)"
                 size = $packageFile.File.Length.ToString()
