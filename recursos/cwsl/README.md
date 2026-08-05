@@ -2,8 +2,9 @@
 
 These four profile resources are exact outputs of the official
 `CI130X_SDK_ALG_V2.7.14/projects/offline_asr_alg_pro_sample/firmware` pipeline.
-They are selected only when the Arduino **Algorithm** menu is set to
-**Command-word self-learning CWSL**.
+They are selected when the Arduino **Algorithm** menu is set to either
+**Command-word self-learning CWSL + AEC/voice interruption** or its without-AEC
+compatibility profile.
 
 Run `tools/generate_cwsl_package_resources.ps1` beside the official SDK to
 reproduce them. The script merges the sample's two V00874 ASR files, G3 NLP PRO

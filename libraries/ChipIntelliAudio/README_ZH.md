@@ -9,6 +9,7 @@
 它支持：
 
 - 按语音 ID 播放；
+- 连续播放 1～16 声内置“滴”提示音；
 - 按命令 ID、命令文本或语义 ID 查找并播放已配置的提示音；
 - 中断当前提示音或排队播放；
 - 停止播放、查询状态、调节音量及可靠地静音/恢复；
@@ -49,6 +50,7 @@ SDK；与 `stop()` 一样，它无法确认 SDK 是否在有限等待结束前�
 | API | 作用 |
 | --- | --- |
 | `playVoice(voiceId, interruptCurrent)` | 播放 `voice.bin` 中的 16 位语音 ID |
+| `playBeep(count)` | 连续播放 1～16 声内置“滴”提示音 |
 | `playCommand(commandId, optionIndex, interruptCurrent)` | 播放命令 ID 对应的提示音 |
 | `playCommand(commandText, optionIndex, interruptCurrent)` | 按已配置的命令文本查找提示音 |
 | `playSemantic(semanticId, optionIndex, interruptCurrent)` | 播放 32 位语义 ID 对应的提示音 |
@@ -62,6 +64,11 @@ SDK；与 `stop()` 一样，它无法确认 SDK 是否在有限等待结束前�
 
 `interruptCurrent` 默认为 `true`，会中断当前提示音；传入 `false` 会将新请求加入
 SDK 提示音队列。`optionIndex` 默认为 `-1`，表示使用资源包配置的默认选项。
+
+`playBeep()` 默认播放 1 声，传入 `1`～`16` 可设置连续播放次数，例如
+`ChipIntelliAudio.playBeep(3)`。它使用资源包的特殊命令 `<beep>`，会中断当前提示音，
+并在整组“滴”声结束后触发一次完成回调。标准资源包包含该提示音；自定义资源包若
+缺少 `<beep>`，函数会返回 `false`。`count` 为 `0` 或大于 `16` 时也返回 `false`。
 
 语音、命令和语义 ID 必须与当前工程 `recursos/voice.bin` 及命令资源匹配；示例中的
 ID `1` 不保证存在于自定义资源包中。
@@ -122,4 +129,4 @@ Flash 写入或大量打印。建议只设置 `volatile` 标志或发送非阻�
 ## 示例
 
 - `PlayVoiceId`：初始化播放器，按语音 ID 播放并安全处理完成事件；
-- `PromptControl`：通过 115200 波特率串口演示播放、停止、状态、音量和静音控制。
+- `PromptControl`：通过 115200 波特率串口演示提示音、“滴”声、停止、状态、音量和静音控制。

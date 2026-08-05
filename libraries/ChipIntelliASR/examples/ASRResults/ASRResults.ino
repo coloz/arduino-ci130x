@@ -1,61 +1,74 @@
 #include <ChipIntelliASR.h>
-#include <ChipIntelliAudio.h>
+
+// These values match the command package in this sketch's recursos directory.
+static constexpr uint16_t kAirConditionerOnCommandId = 2;
+static constexpr uint32_t kAirConditionerOffSemanticId = 0x01E41983UL;
 
 static bool gAsrReady = false;
-static bool gAudioReady = false;
+
+// Event handlers live outside loop(), just like OneButton handlers.
+static void handleAirConditionerOn() {
+  Serial.println("Action: turn the air conditioner on");
+}
+
+static void handleAirConditionerOff(const ChipIntelliASRResult &result) {
+  Serial.print("Action: turn the air conditioner off, score=");
+  Serial.println(result.score);
+}
+
+// onResult() is optional. It observes every result before the matching
+// command-specific handler runs.
+static void logResult(const ChipIntelliASRResult &result) {
+  Serial.print("command=");
+  Serial.print(result.commandId);
+  Serial.print(" semantic=");
+  Serial.print(result.semanticId);
+  Serial.print(" score=");
+  Serial.print(result.score);
+  Serial.print(" text=");
+  Serial.print(result.text);
+  if (result.textTruncated) {
+    Serial.print(" [truncated]");
+  }
+  Serial.println();
+}
 
 void setup() {
   Serial.begin(115200);
 
-  gAudioReady = ChipIntelliAudio.begin();
-  if (!gAudioReady) {
-    Serial.println("Audio initialization failed or timed out.");
-    return;
-  }
-  ChipIntelliAudio.setVolume(70);
-
   gAsrReady = ChipIntelliASR.begin();
   if (!gAsrReady) {
-    Serial.println("ASR initialization failed or timed out.");
+    Serial.print("ASR initialization failed: ");
+    Serial.println(ChipIntelliASR.errorString(ChipIntelliASR.lastError()));
     return;
   }
 
-  Serial.println("Waiting for offline ASR results and playing matching prompts...");
+  ChipIntelliASR.onResult(logResult);
+  const bool handlersReady =
+      ChipIntelliASR.attachCommand(kAirConditionerOnCommandId,
+                                   handleAirConditionerOn) &&
+      ChipIntelliASR.attachSemantic(kAirConditionerOffSemanticId,
+                                    handleAirConditionerOff);
+  if (!handlersReady) {
+    Serial.print("ASR handler registration failed: ");
+    Serial.println(ChipIntelliASR.errorString(ChipIntelliASR.lastError()));
+    gAsrReady = false;
+    return;
+  }
+
+  Serial.print("Registered handlers: ");
+  Serial.print(ChipIntelliASR.handlerCount());
+  Serial.print('/');
+  Serial.println(ChipIntelliASR.handlerCapacity());
+  Serial.println("Say \"小智小智\", then \"打开空调\" or \"关闭空调\".");
 }
 
 void loop() {
-  if (!gAsrReady || !gAudioReady) {
+  if (!gAsrReady) {
     delay(1000);
     return;
   }
 
-  ChipIntelliASRResult result;
-  while (ChipIntelliASR.read(result)) {
-    Serial.print("command=");
-    Serial.print(result.commandId);
-    Serial.print(" semantic=");
-    Serial.print(result.semanticId);
-    Serial.print(" score=");
-    Serial.print(result.score);
-    Serial.print(" text=");
-    Serial.print(result.text);
-    if (result.textTruncated) {
-      Serial.print(" [truncated]");
-    }
-    Serial.println();
-
-    // Use the command metadata bundled with the sketch resources to select
-    // the matching response from voice.bin. An option index of -1 lets the
-    // SDK choose among the response variants configured for this command.
-    // Some SDK configurations start a prompt before publishing the result,
-    // so leave that prompt running instead of interrupting and replaying it.
-    if (ChipIntelliAudio.isPlaying()) {
-      Serial.println("Matching prompt is already playing.");
-    } else if (ChipIntelliAudio.playCommand(result.commandId)) {
-      Serial.println("Matching prompt request accepted.");
-    } else {
-      Serial.println("Matching prompt request failed.");
-    }
-  }
-  delay(1);
+  // Non-blocking: dispatches at most one queued recognition result per call.
+  ChipIntelliASR.tick();
 }

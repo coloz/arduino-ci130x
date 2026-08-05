@@ -11,6 +11,7 @@ or copied as an independent second player.
 The library supports:
 
 - playing audio by voice ID;
+- playing the built-in beep prompt one to sixteen times;
 - playing a configured prompt by command ID, command text, or semantic ID;
 - stopping playback, checking playback status, adjusting the volume, and
   reliably muting/unmuting output;
@@ -92,6 +93,7 @@ example and is not guaranteed to exist in every custom resource package.
 | API | Purpose |
 | --- | --- |
 | `playVoice(voiceId, interruptCurrent)` | Play the 16-bit voice ID from `voice.bin` |
+| `playBeep(count)` | Play the built-in beep prompt 1 to 16 times |
 | `playCommand(commandId, optionIndex, interruptCurrent)` | Play the prompt associated with a command ID |
 | `playCommand(commandText, optionIndex, interruptCurrent)` | Look up a configured command by text and play its prompt |
 | `playSemantic(semanticId, optionIndex, interruptCurrent)` | Play the prompt associated with a 32-bit semantic ID |
@@ -121,6 +123,13 @@ ChipIntelliAudio.playVoice(2, false);  // Play after the previous prompt
 SDK use the prompt option configured in the resource package. Pass a
 non-negative index only when the package defines multiple prompts for the same
 command and you know the required option number.
+
+`playBeep()` plays one beep by default. Pass a value from `1` through `16` to
+select the count, for example `ChipIntelliAudio.playBeep(3)`. The method uses
+the resource package's special `<beep>` command, interrupts the current prompt,
+and emits one completion callback after the whole group. The standard resource
+package includes this command; the method returns `false` if a custom package
+does not. It also returns `false` when `count` is zero or greater than `16`.
 
 ## Volume
 

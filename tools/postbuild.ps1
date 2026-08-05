@@ -26,7 +26,7 @@ param(
     [string]$Chip,
 
     [Parameter(Mandatory = $true)]
-    [ValidateSet('null', 'cwsl')]
+    [ValidateSet('aec', 'null', 'cwsl_aec', 'cwsl')]
     [string]$Algorithm,
 
     [Parameter(Mandatory = $true)]
@@ -62,7 +62,7 @@ $toolKit = Join-Path $platformRoot 'tools\sdk\bin\ci-tool-kit.exe'
 $secondCore = Join-Path $platformRoot ("tools\sdk\bin\libbnpu_core_alg_pro_{0}.a" -f $Algorithm)
 $mergeUserFileEntries = Join-Path $platformRoot 'tools\merge_user_file_entries.ps1'
 $projectResourcesBase = (Resolve-Path -LiteralPath $ProjectResources).Path
-$projectResourcesRoot = if ($Algorithm -eq 'cwsl') {
+$projectResourcesRoot = if ($Algorithm -in @('cwsl_aec', 'cwsl')) {
     (Resolve-Path -LiteralPath (Join-Path $projectResourcesBase 'cwsl')).Path
 }
 else {

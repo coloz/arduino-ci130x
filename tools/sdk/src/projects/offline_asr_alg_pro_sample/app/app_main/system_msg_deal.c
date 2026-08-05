@@ -41,12 +41,14 @@
 #include "cwsl_manage.h"
 #if defined(CI_ARDUINO_CORE)
 extern void chipintelli_sdk_notify_ready(void);
+extern void chipintelli_sdk_notify_asr_timeout(void);
 
 static volatile uint32_t s_arduino_sys_message_count = 0;
 static volatile uint32_t s_arduino_asr_message_count = 0;
 static volatile uint32_t s_arduino_cmd_info_message_count = 0;
 static volatile uint32_t s_arduino_audio_started_message_count = 0;
 static volatile uint32_t s_arduino_asr_status_count[6] = {0};
+static volatile bool s_arduino_timeout_pending = false;
 
 uint32_t ci_arduino_sys_message_count(void)
 {
@@ -411,6 +413,14 @@ void change_asr_wakeup_word(void)
     /*set wakeup state*/
     set_state_exit_wakeup();
 
+    #if defined(CI_ARDUINO_CORE)
+    if (s_arduino_timeout_pending)
+    {
+        s_arduino_timeout_pending = false;
+        chipintelli_sdk_notify_asr_timeout();
+    }
+    #endif
+
     sys_sleep_hook();
     
     xSemaphoreGive(WakeupMutex);
@@ -762,6 +772,12 @@ void sys_deal_cmd_info_msg(sys_msg_cmd_info_data_t *cmd_info_msg)
             /*change asr wakeup word*/
             change_asr_wakeup_word();
         }
+        #if defined(CI_ARDUINO_CORE)
+        else
+        {
+            s_arduino_timeout_pending = false;
+        }
+        #endif
     }
     else if(MSG_CMD_INFO_STATUS_POST_CHANGE_ASR_NORMAL_WORD == cmd_info_msg->cmd_info_status)
     {
@@ -779,6 +795,10 @@ void sys_deal_cmd_info_msg(sys_msg_cmd_info_data_t *cmd_info_msg)
          */
         if(ignore_exit_wakeup == 0)
         {
+            #if defined(CI_ARDUINO_CORE)
+            s_arduino_timeout_pending =
+                (SYS_STATE_WAKEUP == get_wakeup_state());
+            #endif
             exit_wakeup_deal(1);
         }
         #if USE_CWSL

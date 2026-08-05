@@ -105,6 +105,26 @@ function Write-MultiVariantUserConfig {
     }
     $content = $content.Replace($messageUartEnabled, $messageUartDisabled)
 
+    # Arduino sketches own all user-facing ASR prompts. The SDK still performs
+    # its normal state transitions and command handling, but startup, wake,
+    # timeout and command responses are selected explicitly from tick() events.
+    foreach ($promptSetting in @(
+        'PLAY_WELCOME_EN',
+        'PLAY_ENTER_WAKEUP_EN',
+        'PLAY_EXIT_WAKEUP_EN',
+        'PLAY_OTHER_CMD_EN'
+    )) {
+        $promptPattern = "(?m)^#define\s+$promptSetting\s+1([^\r\n]*)\r?$"
+        if ([regex]::Matches($content, $promptPattern).Count -ne 1) {
+            throw "Unable to disable $promptSetting in: $Source"
+        }
+        $content = [regex]::Replace(
+            $content,
+            $promptPattern,
+            "#define $promptSetting                 0`$1",
+            1)
+    }
+
     # Arduino owns UART0 as Serial. Disable the vendor SDK logger so it cannot
     # configure the same peripheral for 921600 baud or block before setup().
     $logUartPattern = '(?m)^#define CONFIG_CI_LOG_UART\s+HAL_UART0_BASE[^\r\n]*\r?$'
@@ -178,6 +198,63 @@ function Write-MultiVariantUserConfig {
 
     $content = $content.Replace($boardSelection, $selectionReplacement.TrimEnd("`r", "`n"))
     $content = $content.Replace($chipBranches, $branchReplacement.TrimEnd("`r", "`n"))
+
+    # Arduino exposes all four algorithm profiles from one generated header.
+    # Keep the menu-provided AEC interruption policy overridable and avoid the
+    # vendor header redefining HOST_CODEC_CHA_NUM for every Arduino C++ unit.
+    $aecInterruptPattern = '(?m)^#if USE_AEC_MODULE\r?\n#define AEC_INTERRUPT_TYPE\s+2[^\r\n]*\r?\n#endif'
+    if ([regex]::Matches($content, $aecInterruptPattern).Count -ne 1) {
+        throw "Unable to make the AEC interruption policy selectable in: $Source"
+    }
+    $aecInterruptReplacement = @'
+#if USE_AEC_MODULE
+#ifndef AEC_INTERRUPT_TYPE
+#define AEC_INTERRUPT_TYPE              2  // 2: wake words and commands; 1: commands; 0: wake words
+#endif
+#if (AEC_INTERRUPT_TYPE < 0) || (AEC_INTERRUPT_TYPE > 2)
+#error "AEC_INTERRUPT_TYPE must be 0 (wake word), 1 (command), or 2 (both)"
+#endif
+#endif
+'@
+    $content = [regex]::Replace(
+        $content,
+        $aecInterruptPattern,
+        $aecInterruptReplacement.TrimEnd("`r", "`n"),
+        1)
+
+    $codecChannelPattern = '(?ms)(#if USE_BEAMFORMING_MODULE\s+\|\| USE_AI_DOA \|\| USE_DEREVERB_MODULE \|\| USE_DUAL_MIC_ANY\r?\n#if USE_CI_D12GS01J_BOARD\r?\n.*?\r?\n#endif\r?\n)#define HOST_CODEC_CHA_NUM\s+2\r?\n#define OFFLINE_DUAL_MIC_ALG_SUPPORT\s+1\r?\n#else\r?\n#define HOST_CODEC_CHA_NUM\s+1\r?\n#define OFFLINE_DUAL_MIC_ALG_SUPPORT\s+0\r?\n#endif'
+    if ([regex]::Matches($content, $codecChannelPattern).Count -ne 1) {
+        throw "Unable to make the AEC Codec channel count warning-free in: $Source"
+    }
+    $codecChannelReplacement = @'
+$1#ifndef HOST_CODEC_CHA_NUM
+#define HOST_CODEC_CHA_NUM  2
+#endif
+#define OFFLINE_DUAL_MIC_ALG_SUPPORT    1
+#elif USE_AEC_MODULE
+#ifndef HOST_CODEC_CHA_NUM
+#define HOST_CODEC_CHA_NUM              2
+#endif
+#define OFFLINE_DUAL_MIC_ALG_SUPPORT    0
+#else
+#ifndef HOST_CODEC_CHA_NUM
+#define HOST_CODEC_CHA_NUM              1
+#endif
+#define OFFLINE_DUAL_MIC_ALG_SUPPORT    0
+#endif
+'@
+    $content = [regex]::Replace(
+        $content,
+        $codecChannelPattern,
+        $codecChannelReplacement.TrimEnd("`r", "`n"),
+        1)
+    $content = Replace-RequiredLiteral `
+        -Content $content `
+        -OldValue "    #define HOST_CODEC_CHA_NUM  2`r`n    #define OFFLINE_DUAL_MIC_ALG_SUPPORT    0`r`n" `
+        -NewValue '' `
+        -ExpectedCount 1 `
+        -Description "remove the duplicate AEC Codec channel definitions in $Source"
+
     # Match the Windows checkout convention so a content-identical rebuild
     # does not leave these generated headers falsely marked as modified.
     $content = $content.Replace("`r`n", "`n").Replace("`n", "`r`n")
@@ -633,12 +710,14 @@ $systemMessageSourceContent = Replace-RequiredLiteral `
 #include "cwsl_manage.h"
 #if defined(CI_ARDUINO_CORE)
 extern void chipintelli_sdk_notify_ready(void);
+extern void chipintelli_sdk_notify_asr_timeout(void);
 
 static volatile uint32_t s_arduino_sys_message_count = 0;
 static volatile uint32_t s_arduino_asr_message_count = 0;
 static volatile uint32_t s_arduino_cmd_info_message_count = 0;
 static volatile uint32_t s_arduino_audio_started_message_count = 0;
 static volatile uint32_t s_arduino_asr_status_count[6] = {0};
+static volatile bool s_arduino_timeout_pending = false;
 
 uint32_t ci_arduino_sys_message_count(void)
 {
@@ -673,6 +752,58 @@ uint32_t ci_arduino_asr_status_count(uint32_t status)
 '@.TrimEnd("`r", "`n") `
     -ExpectedCount 1 `
     -Description "declare Arduino SDK readiness reporting in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue '    set_state_exit_wakeup();' `
+    -NewValue @'
+    set_state_exit_wakeup();
+
+    #if defined(CI_ARDUINO_CORE)
+    if (s_arduino_timeout_pending)
+    {
+        s_arduino_timeout_pending = false;
+        chipintelli_sdk_notify_asr_timeout();
+    }
+    #endif
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "publish the Arduino ASR timeout transition in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue @'
+        if(ignore_exit_wakeup == 0)
+        {
+            /*change asr wakeup word*/
+            change_asr_wakeup_word();
+        }
+'@.TrimEnd("`r", "`n") `
+    -NewValue @'
+        if(ignore_exit_wakeup == 0)
+        {
+            /*change asr wakeup word*/
+            change_asr_wakeup_word();
+        }
+        #if defined(CI_ARDUINO_CORE)
+        else
+        {
+            s_arduino_timeout_pending = false;
+        }
+        #endif
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "cancel a superseded Arduino ASR timeout event in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue '            exit_wakeup_deal(1);' `
+    -NewValue @'
+            #if defined(CI_ARDUINO_CORE)
+            s_arduino_timeout_pending =
+                (SYS_STATE_WAKEUP == get_wakeup_state());
+            #endif
+            exit_wakeup_deal(1);
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "mark timer-driven Arduino ASR timeout events in $systemMessageSourcePath"
 $audioReadyPattern = '(?ms)(\s*#if !UART_BAUDRATE_CALIBRATE\r?\n\s*\{\r?\n\s*sys_power_on_hook\(\);\r?\n\s*\}\r?\n\s*#endif)(\r?\n\s*break;\r?\n\s*\}\r?\n\s*default:)'
 $audioReadyMatches = [regex]::Matches($systemMessageSourceContent, $audioReadyPattern)
 if ($audioReadyMatches.Count -ne 1) {
@@ -996,10 +1127,14 @@ Copy-RequiredFile -Source (Join-Path $sdkRoot 'components\ci_ble\stack\libcias_c
 
 Copy-RequiredFile -Source (Join-Path $sdkRoot 'projects\offline_asr_alg_pro_sample\lds\ci130x_alg_pro_null.lds') -DestinationDirectory $linkerOutput
 Copy-RequiredFile -Source (Join-Path $sdkRoot 'projects\offline_asr_alg_pro_sample\lds\ci130x_alg_pro_cwsl.lds') -DestinationDirectory $linkerOutput
+Copy-RequiredFile -Source (Join-Path $sdkRoot 'projects\offline_asr_alg_pro_sample\lds\ci130x_alg_pro_aec.lds') -DestinationDirectory $linkerOutput
+Copy-RequiredFile -Source (Join-Path $sdkRoot 'projects\offline_asr_alg_pro_sample\lds\ci130x_alg_pro_cwsl_aec.lds') -DestinationDirectory $linkerOutput
 Copy-RequiredFile -Source (Join-Path $sdkRoot 'utils\common.lds') -DestinationDirectory $linkerOutput
 
 Copy-RequiredFile -Source (Join-Path $sdkRoot 'libs\libbnpu_core_alg_pro_null.a') -DestinationDirectory $binaryOutput
 Copy-RequiredFile -Source (Join-Path $sdkRoot 'libs\libbnpu_core_alg_pro_cwsl.a') -DestinationDirectory $binaryOutput
+Copy-RequiredFile -Source (Join-Path $sdkRoot 'libs\libbnpu_core_alg_pro_aec.a') -DestinationDirectory $binaryOutput
+Copy-RequiredFile -Source (Join-Path $sdkRoot 'libs\libbnpu_core_alg_pro_cwsl_aec.a') -DestinationDirectory $binaryOutput
 $ciToolKitSource = Join-Path $sdkRoot 'tools\ci-tool-kit.exe'
 if (-not (Test-Path -LiteralPath $ciToolKitSource -PathType Leaf)) {
     # The official V2.7.14 archive omits the standalone executable while the
@@ -1117,11 +1252,13 @@ Generated from: CI130X_SDK_ALG_V2.7.14
 Project: projects/offline_asr_alg_pro_sample
 Validated variant: $Variant
 Board: $($profile.Board) / $($profile.Chip) / $($profile.Flash)
-Algorithm profiles: standard USE_NULL=1 and command-word self-learning USE_CWSL=1
+Algorithm profiles: AEC (default), standard ASR, CWSL+AEC, and CWSL
 SDK message UART: disabled; Arduino HardwareSerial owns UART2
 NVDM readiness: published only after cinv_init() completes
 Audio mute compatibility: weak gain hook for ChipIntelliAudio
 Prompt callback safety: weak hook dispatched after the prompt mutex is released
+ASR prompt policy: startup, wake, timeout, and command auto-play disabled
+ASR lifecycle events: SDK-task notifications queued for Arduino tick() dispatch
 IR database compatibility: task-scoped user-file ID alias (Arduino default physical ID 50000)
 Compiler: riscv-nuclei-elf-gcc 9.2.0
 Compiler executable SHA256: $compilerHash

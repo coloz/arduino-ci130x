@@ -165,10 +165,10 @@ chipintelli提供的部分开发板和模组，可以通过下面的宏选择，
 #define DEFAULT_MODEL_GROUP_ID          0
 #endif
 
-#define PLAY_WELCOME_EN                 1      //是否在启动时播放开机提示音。1:是 0:否。
-#define PLAY_ENTER_WAKEUP_EN            1      //是否在唤醒时播放提示音。1:是 0:否。
-#define PLAY_EXIT_WAKEUP_EN             1      //是否在切换到只监听唤词状态时播放提示音。1:是 0:否。
-#define PLAY_OTHER_CMD_EN               1      //是否在识别到命令词时播放提示音。1:是 0:否。
+#define PLAY_WELCOME_EN                 0      //Arduino 通过启动事件决定是否播放提示音。
+#define PLAY_ENTER_WAKEUP_EN            0      //Arduino 通过唤醒事件决定是否播放提示音。
+#define PLAY_EXIT_WAKEUP_EN             0      //Arduino 通过超时事件决定是否播放提示音。
+#define PLAY_OTHER_CMD_EN               0      //Arduino 通过命令事件决定是否播放提示音。
 #define ADAPTIVE_THRESHOLD              0
 #define ASR_SKIP_FRAME_CONFIG           0
 #define EXIT_WAKEUP_TIME                15*1000   //退出唤醒超时时间,单位毫秒。超过此配置指定的时间长度内没有识别到任何命令词，就会切换到只监听唤词状态。
@@ -195,7 +195,12 @@ chipintelli提供的部分开发板和模组，可以通过下面的宏选择，
 #define DEREVERB_FREQ_RANGE_INDEX       0  //默认0:算法起效频率160HZ-4800HZ 消耗28KB内存  1: 算法起效频率0-8000HZ 消耗49KB内存     
 #endif
 #if USE_AEC_MODULE
+#ifndef AEC_INTERRUPT_TYPE
 #define AEC_INTERRUPT_TYPE              2  //默认2: 命令词和唤醒词都可打断  1: 只有命令词能打断   0:只有唤醒词能打断
+#endif
+#if (AEC_INTERRUPT_TYPE < 0) || (AEC_INTERRUPT_TYPE > 2)
+#error "AEC_INTERRUPT_TYPE must be 0 (wake word), 1 (command), or 2 (both)"
+#endif
 #endif
 //**自学习功能-请在安静环境下，用清晰洪亮的声音进行指令学习，避免环境噪音过大和学习者声音过小导致学习不成功       
 //**注意：为了避免指令词被学习成模版，请确保cmd_info.xls中词条语义ID、命令词ID与需学习的词条语义ID、命令词ID不重复                                       
@@ -280,10 +285,19 @@ chipintelli提供的部分开发板和模组，可以通过下面的宏选择，
 #if USE_CI_D12GS01J_BOARD
  #error "USE_CI_D12GS01J_BOARD not support dual mic alg !\n"    //131x不支持双mic算法
 #endif
+#ifndef HOST_CODEC_CHA_NUM
 #define HOST_CODEC_CHA_NUM  2
+#endif
 #define OFFLINE_DUAL_MIC_ALG_SUPPORT    1
+#elif USE_AEC_MODULE
+#ifndef HOST_CODEC_CHA_NUM
+#define HOST_CODEC_CHA_NUM              2
+#endif
+#define OFFLINE_DUAL_MIC_ALG_SUPPORT    0
 #else
+#ifndef HOST_CODEC_CHA_NUM
 #define HOST_CODEC_CHA_NUM              1
+#endif
 #define OFFLINE_DUAL_MIC_ALG_SUPPORT    0
 #endif
 
@@ -301,9 +315,6 @@ chipintelli提供的部分开发板和模组，可以通过下面的宏选择，
     #define PAUSE_VOICE_IN_WITH_PLAYING  0   //开启aec时关闭
     #endif
     #define IF_JUST_CLOSE_HPOUT_WHILE_NO_PLAY   1
-
-    #define HOST_CODEC_CHA_NUM  2
-    #define OFFLINE_DUAL_MIC_ALG_SUPPORT    0
 
     #if USE_SED_SNORE || USE_SED_CRY
     #error "aec + sed detection alg not support!\n"    //事件检测不支持AEC

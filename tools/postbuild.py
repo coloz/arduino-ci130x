@@ -79,7 +79,12 @@ def main():
     parser.add_argument('--citool-cli', required=True, help='citool-cli path')
     parser.add_argument('--project-resources', required=True, help='Project resources path')
     parser.add_argument('--chip', choices=['ci1302', 'ci1303', 'ci1306'], required=True, help='Chip model')
-    parser.add_argument('--algorithm', choices=['null', 'cwsl'], required=True, help='Algorithm profile')
+    parser.add_argument(
+        '--algorithm',
+        choices=['aec', 'null', 'cwsl_aec', 'cwsl'],
+        required=True,
+        help='Algorithm profile',
+    )
     parser.add_argument('--max-user-code-size', type=int, required=True, help='Maximum user code size')
     args = parser.parse_args()
 
@@ -109,7 +114,7 @@ def main():
     merge_user_file_entries = platform_root / 'tools' / 'merge_user_file_entries.py'
     project_resources_base = Path(args.project_resources).resolve()
 
-    if args.algorithm == 'cwsl':
+    if args.algorithm in ('cwsl_aec', 'cwsl'):
         project_resources_root = project_resources_base / 'cwsl'
     else:
         project_resources_root = project_resources_base

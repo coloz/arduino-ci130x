@@ -1,5 +1,5 @@
 name=ChipIntelli CI130X Arduino
-version=1.0.5
+version=1.0.6
 
 # CI130X SDK ALG V2.7.14 is ABI-locked to the vendor Nuclei GCC 9.2.0
 # distribution. Boards Manager removes the archive's single gcc_fix_raissrc/

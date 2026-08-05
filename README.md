@@ -9,7 +9,8 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 > 当前项目仍处于开发预览阶段。源码编译、链接、双核镜像后处理和本地
 > Boards Manager 安装流程已经验证；CI1303 已完成 Standard/CWSL 启动、音频提示
 > 回调、核心外设以及 I2C/SSD1306 实体测试。CI1302、CI1306 和受控说词识别仍待
-> 实体回归。请勿直接用于量产固件。
+> 实体回归；AEC/语音打断目前完成构建验证，仍待带参考回采硬件的声学实测。请勿
+> 直接用于量产固件。
 
 ## 目录
 
@@ -30,17 +31,18 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前开发版本 | `1.0.5` |
+| 当前开发版本 | `1.0.6` |
 | Arduino IDE | Arduino IDE 2.x |
 | Arduino CLI | 已使用 1.5.0 验证 |
 | 主机系统 | 完整固件流程：Windows 10/11 x64、macOS 15+ Apple Silicon；Linux x86_64 已通过编译/链接验证，完整回归待补充 |
 | 编译器 | Nuclei RISC-V GCC 9.2.0（`rv32imafc / ilp32f`）；macOS 由官方 `nuclei_9.2_fixjalr_forhw` 源码构建 |
-| 算法配置 | 工具菜单可选标准离线 ASR 或命令词自学习 CWSL profile |
-| 公共 Boards Manager 发布 | `v1.0.5`（Windows x64、Linux x86_64、macOS Apple Silicon） |
+| 算法配置 | 默认标准离线 ASR + AEC/语音打断；可选无 AEC、CWSL+AEC 或 CWSL profile |
+| 公共 Boards Manager 发布 | `v1.0.6`（Windows x64、Linux x86_64、macOS Apple Silicon） |
 | 硬件运行验证 | CI1303：Windows/macOS Standard 启动和音频、CWSL 启动、核心外设、I2C/SSD1306 已通过；其余待验证 |
 
-当前版本在编译前检查 sketch 根目录的 profile 资源；标准 ASR 使用 `recursos/*.bin`，
-CWSL 使用 `recursos/cwsl/*.bin`。缺少分区时从 Arduino package 的对应 profile 补齐。
+当前版本在编译前检查 sketch 根目录的 profile 资源；标准 ASR/AEC 使用
+`recursos/*.bin`，CWSL/CWSL+AEC 使用 `recursos/cwsl/*.bin`。缺少分区时从
+Arduino package 的对应 profile 补齐。
 精确匹配 1.0.3 及更早版本已知不兼容 Standard 四文件哈希的完整集合会安全升级；
 任何自定义、修改过或混合的资源集都不会被覆盖，并会给出兼容性警告。
 原厂示例中可获得源码的 138 个编译单元随平台发布，并在 Arduino 首次构建时并行
@@ -93,15 +95,17 @@ CI1306 编译和链接，完整后处理与实体板回归仍待补充。
 固定版本的索引也随 GitHub Release 发布：
 
 ```text
-https://github.com/coloz/arduino-ci130x/releases/download/v1.0.5/package_chipintelli_index.json
+https://github.com/coloz/arduino-ci130x/releases/download/v1.0.6/package_chipintelli_index.json
 ```
 
 ## 快速开始
 
 1. 在 Arduino IDE 中选择对应开发板：
    **ChipIntelli CI1302**、**ChipIntelli CI1303** 或 **ChipIntelli CI1306**。
-2. 在 **工具 > 算法配置** 中选择 **标准离线 ASR**；需要命令词自学习时选择
-   **命令词自学习 CWSL**。该选项会一起切换编译宏、链接脚本和第二核算法镜像。
+2. 默认使用 **标准离线 ASR + AEC/语音打断**；需要命令词自学习时选择
+   **命令词自学习 CWSL + AEC/语音打断**。兼容旧硬件或没有 AEC 参考回采线路时，
+   可选择名称中标有“无 AEC”的 profile。该选项会一起切换编译宏、链接脚本和
+   第二核算法镜像。
 3. CI1302/CI1303 默认选择 **Internal RC (no crystal)**；只有板上确实安装
    12.288 MHz 晶振时才选择 **External 12.288 MHz crystal**。
 4. PA4 接有 LED 时可打开 **文件 > 示例 > CI13XX > GPIO > PA4BlinkSerial**，
@@ -122,8 +126,9 @@ arduino-cli compile --fqbn chipintelli:ci13xx:ci1303 `
   examples\CI13XXSmoke
 ```
 
-第一次编译会在 sketch 根目录创建所选 profile 的资源目录：标准 ASR 为 `recursos/`，
-CWSL 为 `recursos/cwsl/`，并复制该 profile 的四个分区文件和 package-managed 清单。
+第一次编译会在 sketch 根目录创建所选 profile 的资源目录：标准 ASR/AEC 为
+`recursos/`，CWSL/CWSL+AEC 为 `recursos/cwsl/`，并复制该 profile 的四个分区文件
+和 package-managed 清单。
 需要定制模型、播报音或用户文件时，直接替换对应文件；检测到修改后，后续编译不会
 覆盖它们。构建目录
 同时保留 `<sketch>.user_code.bin` 和最终的 `<sketch>.bin`，Arduino IDE 导出的
@@ -157,7 +162,7 @@ CWSL 为 `recursos/cwsl/`，并复制该 profile 的四个分区文件和 packag
 | SPI | [`SPI`](libraries/SPI/README.md)、`SPISettings` | GPIO software master、模式 0–3、MSB/LSB，最高 500 kHz |
 | SD 卡 | [`SD`](libraries/SD/README.md)、`File` | software SPI、SD/SDHC、FAT16/FAT32、8.3 短文件名 |
 | 持久化 | [`EEPROM`](libraries/EEPROM/README.md)、[`Preferences`](libraries/Preferences/README.md) | 基于 NVDM；EEPROM 缓冲提交，Preferences 提供 namespace/typed key-value |
-| 语音识别 | [`ChipIntelliASR`](libraries/ChipIntelliASR/README.md) | 命令 ID、语义 ID、得分、帧数、文本队列与回调 |
+| 语音识别 | [`ChipIntelliASR`](libraries/ChipIntelliASR/README.md) | OneButton 风格的启动/唤醒/超时/命令/语义事件、512 项处理表及 `tick()`；提示音由 sketch 决定，默认 AEC 和语音打断 |
 | 命令词自学习 | [`ChipIntelliCWSL`](libraries/ChipIntelliCWSL/README.md) | 命令词/唤醒词学习、模板删除与计数、异步状态和识别事件 |
 | 提示音 | [`ChipIntelliAudio`](libraries/ChipIntelliAudio/README.md) | 播放 `voice.bin` 中已有的提示音，支持队列、停止、音量、静音和完成回调 |
 | 红外 | [`ChipIntelliIR`](libraries/ChipIntelliIR/README.md) | 38 kHz raw 收发、NEC、学习回放，以及官方 36 品牌空调码库和码组搜索 |
@@ -196,7 +201,7 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 | `Preferences` | `StartCounter` | namespace、typed key-value 与立即持久化 |
 | `ChipIntelliTimer` | `HardwareTimer`、`Ticker` | 硬件中断定时和 FreeRTOS 软件定时任务 |
 | `ChipIntelliWatchdog` | `BasicWatchdog` | 配置、喂养并测试芯片级 IWDG |
-| `ChipIntelliASR` | `ASRResults` | 读取离线语音识别结果 |
+| `ChipIntelliASR` | `SimpleCommandPlayback`、`ASRResults`、`WakeCommandWindow`、`BargeIn` | 用生命周期/命令/语义回调和 `tick()` 处理事件，由 sketch 异步播放提示音，实现连续命令窗口，并测试播报中语音打断 |
 | `ChipIntelliCWSL` | `BasicLearning`、`SerialLearning` | 最小命令词学习，以及通过串口学习/删除命令词和唤醒词并观察异步事件 |
 | `ChipIntelliAudio` | `PlayVoiceId`、`PromptControl` | 播放与控制已配置提示音 |
 | `ChipIntelliIR` | `RawSendReceive`、`AirConditioner` | 原始波形/NEC 收发，以及使用官方码库控制和匹配空调 |
@@ -205,14 +210,21 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 
 ## 重要限制
 
-### 算法 Profile 与 CWSL
+### 算法 Profile、AEC 与 CWSL
 
-- **标准离线 ASR** 使用 `USE_NULL=1`、`USE_CWSL=0`、NULL 专用链接脚本和
-  NULL 第二核镜像；**命令词自学习 CWSL** 使用 `USE_NULL=0`、`USE_CWSL=1`、
-  CWSL 专用链接脚本和 CWSL 第二核镜像。两个 profile 的分区均由 V2.7.14 官方
-  `offline_asr_alg_pro_sample` 输入独立生成；当前 vendor sample 生成相同的
-  ASR/DNN/Voice/UserFile payload。这是编译期选择，同一固件不能在运行时切换 profile；
-  标准 profile 中 `ChipIntelliCWSL.begin()` 会返回 `false`。CWSL `cmd_info` 和
+- 默认 **标准离线 ASR + AEC/语音打断** 使用 `USE_AEC_MODULE=1`、
+  `AEC_INTERRUPT_TYPE=2`、AEC 专用链接脚本和第二核镜像；播报时保留麦克风输入和
+  ASR 任务，唤醒词及普通命令词均可打断。**CWSL+AEC** 在此基础上增加
+  `USE_CWSL=1`。两个名称中标有“无 AEC”的兼容 profile 分别使用原 NULL/CWSL
+  镜像，播报时会静音录音并暂停 ASR，因而不支持语音打断。
+- AEC 是单麦 + 一路参考信号算法：内部 Codec 左通道接麦克风，右通道必须接功放前
+  的线电平播放参考。不能把功放或扬声器输出直接送入 Codec。参考通道未连接、削顶、
+  极性/增益或延时不合适时，固件虽然显示 AEC 已启用，实际回声消除和打断可靠性仍会
+  很差；具体接线和衰减应以模块原理图及硬件设计为准。
+- 四个 profile 的分区均来自 V2.7.14 官方 `offline_asr_alg_pro_sample`；AEC 与无 AEC
+  标准档共用 Standard ASR/DNN/Voice/UserFile，CWSL+AEC 与 CWSL 共用 CWSL 资源。
+  这是编译期选择，同一固件不能在运行时切换；非 CWSL profile 中
+  `ChipIntelliCWSL.begin()` 会返回 `false`。CWSL `cmd_info` 和
   提示音同时保留原厂 ID 199～208 的语音控制流程；Arduino API 可直接发起操作，
   无需依赖这些控制词。为避免程序操作与语音控制互相触发，程序学习接口拒绝将
   ID 199～208 作为目标命令。
@@ -296,7 +308,8 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 代码、只读数据、读写数据、BSS、栈和运行时 heap 共用一段 `0x82000`
 （532480 B）host SRAM，代码在启动时从 Flash 加载到 SRAM。根据芯片厂家的确认，
 Arduino 保留原厂 SDK 的最终 `user_code.bin <= 0x70000`（448 KiB）硬限制；超过时
-后处理立即报错，不会生成或烧录完整固件。CI1302 选择官方 CWSL 四件套时还受
+后处理立即报错，不会生成或烧录完整固件。AEC/CWSL+AEC 第二核镜像分别为
+76,584/76,648 B，菜单相应收紧 host program 上限。CI1302 选择官方 CWSL 四件套时还受
 2 MB Flash 排布限制，菜单会把双核 `user_code.bin` 上限进一步收紧为 `0x39000`
 （233472 B），Arduino 显示的保守 host program 上限为 157233 B；CI1303/CI1306
 CWSL 仍使用 `0x70000` 上限。

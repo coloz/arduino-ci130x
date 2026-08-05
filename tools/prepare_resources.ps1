@@ -7,7 +7,7 @@ param(
     [string]$PackageResources,
 
     [Parameter(Mandatory = $true)]
-    [ValidateSet('null', 'cwsl')]
+    [ValidateSet('aec', 'null', 'cwsl_aec', 'cwsl')]
     [string]$Algorithm
 )
 
@@ -16,7 +16,8 @@ Set-StrictMode -Version Latest
 
 $projectRoot = (Resolve-Path -LiteralPath $ProjectPath).Path
 $packageRoot = (Resolve-Path -LiteralPath $PackageResources).Path
-$profileSubdirectory = if ($Algorithm -eq 'cwsl') { 'cwsl' } else { '' }
+$usesCwslResources = $Algorithm -in @('cwsl_aec', 'cwsl')
+$profileSubdirectory = if ($usesCwslResources) { 'cwsl' } else { '' }
 $packageProfileResources = if ($profileSubdirectory) {
     Join-Path $packageRoot $profileSubdirectory
 }
@@ -34,7 +35,7 @@ $requiredFiles = @('asr.bin', 'dnn.bin', 'voice.bin', 'user_file.bin')
 $packageManifestPath = Join-Path $packageProfileResources 'manifest.json'
 $managedManifestName = '.chipintelli-package-resources.json'
 $projectManagedManifestPath = Join-Path $projectResources $managedManifestName
-$expectedProfile = if ($Algorithm -eq 'cwsl') { 'cwsl' } else { 'standard' }
+$expectedProfile = if ($usesCwslResources) { 'cwsl' } else { 'standard' }
 
 function Read-ResourceManifest {
     param([string]$Path, [string]$Description)
@@ -150,7 +151,7 @@ if (Test-Path -LiteralPath $projectManagedManifestPath -PathType Leaf) {
         Write-Warning "$($_.Exception.Message) Preserving sketch resources as user-owned files."
     }
 }
-elseif ($Algorithm -eq 'null' -and
+elseif (-not $usesCwslResources -and
         (Test-ResourceSet -Root $projectResources -Metadata $legacyStandardMetadata)) {
     $replaceManagedSet = $true
     $replacementReason = 'legacy v1.0.3 Standard resource set'

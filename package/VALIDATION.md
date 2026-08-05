@@ -394,3 +394,98 @@ previously selected only the PowerShell hooks even though Linux and macOS invoke
 the Python hooks from `platform.txt`. The workflow now includes all eight hooks
 and rejects an archive when any one is missing. This was package/build-path
 validation only; no physical board was connected to the Ubuntu host.
+
+## AEC and voice-interruption profile validation
+
+On 2026-08-04, the development platform added the vendor V2.7.14 AEC algorithm
+profiles and made Standard ASR with AEC the default for CI1302, CI1303 and
+CI1306. `AEC_INTERRUPT_TYPE=2` enables interruption by both wake words and
+normal command words. The board menu retains explicit Standard ASR and CWSL
+profiles without AEC, and adds CWSL with AEC.
+
+Arduino CLI 1.5.0 warning-enabled builds completed SDK source compilation,
+Arduino compilation, final link, dual-core merge, firmware `compose`, and strict
+`inspect` for the following AEC matrix:
+
+| Chip | Profile | Sketch | Host program / limit | `user_code.bin` | Complete firmware |
+| --- | --- | --- | ---: | ---: | ---: |
+| CI1302 | Standard ASR + AEC | `BargeIn` | 134,809 / 382,121 | 211,176 | 2,056,225 |
+| CI1303 | Standard ASR + AEC | `BargeIn` | 134,809 / 382,121 | 211,176 | 2,056,225 |
+| CI1306 | Standard ASR + AEC | `BargeIn` | 131,371 / 382,121 | 207,736 | 2,052,129 |
+| CI1302 | CWSL + AEC | `BasicLearning` | 151,673 / 156,777 | 228,104 | 2,072,609 |
+| CI1303 | CWSL + AEC | `SerialLearning` | 157,025 / 382,057 | 233,448 | 2,076,705 |
+| CI1306 | CWSL + AEC | `SerialLearning` | 153,579 / 382,057 | 230,008 | 2,076,705 |
+
+All six builds completed without compiler diagnostics. The three Standard AEC
+containers embedded the exact 76,584-byte vendor second-core image with SHA-256
+`d81aaf590554bbc6beaf26a29dff52471278735222a9bf4a67690aaf30edbdbd`;
+their link maps selected `SDK_ALG_PRO_SRAM_HOST_AEC_END_ADDR`. The three CWSL
+AEC containers embedded the exact 76,648-byte image with SHA-256
+`5fdb627d641a2cdcebc6d063555973e856308678ce1abfeda5ad0c518842c63a`;
+their maps selected `SDK_ALG_PRO_SRAM_HOST_CWSL_AEC_END_ADDR`.
+
+Backward-compatibility builds also passed without diagnostics for CI1306
+Standard ASR without AEC and CI1302 CWSL without AEC. A release-candidate
+platform package was then generated successfully; the 20,522,162-byte ZIP had
+SHA-256
+`66303e7c2a43c41ed311fc15342df9c99fa14acdc1ca0faad379baa4c021d7da`
+and contained both AEC linker scripts, both byte-identical second-core images,
+the `BargeIn` example, and the Arduino keyword metadata.
+
+This validates profile selection, memory limits and the complete firmware build
+path. Acoustic cancellation quality and real-time interruption still require a
+physical board with the speaker playback reference connected to the codec's
+reference input; no hardware acoustic claim is made here.
+
+## Large ASR event-table validation
+
+On 2026-08-05, `ChipIntelliASR` replaced its 32-command linear handler table
+with a 512-entry command/semantic table. The table uses one callback union per
+entry, keeps active entries sorted, and performs binary lookup from `tick()`.
+Exact command-ID bindings take precedence over semantic-ID fallbacks. The
+ASR engine is exposed as a singleton, and recursive `tick()` dispatch is
+rejected.
+
+Arduino CLI 1.5.0 clean builds using the current working-tree Core and library
+passed for the following matrix:
+
+| Chip | Profile | Sketch | Host program / limit | RAM / limit | `user_code.bin` |
+| --- | --- | --- | ---: | ---: | ---: |
+| CI1302 | Standard ASR + AEC | `SimpleCommandPlayback` | 134,681 / 382,121 | 127,644 / 532,480 | 211,048 |
+| CI1302 | Standard ASR + AEC | `ASRResults` | 135,465 / 382,121 | 127,612 / 532,480 | 211,832 |
+| CI1303 | Standard ASR + AEC | `ASRResults` | 135,465 / 382,121 | 127,612 / 532,480 | 211,832 |
+| CI1302 | CWSL + AEC | `ASRResults` | 154,105 / 156,777 | 128,896 / 532,480 | 230,536 |
+| CI1302 | Standard ASR + AEC | `WakeCommandWindow` | 135,233 / 382,121 | 127,660 / 532,480 | 211,592 |
+| CI1302 | Standard ASR + AEC | `BargeIn` | 134,809 / 382,121 | 127,648 / 532,480 | 211,176 |
+
+The standard CI1302 `ASRResults` build also passed with Arduino's `warnings
+all` setting and no compiler diagnostics. ELF inspection reports the singleton
+ASR object as 8,220 bytes (`0x201c`), including the 8,192-byte event table;
+the global reference itself is 4 bytes. The CWSL+AEC build retains 2,672 bytes
+of reported host-program headroom. These are build and static-layout checks;
+physical recognition and event dispatch still require target-hardware testing.
+
+## v1.0.6 release-candidate validation
+
+On 2026-08-05, the versioned `v1.0.6` working tree was rebuilt with Arduino
+CLI 1.5.0 using the already-installed Nuclei GCC 9.2.0 and `citool-cli` 1.1.2.
+The CI1302 Standard ASR + AEC `ASRResults` build used 133,011 / 382,121 bytes
+of host program storage and 127,648 / 532,480 bytes of RAM. The corresponding
+CI1302 CWSL + AEC build used 154,437 / 156,777 bytes of host program storage
+and 128,932 / 532,480 bytes of RAM. Both warning-enabled builds completed
+through final firmware post-processing without compiler diagnostics.
+
+The local package builder then generated a 38,549,211-byte
+`arduino-ci130x-1.0.6.zip` with SHA-256
+`b9f2ff6fa3d74a02a71ed97c54b094890abc534f2d4d20de841edccd3de8735a`.
+Its 967 entries contained both AEC linker scripts and the `BargeIn` example,
+with zero repository-only `.agent`, `.agents`, `.git`, `.github`, or `package`
+entries. All three Nuclei GCC archives and all three `citool-cli` archives were
+reused byte for byte from the previously validated assets; every old/new
+SHA-256 pair matched. Neither GCC nor `citool-cli` was recompiled.
+
+The tag-triggered release workflow independently generates the final platform
+ZIP from the tagged Git tree, so its compression-level-dependent size and hash
+are expected to differ from this local deterministic package-builder result.
+The workflow calculates the final metadata from the uploaded asset and writes
+those exact values back to the stable Boards Manager index on `main`.

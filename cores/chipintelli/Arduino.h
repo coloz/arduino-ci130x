@@ -171,9 +171,19 @@ typedef struct chipintelli_asr_result_t {
     uint32_t semantic_id;
     int16_t score;
     uint16_t frames;
+    bool is_wake_word;
     const char *text;
 } chipintelli_asr_result_t;
 typedef void (*chipintelli_asr_callback_t)(const chipintelli_asr_result_t *, void *);
+
+typedef uint8_t chipintelli_asr_event_type_t;
+enum {
+    CHIPINTELLI_ASR_EVENT_STARTED = 1,
+    CHIPINTELLI_ASR_EVENT_WAKEUP,
+    CHIPINTELLI_ASR_EVENT_TIMEOUT
+};
+typedef void (*chipintelli_asr_event_callback_t)(chipintelli_asr_event_type_t,
+                                                  void *);
 
 typedef uint8_t chipintelli_sdk_state_t;
 enum {
@@ -186,6 +196,10 @@ enum {
 bool chipintelli_sdk_begin(void);
 chipintelli_sdk_state_t chipintelli_sdk_state(void);
 void chipintelli_asr_set_callback(chipintelli_asr_callback_t callback, void *arg);
+void chipintelli_asr_set_event_callback(chipintelli_asr_event_callback_t callback,
+                                        void *arg);
+bool chipintelli_asr_is_awake(void);
+bool chipintelli_asr_keep_awake_for(uint32_t timeout_ms);
 #endif
 
 #ifndef CHIPINTELLI_CWSL_CORE_HOOK_TYPES

@@ -2,9 +2,9 @@
 
 // 示例：播放 voice.bin 中指定 ID 的提示音，并在播放完成后打印消息。
 //
-// 将这里替换为草图 recursos/voice.bin 中实际存在的语音 ID。Arduino 的正常
-// 编译和上传会把 recursos 中的音频资源一起打包到完整固件中。
-constexpr uint16_t kVoiceId = 1;
+// ID 15 是随本示例 recursos/voice.bin 生成的“空调语音控制已就绪”。Arduino
+// 的正常编译和上传会把 recursos 中的音频资源一起打包到完整固件中。
+constexpr uint16_t kReadyVoiceId = 15;
 
 // 完成通知只会在 SDK 释放提示音锁后执行；任务上下文并不固定。
 // volatile 标志用于把事件交给 loop()。
@@ -35,7 +35,7 @@ void setup() {
 
   // 默认 interruptCurrent=true，会中断正在播放的提示音。
   // 返回 true 仅表示请求已被 SDK 接受，不表示播放已经结束。
-  if (ChipIntelliAudio.playVoice(kVoiceId)) {
+  if (ChipIntelliAudio.playVoice(kReadyVoiceId)) {
     Serial.println("Prompt request accepted");
   } else {
     Serial.println("Prompt playback request failed");

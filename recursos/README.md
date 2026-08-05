@@ -3,8 +3,8 @@
 This directory is shipped in the Arduino platform package. Before compilation,
 `tools/prepare_resources.ps1` creates the sketch-local `recursos/` directory and
 copies missing `asr.bin`, `dnn.bin`, `voice.bin` and `user_file.bin` files from
-the selected algorithm profile. Standard ASR uses the files directly in this
-directory; CWSL uses the files under `cwsl/`. Package-managed or exact known-
+the selected algorithm profile. Standard ASR and AEC use the files directly in
+this directory; CWSL and CWSL+AEC use the files under `cwsl/`. Package-managed or exact known-
 legacy sets can be upgraded as described below; user-owned files are never
 overwritten. Switching the Arduino Algorithm menu never reuses the other
 profile's model files.
@@ -22,7 +22,8 @@ host/algorithm pair and must not be used here. Generate Standard ASR with
 own directory with a source manifest and locked SHA-256 values. The current
 vendor sample produces identical resource payloads for both profiles; the
 Arduino menu still selects different compile flags, linker scripts and
-second-core images.
+second-core images. AEC is therefore a build-profile choice and does not need a
+separate ASR/DNN/Voice/UserFile resource set.
 
 When the package first copies a complete profile set into a sketch, it also
 writes `.chipintelli-package-resources.json`. A later package can upgrade that

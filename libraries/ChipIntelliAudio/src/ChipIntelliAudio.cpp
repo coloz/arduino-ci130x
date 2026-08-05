@@ -110,6 +110,19 @@ void ChipIntelliAudioClass::end() {
   _begun = false;
 }
 
+/**
+ * @brief 直接按语音 ID 播放 voice.bin 中的一条语音资源。
+ *
+ * 本函数不会查询命令词表，也没有播报选项；voiceId 本身直接标识要播放的
+ * 语音资源。这是它与 playCommand() 的主要区别。
+ *
+ * @param voiceId 语音资源 ID，取值范围为 0～65535，必须与当前工程烧录的
+ *                voice.bin 中的 ID 一致。
+ * @param interruptCurrent true 表示中断当前提示音并立即播放；false 表示不
+ *                         中断，当前有提示音时将本次请求加入 SDK 播放队列。
+ * @return true 表示 SDK 已接受播放请求；false 表示尚未调用 begin()，或 SDK
+ *         立即拒绝了请求。返回 true 不保证资源一定存在或最终播放成功。
+ */
 bool ChipIntelliAudioClass::playVoice(uint16_t voiceId,
                                      bool interruptCurrent) {
   if (!_begun) {
@@ -121,6 +134,36 @@ bool ChipIntelliAudioClass::playVoice(uint16_t voiceId,
              interruptCurrent) == 0U;
 }
 
+bool ChipIntelliAudioClass::playBeep(unsigned int count) {
+  if (!_begun || count == 0U || count > MAX_COMBINATION_COUNT) {
+    return false;
+  }
+
+  cmd_handle_t beepHandle = cmd_info_find_command_by_string("<beep>");
+  const uint16_t beepCommandId = cmd_info_get_command_id(beepHandle);
+  if (beepCommandId == INVALID_SHORT_ID) {
+    return false;
+  }
+
+  prompt_play_info_t prompts[MAX_COMBINATION_COUNT];
+  for (unsigned int index = 0; index < count; ++index) {
+    prompts[index].cmd_id = beepCommandId;
+    prompts[index].select_index = 0;
+  }
+
+  return prompt_play_by_multi_cmd_id(
+             prompts, static_cast<int>(count),
+             hasFinishedCallback() ? sdkPlaybackFinished : nullptr) == 0U;
+}
+
+/**
+ * @brief unsigned long 命令 ID 兼容重载，检查范围后转交 16 位实现。
+ *
+ * @param commandId 命令词表中的命令 ID；必须在 0～65535 范围内。
+ * @param optionIndex 从 0 开始的播报选项索引；-1 表示由资源配置选择。
+ * @param interruptCurrent true 表示中断当前提示音；false 表示排队播放。
+ * @return commandId 越界时返回 false，否则返回 16 位实现的结果。
+ */
 bool ChipIntelliAudioClass::playCommand(unsigned long commandId,
                                        int optionIndex,
                                        bool interruptCurrent) {
@@ -131,6 +174,14 @@ bool ChipIntelliAudioClass::playCommand(unsigned long commandId,
                      interruptCurrent);
 }
 
+/**
+ * @brief long 命令 ID 兼容重载，检查正负号和范围后转交 16 位实现。
+ *
+ * @param commandId 命令词表中的命令 ID；必须在 0～65535 范围内。
+ * @param optionIndex 从 0 开始的播报选项索引；-1 表示由资源配置选择。
+ * @param interruptCurrent true 表示中断当前提示音；false 表示排队播放。
+ * @return commandId 为负数或越界时返回 false，否则返回 16 位实现的结果。
+ */
 bool ChipIntelliAudioClass::playCommand(long commandId, int optionIndex,
                                        bool interruptCurrent) {
   if (commandId < 0 || commandId > UINT16_MAX) {
@@ -140,6 +191,14 @@ bool ChipIntelliAudioClass::playCommand(long commandId, int optionIndex,
                      interruptCurrent);
 }
 
+/**
+ * @brief unsigned int 命令 ID 兼容重载，检查范围后转交 16 位实现。
+ *
+ * @param commandId 命令词表中的命令 ID；必须在 0～65535 范围内。
+ * @param optionIndex 从 0 开始的播报选项索引；-1 表示由资源配置选择。
+ * @param interruptCurrent true 表示中断当前提示音；false 表示排队播放。
+ * @return commandId 越界时返回 false，否则返回 16 位实现的结果。
+ */
 bool ChipIntelliAudioClass::playCommand(unsigned int commandId,
                                        int optionIndex,
                                        bool interruptCurrent) {
@@ -150,6 +209,14 @@ bool ChipIntelliAudioClass::playCommand(unsigned int commandId,
                      interruptCurrent);
 }
 
+/**
+ * @brief int 命令 ID 兼容重载，检查正负号和范围后转交 16 位实现。
+ *
+ * @param commandId 命令词表中的命令 ID；必须在 0～65535 范围内。
+ * @param optionIndex 从 0 开始的播报选项索引；-1 表示由资源配置选择。
+ * @param interruptCurrent true 表示中断当前提示音；false 表示排队播放。
+ * @return commandId 为负数或越界时返回 false，否则返回 16 位实现的结果。
+ */
 bool ChipIntelliAudioClass::playCommand(int commandId, int optionIndex,
                                        bool interruptCurrent) {
   if (commandId < 0 || commandId > UINT16_MAX) {
@@ -159,6 +226,21 @@ bool ChipIntelliAudioClass::playCommand(int commandId, int optionIndex,
                      interruptCurrent);
 }
 
+/**
+ * @brief 按 16 位命令 ID 查找命令词表，并播放该命令关联的提示音。
+ *
+ * 与 playVoice() 不同，本函数先通过 commandId 查找命令配置，再根据
+ * optionIndex 选择该命令关联的一组提示音；一组选项可以由多段语音组合。
+ *
+ * @param commandId 命令词表中的 16 位命令 ID，不是 voice.bin 的语音 ID。
+ * @param optionIndex 从 0 开始的播报选项索引。-1 表示由 SDK 按资源配置
+ *                    选择：随机类型随机选择，否则使用第 0 项。超出已配置
+ *                    选项范围的非负值也会回退到上述 SDK 选择规则。
+ * @param interruptCurrent true 表示中断当前提示音并播放本命令提示音；false
+ *                         表示不打断，当前有提示音时加入 SDK 播放队列。
+ * @return true 表示 SDK 已接受播放请求；false 表示尚未调用 begin()、找不到
+ *         commandId，或 SDK 立即拒绝了请求。true 不代表播放已经完成。
+ */
 bool ChipIntelliAudioClass::playCommand(uint16_t commandId, int optionIndex,
                                        bool interruptCurrent) {
   if (!_begun) {
@@ -181,6 +263,22 @@ bool ChipIntelliAudioClass::playSemantic(uint32_t semanticId, int optionIndex,
              interruptCurrent) == 0U;
 }
 
+/**
+ * @brief 按命令文本查找命令词表，并播放该命令关联的提示音。
+ *
+ * commandText 只用于查找资源包内已经配置的命令，不会把任意文本转换成语音，
+ * 因此本函数不是 TTS 接口。
+ *
+ * @param commandText 以 '\0' 结尾的命令文本，必须与资源包中的命令字符串匹配；
+ *                    不能为 nullptr 或空字符串。
+ * @param optionIndex 从 0 开始的播报选项索引。-1 表示由 SDK 按资源配置
+ *                    选择：随机类型随机选择，否则使用第 0 项。超出已配置
+ *                    选项范围的非负值也会回退到上述 SDK 选择规则。
+ * @param interruptCurrent true 表示中断当前提示音并播放本命令提示音；false
+ *                         表示不打断，当前有提示音时加入 SDK 播放队列。
+ * @return true 表示 SDK 已接受播放请求；false 表示尚未调用 begin()、文本
+ *         无效、找不到对应命令，或 SDK 立即拒绝了请求。true 不代表播放完成。
+ */
 bool ChipIntelliAudioClass::playCommand(const char *commandText,
                                        int optionIndex,
                                        bool interruptCurrent) {

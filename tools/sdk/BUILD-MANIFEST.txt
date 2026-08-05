@@ -2,17 +2,19 @@
 Project: projects/offline_asr_alg_pro_sample
 Validated variant: ci1306
 Board: CI-D06GT01D / CI1306 / 4 MB
-Algorithm profile: USE_NULL=1, NO_ASR_FLOW=0
+Algorithm profiles: AEC (default), standard ASR, CWSL+AEC, and CWSL
 SDK message UART: disabled; Arduino HardwareSerial owns UART2
 NVDM readiness: published only after cinv_init() completes
 Audio mute compatibility: weak gain hook for ChipIntelliAudio
 Prompt callback safety: weak hook dispatched after the prompt mutex is released
+ASR prompt policy: startup, wake, timeout, and command auto-play disabled
+ASR lifecycle events: SDK-task notifications queued for Arduino tick() dispatch
 IR database compatibility: task-scoped user-file ID alias (Arduino default physical ID 50000)
 Compiler: riscv-nuclei-elf-gcc 9.2.0
 Compiler executable SHA256: 84B0FFB1FB194CC41FCFA96FB01D65B3A6289147041CF8BC76DB60BD05FBCB6D
 Compiled SDK source count: 138
 Packaged SDK source/dependency count: 143
-SDK source payload SHA256: 1EF3379ACE092C124568C557ADFAA655FB91BE8CE7A204FFDE72D18D77D76EE8
+SDK source payload SHA256: B1E2DC127377CB37961FE504775BA0D8923913FF9E5693E0BA051B6E89DB464C
 Header count: 273
 SDK sources compile as non-LTO objects (required for scheduler and ASR link interposition)
 Vendor archives: original GCC 9.2.0 LTO/ABI payload
@@ -22,7 +24,13 @@ Binary-only archives: libasr_dis_deepse_v2.a, libnlp.a, libnewlib_port.a, libfre
 Payload artifact hashes:
 bin\ci-tool-kit.exe SHA256=F10CBF3C262AF9375251DB48A1941D79B14FF9AEB3D2B0BE12041B25B7EE095E
 bin\code_program.exe SHA256=1FD6407B7F76CFCCC9E97D9E64607A0FFC4CB30C66E10A7828B4E813BE73E6D9
+bin\libbnpu_core_alg_pro_aec.a SHA256=D81AAF590554BBC6BEAF26A29DFF52471278735222A9BF4A67690AAF30EDBDBD
+bin\libbnpu_core_alg_pro_cwsl.a SHA256=B2DD0A686E5D3F01C35389503B017EC0C44CA54C3AF91A3436760E326A87864E
+bin\libbnpu_core_alg_pro_cwsl_aec.a SHA256=5FDB627D641A2CDCEBC6D063555973E856308678CE1ABFEDA5AD0C518842C63A
 bin\libbnpu_core_alg_pro_null.a SHA256=8878B3F6CB346296BFC7B078BAE365B49DCD664C93139353162A5BD3C4DE9DCA
+ld\ci130x_alg_pro_aec.lds SHA256=90033326C37F0E8FD6DD902956A6F1F357B53AD8EB8676D7640ABBA37A001D46
+ld\ci130x_alg_pro_cwsl.lds SHA256=368BCC9A0BE69A4D3BA0AB9499806FED47E24D8CF640BD3DC00425826A53E695
+ld\ci130x_alg_pro_cwsl_aec.lds SHA256=D813BB0DE211B8C7A9425A3D6ABB4BE3B9850399372ECEF90C542F502E9CAAC0
 ld\ci130x_alg_pro_null.lds SHA256=B4478539FE0EA4325DB24AECAAA9999A02179B1160F6904705C662318E3C29A3
 ld\common.lds SHA256=0DD81034375AC8B8EDC9D1D7FDA6055D7548F0691BB07E8AAA09199BDD69273E
 lib\libasr_dis_deepse_v2.a SHA256=347C402638C209EA561D35187585CD0469CE366D3B1566463786FEDEFA76F7CB

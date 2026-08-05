@@ -2,8 +2,8 @@ name: Deploy release
 
 on:
   push:
-    branches:
-      - deploy
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -26,7 +26,7 @@ jobs:
       NUCLEI_GCC_VERSION: 9.2.0
 
     steps:
-      - name: Check out deploy branch
+      - name: Check out release tag
         uses: actions/checkout@v6
 
       - name: Prepare release metadata
@@ -41,9 +41,12 @@ jobs:
             exit 1
           fi
 
-          short_sha="${GITHUB_SHA::7}"
-          tag="deploy-v${version}-${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}-${short_sha}"
-          asset="arduino-ci130x-${version}-${short_sha}.zip"
+          tag="$GITHUB_REF_NAME"
+          if [[ "$tag" != "v${version}" ]]; then
+            echo "Release tag '$tag' does not match platform version '$version'." >&2
+            exit 1
+          fi
+          asset="arduino-ci130x-${version}.zip"
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
@@ -241,10 +244,61 @@ jobs:
         run: |
           set -euo pipefail
 
-          gh release create '${{ steps.release.outputs.tag }}' \
-            dist/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "Deploy ${{ steps.release.outputs.version }} ($GITHUB_RUN_NUMBER)" \
-            --notes "Automated release from deploy branch commit $GITHUB_SHA." \
-            --latest
+          cat > release-notes.md <<'EOF'
+          ## 主要更新
+
+          - 新增 Standard ASR + AEC 与 CWSL + AEC profile，默认启用 AEC，并支持唤醒词和普通命令词打断播报；保留两个无 AEC 兼容 profile。
+          - 重构 `ChipIntelliASR` 为 Arduino `tick()` 事件分发模型，支持启动、唤醒、超时、命令和语义回调，以及 512 项命令/语义处理表。
+          - 扩展 `ChipIntelliAudio` 的蜂鸣、提示音、队列和静音控制，并新增连续命令窗口、异步提示音和 BargeIn 示例。
+          - 补充 AEC/CWSL+AEC 第二核镜像、链接脚本、内存上限、资源说明和构建验证记录。
+
+          ## 验证
+
+          - CI1302、CI1303、CI1306 的 Standard ASR + AEC 构建、链接、双核合并、compose 与 inspect 全部通过。
+          - CI1302、CI1303、CI1306 的 CWSL + AEC 路径全部通过，并保留 Standard/CWSL 无 AEC 兼容构建。
+          - GCC 9.2.0 与 `citool-cli` 1.1.2 没有源码变更；本 Release 直接复用并校验既有三平台归档，不重新编译。
+
+          AEC 的声学消除质量和实时打断仍需在接入播放参考信号的实体硬件上验证。
+          EOF
+
+          if gh release view '${{ steps.release.outputs.tag }}' --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload '${{ steps.release.outputs.tag }}' \
+              dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            gh release edit '${{ steps.release.outputs.tag }}' \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "ChipIntelli CI130X Arduino v${{ steps.release.outputs.version }}" \
+              --notes-file release-notes.md \
+              --latest
+          else
+            gh release create '${{ steps.release.outputs.tag }}' \
+              dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "ChipIntelli CI130X Arduino v${{ steps.release.outputs.version }}" \
+              --notes-file release-notes.md \
+              --latest
+          fi
+
+      - name: Update stable Boards Manager index
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          generated_index="$RUNNER_TEMP/package_chipintelli_index.json"
+          cp dist/package_chipintelli_index.json "$generated_index"
+
+          git fetch origin main
+          git checkout -B main origin/main
+          cp "$generated_index" package/package_chipintelli_index.json
+
+          if git diff --quiet -- package/package_chipintelli_index.json; then
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package/package_chipintelli_index.json
+          git commit -m 'Update Boards Manager index for v${{ steps.release.outputs.version }}'
+          git push origin main

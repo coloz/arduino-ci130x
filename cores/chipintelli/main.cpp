@@ -6,12 +6,18 @@ extern "C" {
 #include "task.h"
 #include "system_msg_deal.h"
 #include "command_info.h"
+
+// Implemented by the vendor wake-state module and also used by its CWSL app,
+// but omitted from the SDK's public system_msg_deal.h declarations.
+void set_state_enter_wakeup(uint32_t exit_wakeup_ms);
 }
 
 static TaskHandle_t s_arduinoTask;
 static volatile chipintelli_sdk_state_t s_sdkState = CHIPINTELLI_SDK_NOT_STARTED;
 static chipintelli_asr_callback_t s_asrCallback;
 static void *s_asrCallbackArg;
+static chipintelli_asr_event_callback_t s_asrEventCallback;
+static void *s_asrEventCallbackArg;
 static chipintelli_cwsl_callback_t s_cwslCallback;
 static void *s_cwslCallbackArg;
 static cmd_handle_t s_pendingAsrHandle;
@@ -74,13 +80,28 @@ extern "C" chipintelli_sdk_state_t chipintelli_sdk_state(void) {
     return state;
 }
 
+static void publishAsrEvent(chipintelli_asr_event_type_t eventType) {
+    taskENTER_CRITICAL();
+    chipintelli_asr_event_callback_t callback = s_asrEventCallback;
+    void *callbackArg = s_asrEventCallbackArg;
+    taskEXIT_CRITICAL();
+    if (callback) {
+        callback(eventType, callbackArg);
+    }
+}
+
 // Called only by the Arduino-adapted vendor initialization task.
 extern "C" void chipintelli_sdk_notify_ready(void) {
+    bool becameReady = false;
     taskENTER_CRITICAL();
     if (s_sdkState == CHIPINTELLI_SDK_STARTING) {
         s_sdkState = CHIPINTELLI_SDK_READY;
+        becameReady = true;
     }
     taskEXIT_CRITICAL();
+    if (becameReady) {
+        publishAsrEvent(CHIPINTELLI_ASR_EVENT_STARTED);
+    }
 }
 
 extern "C" void chipintelli_sdk_notify_failed(void) {
@@ -110,6 +131,53 @@ extern "C" void chipintelli_asr_set_callback(chipintelli_asr_callback_t callback
     s_asrCallback = callback;
     s_asrCallbackArg = arg;
     taskEXIT_CRITICAL();
+}
+
+extern "C" void chipintelli_asr_set_event_callback(
+    chipintelli_asr_event_callback_t callback, void *arg) {
+    taskENTER_CRITICAL();
+    s_asrEventCallback = callback;
+    s_asrEventCallbackArg = arg;
+    const bool alreadyReady = callback && s_sdkState == CHIPINTELLI_SDK_READY;
+    taskEXIT_CRITICAL();
+    if (alreadyReady) {
+        callback(CHIPINTELLI_ASR_EVENT_STARTED, arg);
+    }
+}
+
+// These notifications run in vendor SDK tasks. ChipIntelliASR copies them to
+// its zero-wait FreeRTOS queue; user handlers are dispatched later by tick().
+extern "C" void sys_weakup_hook(void) {
+    publishAsrEvent(CHIPINTELLI_ASR_EVENT_WAKEUP);
+}
+
+extern "C" void chipintelli_sdk_notify_asr_timeout(void) {
+    publishAsrEvent(CHIPINTELLI_ASR_EVENT_TIMEOUT);
+}
+
+extern "C" bool chipintelli_asr_is_awake(void) {
+#if defined(NO_ASR_FLOW) && NO_ASR_FLOW
+    return false;
+#else
+    return chipintelli_sdk_state() == CHIPINTELLI_SDK_READY &&
+           get_wakeup_state() == SYS_STATE_WAKEUP;
+#endif
+}
+
+extern "C" bool chipintelli_asr_keep_awake_for(uint32_t timeoutMs) {
+#if defined(NO_ASR_FLOW) && NO_ASR_FLOW
+    (void)timeoutMs;
+    return false;
+#else
+    // Only replace the active wake timer. Refuse to wake the recognizer from
+    // an old queued result after the SDK has already returned to wake-only
+    // listening mode.
+    if (timeoutMs == 0U || !chipintelli_asr_is_awake()) {
+        return false;
+    }
+    set_state_enter_wakeup(timeoutMs);
+    return true;
+#endif
 }
 
 static bool isValidCwslWordType(chipintelli_cwsl_word_type_t wordType,
@@ -300,6 +368,7 @@ extern "C" void __wrap_sys_asr_result_hook(cmd_handle_t handle, uint8_t score) {
             cmd_info_get_semantic_id(handle),
             resultScore,
             frames,
+            cmd_info_is_wakeup_word(handle) != 0U,
             cmd_info_get_command_string(handle)
         };
         callback(&result, callbackArg);

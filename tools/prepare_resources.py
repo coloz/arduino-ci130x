@@ -69,17 +69,23 @@ def main():
     parser = argparse.ArgumentParser(description='Prepare CI13XX build resources')
     parser.add_argument('--project-path', required=True, help='Sketch project path')
     parser.add_argument('--package-resources', required=True, help='Package resources directory')
-    parser.add_argument('--algorithm', choices=['null', 'cwsl'], required=True, help='Algorithm profile')
+    parser.add_argument(
+        '--algorithm',
+        choices=['aec', 'null', 'cwsl_aec', 'cwsl'],
+        required=True,
+        help='Algorithm profile',
+    )
     args = parser.parse_args()
 
     project_root = Path(args.project_path).resolve()
     package_root = Path(args.package_resources).resolve()
 
-    profile_subdir = args.algorithm if args.algorithm == 'cwsl' else ''
+    uses_cwsl_resources = args.algorithm in ('cwsl_aec', 'cwsl')
+    profile_subdir = 'cwsl' if uses_cwsl_resources else ''
     package_profile_resources = package_root / profile_subdir if profile_subdir else package_root
     project_resources_base = project_root / 'recursos'
     project_resources = project_resources_base / profile_subdir if profile_subdir else project_resources_base
-    expected_profile = 'cwsl' if args.algorithm == 'cwsl' else 'standard'
+    expected_profile = 'cwsl' if uses_cwsl_resources else 'standard'
 
     # Read package manifest
     package_manifest_path = package_profile_resources / 'manifest.json'
@@ -129,7 +135,7 @@ def main():
                 print(f"WARNING: Sketch resources no longer match {project_managed_manifest_path}; preserving them as user-owned files.", file=sys.stderr)
         except Exception as e:
             print(f"WARNING: {e}. Preserving sketch resources as user-owned files.", file=sys.stderr)
-    elif args.algorithm == 'null' and test_resource_set(project_resources, LEGACY_STANDARD_METADATA):
+    elif not uses_cwsl_resources and test_resource_set(project_resources, LEGACY_STANDARD_METADATA):
         replace_managed_set = True
         replacement_reason = 'legacy v1.0.3 Standard resource set'
 
