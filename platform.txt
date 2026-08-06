@@ -1,5 +1,6 @@
 name=ChipIntelli CI130X Arduino
-version=1.0.6
+version=1.0.7
+build.ci_service_url=https://gen.yiyu.pro/ci
 
 # CI130X SDK ALG V2.7.14 is ABI-locked to the vendor Nuclei GCC 9.2.0
 # distribution. Boards Manager removes the archive's single gcc_fix_raissrc/
@@ -68,14 +69,15 @@ recipe.ar.pattern="{compiler.path}{compiler.ar.cmd}" {compiler.ar.flags} {compil
 # vendor archives. The Arduino core wraps scheduler startup to add setup()/loop().
 recipe.c.combine.pattern="{compiler.path}{compiler.c.elf.cmd}" {compiler.c.elf.flags} {compiler.c.elf.wrap} {compiler.c.elf.extra_flags} -o "{build.path}/{build.project_name}.elf" -Wl,--start-group "@{build.path}/ci13xx_sdk_objects.rsp" {object_files} "{archive_file_path}" {compiler.libraries.ldflags} {compiler.c.elf.libs} -Wl,--end-group -Wl,-EL
 
-# First build the CI13XX two-image user-code container, then compose and inspect
-# the complete firmware that the upload recipe writes from Flash address 0.
+# First build the CI13XX two-image user-code container. If the sketch declares
+# COMMAND/VOICE resource macros, generate fresh resources through ci-service;
+# then compose and inspect the complete image uploaded from Flash address 0.
 # Windows PowerShell postbuild
-recipe.objcopy.bin.pattern.windows=powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{runtime.platform.path}/tools/postbuild.ps1" -Elf "{build.path}/{build.project_name}.elf" -Output "{build.path}/{build.project_name}.user_code.bin" -FirmwareOutput "{build.path}/{build.project_name}.bin" -Objcopy "{compiler.path}{compiler.objcopy.cmd}" -PlatformPath "{runtime.platform.path}" -CitoolCli "{runtime.tools.citool-cli.path}/{tools.citool-cli.cmd}" -ProjectResources "{build.source.path}/recursos" -Chip "{build.chip}" -Algorithm "{build.algorithm}" -MaxUserCodeSize {build.user_code_max}
+recipe.objcopy.bin.pattern.windows=powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{runtime.platform.path}/tools/postbuild.ps1" -Elf "{build.path}/{build.project_name}.elf" -Source "{build.source.path}/{build.project_name}" -Output "{build.path}/{build.project_name}.user_code.bin" -FirmwareOutput "{build.path}/{build.project_name}.bin" -Objcopy "{compiler.path}{compiler.objcopy.cmd}" -PlatformPath "{runtime.platform.path}" -CitoolCli "{runtime.tools.citool-cli.path}/{tools.citool-cli.cmd}" -ServiceUrl "{build.ci_service_url}" -ProjectResources "{build.source.path}/recursos" -Chip "{build.chip}" -Algorithm "{build.algorithm}" -MaxUserCodeSize {build.user_code_max}
 
 # macOS/Linux Python postbuild
-recipe.objcopy.bin.pattern.linux=python3 "{runtime.platform.path}/tools/postbuild.py" --elf "{build.path}/{build.project_name}.elf" --output "{build.path}/{build.project_name}.user_code.bin" --firmware-output "{build.path}/{build.project_name}.bin" --objcopy "{compiler.path}{compiler.objcopy.cmd}" --platform-path "{runtime.platform.path}" --citool-cli "{runtime.tools.citool-cli.path}/{tools.citool-cli.cmd}" --project-resources "{build.source.path}/recursos" --chip "{build.chip}" --algorithm "{build.algorithm}" --max-user-code-size {build.user_code_max}
-recipe.objcopy.bin.pattern.macosx=python3 "{runtime.platform.path}/tools/postbuild.py" --elf "{build.path}/{build.project_name}.elf" --output "{build.path}/{build.project_name}.user_code.bin" --firmware-output "{build.path}/{build.project_name}.bin" --objcopy "{compiler.path}{compiler.objcopy.cmd}" --platform-path "{runtime.platform.path}" --citool-cli "{runtime.tools.citool-cli.path}/{tools.citool-cli.cmd}" --project-resources "{build.source.path}/recursos" --chip "{build.chip}" --algorithm "{build.algorithm}" --max-user-code-size {build.user_code_max}
+recipe.objcopy.bin.pattern.linux=python3 "{runtime.platform.path}/tools/postbuild.py" --elf "{build.path}/{build.project_name}.elf" --source "{build.source.path}/{build.project_name}" --output "{build.path}/{build.project_name}.user_code.bin" --firmware-output "{build.path}/{build.project_name}.bin" --objcopy "{compiler.path}{compiler.objcopy.cmd}" --platform-path "{runtime.platform.path}" --citool-cli "{runtime.tools.citool-cli.path}/{tools.citool-cli.cmd}" --service-url "{build.ci_service_url}" --project-resources "{build.source.path}/recursos" --chip "{build.chip}" --algorithm "{build.algorithm}" --max-user-code-size {build.user_code_max}
+recipe.objcopy.bin.pattern.macosx=python3 "{runtime.platform.path}/tools/postbuild.py" --elf "{build.path}/{build.project_name}.elf" --source "{build.source.path}/{build.project_name}" --output "{build.path}/{build.project_name}.user_code.bin" --firmware-output "{build.path}/{build.project_name}.bin" --objcopy "{compiler.path}{compiler.objcopy.cmd}" --platform-path "{runtime.platform.path}" --citool-cli "{runtime.tools.citool-cli.path}/{tools.citool-cli.cmd}" --service-url "{build.ci_service_url}" --project-resources "{build.source.path}/recursos" --chip "{build.chip}" --algorithm "{build.algorithm}" --max-user-code-size {build.user_code_max}
 
 recipe.output.tmp_file={build.project_name}.bin
 recipe.output.save_file={build.project_name}.{build.variant}.firmware.bin

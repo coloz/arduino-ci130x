@@ -25,6 +25,13 @@ Arduino menu still selects different compile flags, linker scripts and
 second-core images. AEC is therefore a build-profile choice and does not need a
 separate ASR/DNN/Voice/UserFile resource set.
 
+When the primary Arduino source contains `COMMAND<n>`, `VOICE<n>` or
+`VOICEMP3<n>` definitions, the post-build hook copies the selected profile into
+the build staging directory and runs `citool-cli generate`. Generated ASR/TTS
+files replace that staging copy before firmware composition; sketch-local files
+remain untouched. The CLI's verified user cache allows identical requests to be
+reused across Arduino build-directory cleanups.
+
 When the package first copies a complete profile set into a sketch, it also
 writes `.chipintelli-package-resources.json`. A later package can upgrade that
 set only while every file still matches the recorded size and hash. Version

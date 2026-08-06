@@ -4,6 +4,9 @@ param(
     [string]$Elf,
 
     [Parameter(Mandatory = $true)]
+    [string]$Source,
+
+    [Parameter(Mandatory = $true)]
     [string]$Output,
 
     [Parameter(Mandatory = $true)]
@@ -17,6 +20,9 @@ param(
 
     [Parameter(Mandatory = $true)]
     [string]$CitoolCli,
+
+    [Parameter(Mandatory = $true)]
+    [string]$ServiceUrl,
 
     [Parameter(Mandatory = $true)]
     [string]$ProjectResources,
@@ -37,6 +43,36 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+function Resolve-ArduinoSource {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    $candidates.Add($Path)
+    if (-not [System.IO.Path]::HasExtension($Path)) {
+        $candidates.Add($Path + '.ino')
+    }
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+
+    throw "Arduino source file not found. Tried: $($candidates -join ', ')"
+}
+
+function Get-ArduinoAssetRoot {
+    param([Parameter(Mandatory = $true)][string]$SourcePath)
+
+    $sourceDirectory = Split-Path -Parent $SourcePath
+    $temporaryDirectory = Split-Path -Parent $sourceDirectory
+    if ((Split-Path -Leaf $sourceDirectory) -ieq 'sketch' -and
+        (Split-Path -Leaf $temporaryDirectory) -ieq '.temp') {
+        return (Split-Path -Parent $temporaryDirectory)
+    }
+    return $sourceDirectory
+}
+
 if ($env:OS -ne 'Windows_NT') {
     throw 'CI13XX post-build packaging is currently supported on Windows only.'
 }
@@ -45,6 +81,8 @@ if (-not [Environment]::Is64BitOperatingSystem) {
 }
 
 $elfPath = (Resolve-Path -LiteralPath $Elf).Path
+$sourcePath = Resolve-ArduinoSource -Path $Source
+$assetRoot = Get-ArduinoAssetRoot -SourcePath $sourcePath
 $objcopyCandidate = $Objcopy
 if (-not (Test-Path -LiteralPath $objcopyCandidate -PathType Leaf) -and
     (Test-Path -LiteralPath ($objcopyCandidate + '.exe') -PathType Leaf)) {
@@ -101,6 +139,46 @@ if (Test-Path -LiteralPath $stagingRoot) {
 }
 $staging = Join-Path $stagingRoot 'user_code'
 New-Item -ItemType Directory -Path $staging | Out-Null
+
+$resourceMacroPattern = '^\s*#define\s+(?:VOICEMP3|VOICE|COMMAND)[0-9]+\s+'
+$hasResourceMacros = [bool](Select-String `
+        -LiteralPath $sourcePath `
+        -Pattern $resourceMacroPattern `
+        -Encoding UTF8 `
+        -Quiet)
+if ($hasResourceMacros) {
+    $generatedResources = Join-Path $stagingRoot 'generated_resources'
+    New-Item -ItemType Directory -Path $generatedResources | Out-Null
+    foreach ($resource in $resourceFiles.GetEnumerator()) {
+        Copy-Item -LiteralPath $resource.Value -Destination (Join-Path $generatedResources ([System.IO.Path]::GetFileName($resource.Value)))
+    }
+
+    Write-Host "CI13XX source resource macros found; generating resources through ci-service."
+    & $citoolPath generate `
+        --source $sourcePath `
+        --asset-root $assetRoot `
+        --service-url $ServiceUrl `
+        --chip $Chip `
+        --output $generatedResources
+    if ($LASTEXITCODE -ne 0) {
+        throw "citool-cli generate failed with exit code $LASTEXITCODE"
+    }
+
+    $resourceFiles = [ordered]@{
+        ASR = Join-Path $generatedResources 'asr.bin'
+        DNN = Join-Path $generatedResources 'dnn.bin'
+        Voice = Join-Path $generatedResources 'voice.bin'
+        UserFile = Join-Path $generatedResources 'user_file.bin'
+    }
+    foreach ($resource in $resourceFiles.GetEnumerator()) {
+        if (-not (Test-Path -LiteralPath $resource.Value -PathType Leaf)) {
+            throw "citool-cli generate did not create the expected $($resource.Key) resource: $($resource.Value)"
+        }
+    }
+}
+else {
+    Write-Host 'CI13XX source resource macros not found; using the sketch resource set.'
+}
 
 $effectiveUserFile = $resourceFiles.UserFile
 $userFileEntries = Join-Path $projectResourcesRoot 'user_file_entries'

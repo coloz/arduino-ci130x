@@ -6,6 +6,7 @@ Port of postbuild.ps1
 
 import argparse
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -30,6 +31,29 @@ def run_command(args, description="Command"):
 def align_up(value, alignment):
     """Round value up to the next alignment boundary."""
     return (value + alignment - 1) // alignment * alignment
+
+
+def resolve_arduino_source(value):
+    """Resolve Arduino's primary source with or without the .ino suffix."""
+    source = Path(value)
+    candidates = [source]
+    if not source.suffix:
+        candidates.append(source.with_suffix('.ino'))
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate.resolve()
+    tried = ', '.join(str(candidate) for candidate in candidates)
+    raise ValueError(f"Arduino source file not found. Tried: {tried}")
+
+
+def arduino_asset_root(source_path):
+    """Return the Aily project root or the regular Arduino sketch directory."""
+    source_directory = source_path.parent
+    temporary_directory = source_directory.parent
+    if (source_directory.name.lower() == 'sketch'
+            and temporary_directory.name.lower() == '.temp'):
+        return temporary_directory.parent
+    return source_directory
 
 
 def build_user_code_container(host_code, algorithm_code):
@@ -72,11 +96,13 @@ def build_user_code_container(host_code, algorithm_code):
 def main():
     parser = argparse.ArgumentParser(description='CI13XX post-build packaging')
     parser.add_argument('--elf', required=True, help='ELF file path')
+    parser.add_argument('--source', required=True, help='Primary Arduino source file path')
     parser.add_argument('--output', required=True, help='User code output path')
     parser.add_argument('--firmware-output', required=True, help='Complete firmware output path')
     parser.add_argument('--objcopy', required=True, help='objcopy path')
     parser.add_argument('--platform-path', required=True, help='Platform path')
     parser.add_argument('--citool-cli', required=True, help='citool-cli path')
+    parser.add_argument('--service-url', required=True, help='ci-service base URL')
     parser.add_argument('--project-resources', required=True, help='Project resources path')
     parser.add_argument('--chip', choices=['ci1302', 'ci1303', 'ci1306'], required=True, help='Chip model')
     parser.add_argument(
@@ -89,6 +115,8 @@ def main():
     args = parser.parse_args()
 
     elf_path = Path(args.elf).resolve()
+    source_path = resolve_arduino_source(args.source)
+    asset_root = arduino_asset_root(source_path)
     firmware_output_path = Path(args.firmware_output).resolve()
 
     # Find objcopy
@@ -151,6 +179,42 @@ def main():
         shutil.rmtree(staging_root)
     staging = staging_root / 'user_code'
     staging.mkdir(parents=True)
+
+    source_text = source_path.read_text(encoding='utf-8-sig')
+    resource_macro_pattern = re.compile(
+        r'^\s*#define\s+(?:VOICEMP3|VOICE|COMMAND)[0-9]+\s+',
+        re.MULTILINE,
+    )
+    if resource_macro_pattern.search(source_text):
+        generated_resources = staging_root / 'generated_resources'
+        generated_resources.mkdir()
+        for resource_path in resource_files.values():
+            shutil.copy2(resource_path, generated_resources / resource_path.name)
+
+        print('CI13XX source resource macros found; generating resources through ci-service.')
+        run_command([
+            str(citool_path), 'generate',
+            '--source', str(source_path),
+            '--asset-root', str(asset_root),
+            '--service-url', args.service_url,
+            '--chip', args.chip,
+            '--output', str(generated_resources),
+        ], "citool-cli generate")
+
+        resource_files = {
+            'ASR': generated_resources / 'asr.bin',
+            'DNN': generated_resources / 'dnn.bin',
+            'Voice': generated_resources / 'voice.bin',
+            'UserFile': generated_resources / 'user_file.bin',
+        }
+        for name, resource_path in resource_files.items():
+            if not resource_path.is_file():
+                raise ValueError(
+                    f"citool-cli generate did not create the expected {name} "
+                    f"resource: {resource_path}"
+                )
+    else:
+        print('CI13XX source resource macros not found; using the sketch resource set.')
 
     # Handle user_file_entries
     effective_user_file = resource_files['UserFile']

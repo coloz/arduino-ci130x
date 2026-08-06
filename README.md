@@ -31,7 +31,7 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前开发版本 | `1.0.6` |
+| 当前开发版本 | `1.0.7` |
 | Arduino IDE | Arduino IDE 2.x |
 | Arduino CLI | 已使用 1.5.0 验证 |
 | 主机系统 | 完整固件流程：Windows 10/11 x64、macOS 15+ Apple Silicon；Linux x86_64 已通过编译/链接验证，完整回归待补充 |
@@ -52,6 +52,12 @@ Arduino package 的对应 profile 补齐。
 链接完成后先生成双核 `user_code.bin`，再由 `citool-cli compose` 合成完整固件并执行
 `inspect`；Arduino 上传阶段使用 `citool-cli flash` 从 Flash 地址 0 烧录该完整固件。
 `citool-cli` 内置 CI130X FW_V2 Bootloader，合成时不再依赖完整固件模板。
+如果主 `.ino` 文件中存在 `COMMAND<n>`、`VOICE<n>` 或 `VOICEMP3<n>` 宏，post-build
+会先自动运行 `citool-cli generate`，通过默认的 `https://gen.yiyu.pro/ci` 生成或复用
+ASR/TTS 资源，再使用这些资源合成最终固件。生成文件只写入构建暂存目录，不覆盖 sketch
+中的 `recursos/`；没有这些宏时保持原有 sketch 资源流程。缓存保存在操作系统的用户缓存
+目录，因此 Arduino 清理临时构建目录后仍可复用相同请求。
+Arduino CLI 可用 `--build-property build.ci_service_url=https://...` 覆盖服务地址。
 它不是全部 CI13XX 型号、开发板和算法组合的通用实现。
 
 ## 文档
@@ -97,7 +103,7 @@ CI1306 编译和链接，完整后处理与实体板回归仍待补充。
 固定版本的索引也随 GitHub Release 发布：
 
 ```text
-https://github.com/coloz/arduino-ci130x/releases/download/v1.0.6/package_chipintelli_index.json
+https://github.com/coloz/arduino-ci130x/releases/download/v1.0.7/package_chipintelli_index.json
 ```
 
 ## 快速开始

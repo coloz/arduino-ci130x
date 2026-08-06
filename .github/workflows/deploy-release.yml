@@ -9,7 +9,7 @@ on:
       release_tag:
         description: Existing release tag to update
         required: true
-        default: v1.0.6
+        default: v1.0.7
 
 permissions:
   contents: write
@@ -27,8 +27,8 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       CITOOL_CLI_REPOSITORY: coloz/arduino-ci130x
-      CITOOL_CLI_RELEASE_TAG: v1.0.5
-      CITOOL_CLI_VERSION: 1.1.2
+      CITOOL_CLI_RELEASE_TAG: citool-cli-v1.2.0
+      CITOOL_CLI_VERSION: 1.2.0
       NUCLEI_GCC_RELEASE_TAG: nuclei-gcc-v9.2.0-host1
       NUCLEI_GCC_VERSION: 9.2.0
 
@@ -139,22 +139,13 @@ jobs:
           )
           patterns=()
           for archive in "${archives[@]}"; do
-            patterns+=(--pattern "$archive")
+            patterns+=(--pattern "$archive" --pattern "$archive.sha256")
           done
           gh release download "$CITOOL_CLI_RELEASE_TAG" \
             --repo "$CITOOL_CLI_REPOSITORY" \
             --dir dist \
             "${patterns[@]}"
 
-          cat > "dist/${archives[0]}.sha256" <<EOF
-          cda90025312b3b3e9669c523d780a75d4c48c58408a6cf86346bbc13f989a474  ${archives[0]}
-          EOF
-          cat > "dist/${archives[1]}.sha256" <<EOF
-          c3108c79969b3fdeb7407bfdbfb113c0a41b010062f80139ea9a0054303066b3  ${archives[1]}
-          EOF
-          cat > "dist/${archives[2]}.sha256" <<EOF
-          98dca9b0dde767bf8fd6f21063fec60e81c7aee1c689100fed73c95a6ed78c20  ${archives[2]}
-          EOF
 
       - name: Download Nuclei GCC host archives
         shell: bash
@@ -275,7 +266,7 @@ jobs:
 
           - CI1302、CI1303、CI1306 的 Standard ASR + AEC 构建、链接、双核合并、compose 与 inspect 全部通过。
           - CI1302、CI1303、CI1306 的 CWSL + AEC 路径全部通过，并保留 Standard/CWSL 无 AEC 兼容构建。
-          - GCC 9.2.0 与 `citool-cli` 1.1.2 没有源码变更；Boards Manager 索引直接复用并校验既有 Release 归档，不重新编译或重复上传。
+          - 集成 `citool-cli` 1.2.0：检测源码资源宏后自动生成或复用 ASR/TTS 资源，再合成并烧录最终完整固件。
 
           AEC 的声学消除质量和实时打断仍需在接入播放参考信号的实体硬件上验证。
           EOF
