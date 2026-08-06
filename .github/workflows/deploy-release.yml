@@ -174,17 +174,17 @@ jobs:
           cd dist
           sha256sum --check ./*.sha256
           unzip -Z1 "citool-cli-${CITOOL_CLI_VERSION}-windows-x86_64.zip" \
-            | grep -Fxq 'citool-cli/citool-cli.exe'
+            | grep -Fx 'citool-cli/citool-cli.exe' >/dev/null
           tar -tzf "citool-cli-${CITOOL_CLI_VERSION}-macos-universal.tar.gz" \
-            | sed 's#^\./##' | grep -Fxq 'citool-cli/citool-cli'
+            | sed 's#^\./##' | grep -Fx 'citool-cli/citool-cli' >/dev/null
           tar -tzf "citool-cli-${CITOOL_CLI_VERSION}-linux-x86_64.tar.gz" \
-            | sed 's#^\./##' | grep -Fxq 'citool-cli/citool-cli'
+            | sed 's#^\./##' | grep -Fx 'citool-cli/citool-cli' >/dev/null
           unzip -Z1 "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-windows.zip" \
-            | grep -Fxq 'gcc_fix_raissrc/bin/riscv-nuclei-elf-gcc.exe'
+            | grep -Fx 'gcc_fix_raissrc/bin/riscv-nuclei-elf-gcc.exe' >/dev/null
           tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-linux-x86_64.tar.gz" \
-            | sed 's#^\./##' | grep -Fxq 'riscv-gcc/bin/riscv-nuclei-elf-gcc'
+            | sed 's#^\./##' | grep -Fx 'riscv-gcc/bin/riscv-nuclei-elf-gcc' >/dev/null
           tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-arm64.tar.gz" \
-            | sed 's#^\./##' | grep -Fxq 'riscv-gcc/bin/riscv-nuclei-elf-gcc'
+            | sed 's#^\./##' | grep -Fx 'riscv-gcc/bin/riscv-nuclei-elf-gcc' >/dev/null
 
           sha256sum '${{ steps.release.outputs.asset }}' > SHA256SUMS.txt
 
