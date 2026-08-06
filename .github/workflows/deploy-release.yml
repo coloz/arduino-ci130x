@@ -180,6 +180,7 @@ jobs:
           tar -tzf "citool-cli-${CITOOL_CLI_VERSION}-linux-x86_64.tar.gz" \
             | sed 's#^\./##' | grep -Fx 'citool-cli/citool-cli' >/dev/null
           unzip -Z1 "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-windows.zip" \
+            | tr '\\' '/' \
             | grep -Fx 'gcc_fix_raissrc/bin/riscv-nuclei-elf-gcc.exe' >/dev/null
           tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-linux-x86_64.tar.gz" \
             | sed 's#^\./##' | grep -Fx 'riscv-gcc/bin/riscv-nuclei-elf-gcc' >/dev/null
