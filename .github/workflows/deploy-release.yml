@@ -259,16 +259,16 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## 主要更新
 
-          - 集成独立发布的 `citool-cli` 1.2.1，按源码宏分别生成 ASR 和 TTS 资源。
-          - 支持无资源宏、纯 TTS，以及仅包含一个唤醒词的 ASR 工程。
-          - HTTP 网关或服务异常时输出简洁状态信息，不再把 HTML/XML 错误页写入 Arduino 编译日志。
-          - 保留未重新生成的板包默认资源，生成文件仍只写入构建暂存目录。
+          - 新增 CI-D06GT01D 开发板变体及板载 LED、RGB、按键、蜂鸣器、红外、OLED、PDM 与 IIS 引脚别名。
+          - CI1306 与 CI-D06GT01D 提供英文 `Microphone Input` 菜单，可选择模拟/PDM 数字单麦或双麦；前者默认模拟单麦，后者默认模拟双麦。
+          - 集成 `citool-cli` 1.2.1：读取 Aily `access_token` 完成用户认证，并将生成缓存统一放入 aily-builder 的跨平台缓存目录。
+          - 未登录或认证失败时显示明确警告并继续使用现有资源，不再中断或卡住 Arduino 后续构建。
 
           ## 验证
 
-          - `citool-cli` 锁定依赖测试 41 项全部通过，Clippy 无警告。
-          - 已验证无宏、纯 TTS、单唤醒词 ASR、ASR+TTS、缓存复用和 Nginx 502 错误摘要。
-          - Windows x86_64、Linux x86_64 与 macOS Universal 发布归档均执行 SHA-256 校验。
+          - `citool-cli` 锁定依赖单元测试 45 项、认证集成测试 3 项全部通过，Clippy 无警告。
+          - CI-D06GT01D/CI1306 的默认配置、模拟单双麦、PDM 数字单双麦及非法 AEC 组合防护均已完成编译验证。
+          - 已使用 Arduino IDE 安装目录内的 `citool-cli` 验证缺少 token 的完整编译与固件合成流程。
           EOF
 
           release_assets=(
