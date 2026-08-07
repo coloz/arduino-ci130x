@@ -29,8 +29,10 @@ When the primary Arduino source contains `COMMAND<n>`, `VOICE<n>` or
 `VOICEMP3<n>` definitions, the post-build hook copies the selected profile into
 the build staging directory and runs `citool-cli generate`. Generated ASR/TTS
 files replace that staging copy before firmware composition; sketch-local files
-remain untouched. The CLI's verified user cache allows identical requests to be
-reused across Arduino build-directory cleanups.
+remain untouched. ASR is requested only when `COMMAND<n>` exists, and TTS is
+requested only when `VOICE<n>` exists. A single `COMMAND<n>` is a valid
+wake-word-only configuration. The CLI's verified user cache allows identical
+requests to be reused across Arduino build-directory cleanups.
 
 When the package first copies a complete profile set into a sketch, it also
 writes `.chipintelli-package-resources.json`. A later package can upgrade that

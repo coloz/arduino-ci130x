@@ -31,13 +31,13 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前开发版本 | `1.0.7` |
+| 当前开发版本 | `1.0.8` |
 | Arduino IDE | Arduino IDE 2.x |
 | Arduino CLI | 已使用 1.5.0 验证 |
 | 主机系统 | 完整固件流程：Windows 10/11 x64、macOS 15+ Apple Silicon；Linux x86_64 已通过编译/链接验证，完整回归待补充 |
 | 编译器 | Nuclei RISC-V GCC 9.2.0（`rv32imafc / ilp32f`）；macOS 由官方 `nuclei_9.2_fixjalr_forhw` 源码构建 |
 | 算法配置 | 默认标准离线 ASR + AEC/语音打断；可选无 AEC、CWSL+AEC 或 CWSL profile |
-| 公共 Boards Manager 发布 | `v1.0.6`（Windows x64、Linux x86_64、macOS Apple Silicon） |
+| 公共 Boards Manager 发布 | `v1.0.8`（Windows x64、Linux x86_64、macOS Apple Silicon） |
 | 硬件运行验证 | CI1303：Windows/macOS Standard 启动和音频、CWSL 启动、核心外设、I2C/SSD1306 已通过；其余待验证 |
 
 当前版本在编译前检查 sketch 根目录的 profile 资源；标准 ASR/AEC 使用
@@ -53,10 +53,11 @@ Arduino package 的对应 profile 补齐。
 `inspect`；Arduino 上传阶段使用 `citool-cli flash` 从 Flash 地址 0 烧录该完整固件。
 `citool-cli` 内置 CI130X FW_V2 Bootloader，合成时不再依赖完整固件模板。
 如果主 `.ino` 文件中存在 `COMMAND<n>`、`VOICE<n>` 或 `VOICEMP3<n>` 宏，post-build
-会先自动运行 `citool-cli generate`，通过默认的 `https://gen.yiyu.pro/ci` 生成或复用
-ASR/TTS 资源，再使用这些资源合成最终固件。生成文件只写入构建暂存目录，不覆盖 sketch
-中的 `recursos/`；没有这些宏时保持原有 sketch 资源流程。缓存保存在操作系统的用户缓存
-目录，因此 Arduino 清理临时构建目录后仍可复用相同请求。
+会先自动运行 `citool-cli generate`，通过默认的 `https://gen.yiyu.pro/ci` 按需生成或复用
+资源：存在 `COMMAND<n>` 时请求 ASR，存在 `VOICE<n>` 时请求 TTS，两类宏互不依赖；仅一条
+`COMMAND<n>` 的纯唤醒词配置也有效。生成文件只写入构建暂存目录，不覆盖 sketch 中的
+`recursos/`；没有这些宏时保持原有 sketch 资源流程。缓存保存在操作系统的用户缓存目录，
+因此 Arduino 清理临时构建目录后仍可复用相同请求。
 Arduino CLI 可用 `--build-property build.ci_service_url=https://...` 覆盖服务地址。
 它不是全部 CI13XX 型号、开发板和算法组合的通用实现。
 
@@ -103,7 +104,7 @@ CI1306 编译和链接，完整后处理与实体板回归仍待补充。
 固定版本的索引也随 GitHub Release 发布：
 
 ```text
-https://github.com/coloz/arduino-ci130x/releases/download/v1.0.7/package_chipintelli_index.json
+https://github.com/coloz/arduino-ci130x/releases/download/v1.0.8/package_chipintelli_index.json
 ```
 
 ## 快速开始

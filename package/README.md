@@ -10,22 +10,22 @@ from Boards Manager:
 https://raw.githubusercontent.com/coloz/arduino-ci130x/main/package/package_chipintelli_index.json
 ```
 
-The version-pinned `v1.0.7` index is also published as a GitHub Release asset:
+The version-pinned `v1.0.8` index is also published as a GitHub Release asset:
 
 ```text
-https://github.com/coloz/arduino-ci130x/releases/download/v1.0.7/package_chipintelli_index.json
+https://github.com/coloz/arduino-ci130x/releases/download/v1.0.8/package_chipintelli_index.json
 ```
 
-The package index reuses the public `citool-cli@1.2.0` mirrors from Arduino
-release `citool-cli-v1.2.0` for Windows x64, macOS Universal (Intel and Apple
+The package index uses the public `citool-cli@1.2.1` assets from the independent
+`coloz/citool-cli` release `v1.2.1` for Windows x64, macOS Universal (Intel and Apple
 Silicon), and Linux x86_64. It also
 reuses Nuclei GCC 9.2.0 from the dedicated toolchain release for Windows x64,
 Linux x86_64, and macOS Apple Silicon. There is currently no matching Intel
 macOS compiler archive.
 
-For version 1.0.7, `.github/workflows/deploy-release.yml` downloads
-and verifies the public `citool-cli@1.2.0` archives from the
-`citool-cli-v1.2.0` release tag and the three compiler archives from the
+For version 1.0.8, `.github/workflows/deploy-release.yml` downloads
+and verifies the public `citool-cli@1.2.1` archives from the independent
+`coloz/citool-cli` `v1.2.1` release and the three compiler archives from the
 dedicated toolchain release. It publishes
 only the new Arduino platform archive, Boards Manager index and checksum file;
 the index points its tool records at those immutable shared releases instead
@@ -70,9 +70,9 @@ The script validates the official GCC 9.2.0 executable against the SDK build
 manifest, consumes these prebuilt sibling artifacts:
 
 ```text
-..\citool-cli\dist\citool-cli-1.2.0-windows-x86_64.zip
-..\citool-cli\dist\citool-cli-1.2.0-macos-universal.tar.gz
-..\citool-cli\dist\citool-cli-1.2.0-linux-x86_64.tar.gz
+..\citool-cli\dist\citool-cli-1.2.1-windows-x86_64.zip
+..\citool-cli\dist\citool-cli-1.2.1-macos-universal.tar.gz
+..\citool-cli\dist\citool-cli-1.2.1-linux-x86_64.tar.gz
 C:\downloads\riscv-nuclei-elf-gcc-9.2.0-linux-x86_64.tar.gz
 C:\downloads\riscv-nuclei-elf-gcc-9.2.0-macos-arm64.tar.gz
 ```
@@ -125,17 +125,17 @@ than a `dist/` subdirectory, add `-FlatAssetUrls`:
   -ToolchainRoot C:\path\to\riscv-nuclei-elf-gcc-9.2.0 `
   -ToolchainArchives $downloadedHostToolchains `
   -RequireAllHostTools `
-  -Version 1.0.7 `
-  -BaseUrl https://github.com/OWNER/arduino-ci130x/releases/download/v1.0.7 `
+  -Version 1.0.8 `
+  -BaseUrl https://github.com/OWNER/arduino-ci130x/releases/download/v1.0.8 `
   -ToolchainBaseUrl https://github.com/coloz/arduino-ci130x/releases/download/nuclei-gcc-v9.2.0-host1 `
-  -CitoolCliBaseUrl https://github.com/coloz/arduino-ci130x/releases/download/citool-cli-v1.2.0 `
+  -CitoolCliBaseUrl https://github.com/coloz/citool-cli/releases/download/v1.2.1 `
   -FlatAssetUrls
 ```
 
 Upload the generated platform archive and `package_chipintelli_index.json` to
 the new public Arduino GitHub Release. Reuse the immutable GCC archives from
-`nuclei-gcc-v9.2.0-host1`. Version 1.0.7 requires public
-`citool-cli@1.2.0` archives at `-CitoolCliBaseUrl`; publish those three host
+`nuclei-gcc-v9.2.0-host1`. Version 1.0.8 requires public
+`citool-cli@1.2.1` archives at `-CitoolCliBaseUrl`; publish those three host
 archives once and let the Boards Manager index reference them rather than
 uploading duplicates with later platform releases.
 
@@ -151,7 +151,7 @@ index. Replace every `__...__` value after release artifacts are hosted and
 redistribution permission has been confirmed.
 
 The platform archive must have exactly one top-level directory, for example
-`arduino-ci130x-1.0.7/`. Put the contents of `arduino-ci130x`
+`arduino-ci130x-1.0.8/`. Put the contents of `arduino-ci130x`
 directly inside that directory (including `boards.txt`, `platform.txt`,
 `cores/` and the generated `tools/sdk/`); do not add another architecture
 directory. Arduino's package manager ignores files placed directly at the ZIP
@@ -168,7 +168,7 @@ Each `citool-cli` archive must contain one top-level `citool-cli/` directory.
 The Windows ZIP contains `citool-cli.exe`; the macOS/Linux tar.gz archives
 contain executable `citool-cli`. The macOS archive is universal and is mapped
 to both `x86_64-apple-darwin` and `arm64-apple-darwin`; Linux maps to
-`x86_64-pc-linux-gnu`. Version 1.0.7 declares `citool-cli@1.2.0`
+`x86_64-pc-linux-gnu`. Version 1.0.8 declares `citool-cli@1.2.1`
 as a tool dependency. When source resource macros are present, post-build first
 generates or reuses ASR/TTS resources through ci-service. Each build then composes
 the generated `user_code.bin` and effective four resource partitions into a

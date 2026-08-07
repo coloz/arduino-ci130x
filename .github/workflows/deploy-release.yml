@@ -9,7 +9,7 @@ on:
       release_tag:
         description: Existing release tag to update
         required: true
-        default: v1.0.7
+        default: v1.0.8
 
 permissions:
   contents: write
@@ -26,9 +26,9 @@ jobs:
 
     env:
       GH_TOKEN: ${{ github.token }}
-      CITOOL_CLI_REPOSITORY: coloz/arduino-ci130x
-      CITOOL_CLI_RELEASE_TAG: citool-cli-v1.2.0
-      CITOOL_CLI_VERSION: 1.2.0
+      CITOOL_CLI_REPOSITORY: coloz/citool-cli
+      CITOOL_CLI_RELEASE_TAG: v1.2.1
+      CITOOL_CLI_VERSION: 1.2.1
       NUCLEI_GCC_RELEASE_TAG: nuclei-gcc-v9.2.0-host1
       NUCLEI_GCC_VERSION: 9.2.0
 
@@ -259,18 +259,16 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## 主要更新
 
-          - 新增 Standard ASR + AEC 与 CWSL + AEC profile，默认启用 AEC，并支持唤醒词和普通命令词打断播报；保留两个无 AEC 兼容 profile。
-          - 重构 `ChipIntelliASR` 为 Arduino `tick()` 事件分发模型，支持启动、唤醒、超时、命令和语义回调，以及 512 项命令/语义处理表。
-          - 扩展 `ChipIntelliAudio` 的蜂鸣、提示音、队列和静音控制，并新增连续命令窗口、异步提示音和 BargeIn 示例。
-          - 补充 AEC/CWSL+AEC 第二核镜像、链接脚本、内存上限、资源说明和构建验证记录。
+          - 集成独立发布的 `citool-cli` 1.2.1，按源码宏分别生成 ASR 和 TTS 资源。
+          - 支持无资源宏、纯 TTS，以及仅包含一个唤醒词的 ASR 工程。
+          - HTTP 网关或服务异常时输出简洁状态信息，不再把 HTML/XML 错误页写入 Arduino 编译日志。
+          - 保留未重新生成的板包默认资源，生成文件仍只写入构建暂存目录。
 
           ## 验证
 
-          - CI1302、CI1303、CI1306 的 Standard ASR + AEC 构建、链接、双核合并、compose 与 inspect 全部通过。
-          - CI1302、CI1303、CI1306 的 CWSL + AEC 路径全部通过，并保留 Standard/CWSL 无 AEC 兼容构建。
-          - 集成 `citool-cli` 1.2.0：检测源码资源宏后自动生成或复用 ASR/TTS 资源，再合成并烧录最终完整固件。
-
-          AEC 的声学消除质量和实时打断仍需在接入播放参考信号的实体硬件上验证。
+          - `citool-cli` 锁定依赖测试 41 项全部通过，Clippy 无警告。
+          - 已验证无宏、纯 TTS、单唤醒词 ASR、ASR+TTS、缓存复用和 Nginx 502 错误摘要。
+          - Windows x86_64、Linux x86_64 与 macOS Universal 发布归档均执行 SHA-256 校验。
           EOF
 
           release_assets=(

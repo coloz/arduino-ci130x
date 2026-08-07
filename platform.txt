@@ -1,5 +1,5 @@
 name=ChipIntelli CI130X Arduino
-version=1.0.7
+version=1.0.8
 build.ci_service_url=https://gen.yiyu.pro/ci
 
 # CI130X SDK ALG V2.7.14 is ABI-locked to the vendor Nuclei GCC 9.2.0

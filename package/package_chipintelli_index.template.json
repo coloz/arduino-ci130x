@@ -12,10 +12,10 @@
         {
           "name": "ChipIntelli CI130X Arduino",
           "architecture": "ci13xx",
-          "version": "1.0.7",
+          "version": "1.0.8",
           "category": "Contributed",
           "url": "__PLATFORM_ARCHIVE_URL__",
-          "archiveFileName": "arduino-ci130x-1.0.7.zip",
+          "archiveFileName": "arduino-ci130x-1.0.8.zip",
           "checksum": "SHA-256:__PLATFORM_SHA256__",
           "size": "__PLATFORM_SIZE_BYTES__",
           "boards": [
@@ -38,7 +38,7 @@
             {
               "packager": "chipintelli",
               "name": "citool-cli",
-              "version": "1.2.0"
+              "version": "1.2.1"
             }
           ]
         }
@@ -73,33 +73,33 @@
         },
         {
           "name": "citool-cli",
-          "version": "1.2.0",
+          "version": "1.2.1",
           "systems": [
             {
               "host": "x86_64-mingw32",
-              "url": "__CITOOL_CLI_RELEASE_BASE_URL__/citool-cli-1.2.0-windows-x86_64.zip",
-              "archiveFileName": "citool-cli-1.2.0-windows-x86_64.zip",
+              "url": "__CITOOL_CLI_RELEASE_BASE_URL__/citool-cli-1.2.1-windows-x86_64.zip",
+              "archiveFileName": "citool-cli-1.2.1-windows-x86_64.zip",
               "checksum": "SHA-256:__CITOOL_CLI_WINDOWS_SHA256__",
               "size": "__CITOOL_CLI_WINDOWS_SIZE_BYTES__"
             },
             {
               "host": "x86_64-apple-darwin",
-              "url": "__CITOOL_CLI_RELEASE_BASE_URL__/citool-cli-1.2.0-macos-universal.tar.gz",
-              "archiveFileName": "citool-cli-1.2.0-macos-universal.tar.gz",
+              "url": "__CITOOL_CLI_RELEASE_BASE_URL__/citool-cli-1.2.1-macos-universal.tar.gz",
+              "archiveFileName": "citool-cli-1.2.1-macos-universal.tar.gz",
               "checksum": "SHA-256:__CITOOL_CLI_MACOS_SHA256__",
               "size": "__CITOOL_CLI_MACOS_SIZE_BYTES__"
             },
             {
               "host": "arm64-apple-darwin",
-              "url": "__CITOOL_CLI_RELEASE_BASE_URL__/citool-cli-1.2.0-macos-universal.tar.gz",
-              "archiveFileName": "citool-cli-1.2.0-macos-universal.tar.gz",
+              "url": "__CITOOL_CLI_RELEASE_BASE_URL__/citool-cli-1.2.1-macos-universal.tar.gz",
+              "archiveFileName": "citool-cli-1.2.1-macos-universal.tar.gz",
               "checksum": "SHA-256:__CITOOL_CLI_MACOS_SHA256__",
               "size": "__CITOOL_CLI_MACOS_SIZE_BYTES__"
             },
             {
               "host": "x86_64-pc-linux-gnu",
-              "url": "__CITOOL_CLI_RELEASE_BASE_URL__/citool-cli-1.2.0-linux-x86_64.tar.gz",
-              "archiveFileName": "citool-cli-1.2.0-linux-x86_64.tar.gz",
+              "url": "__CITOOL_CLI_RELEASE_BASE_URL__/citool-cli-1.2.1-linux-x86_64.tar.gz",
+              "archiveFileName": "citool-cli-1.2.1-linux-x86_64.tar.gz",
               "checksum": "SHA-256:__CITOOL_CLI_LINUX_SHA256__",
               "size": "__CITOOL_CLI_LINUX_SIZE_BYTES__"
             }
