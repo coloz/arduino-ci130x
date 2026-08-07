@@ -185,6 +185,24 @@ extern "C" bool chipintelli_asr_keep_awake_for(uint32_t timeoutMs) {
 #endif
 }
 
+extern "C" bool chipintelli_asr_set_wake_word_enabled(bool enabled) {
+#if defined(NO_ASR_FLOW) && NO_ASR_FLOW
+    (void)enabled;
+    return false;
+#else
+    if (chipintelli_sdk_state() != CHIPINTELLI_SDK_READY) {
+        return false;
+    }
+
+    sys_msg_t message = {};
+    message.msg_type = SYS_MSG_TYPE_CMD_INFO;
+    message.msg_data.cmd_info_data.cmd_info_status =
+        enabled ? MSG_CMD_INFO_STATUS_ARDUINO_ENABLE_WAKE_WORD
+                : MSG_CMD_INFO_STATUS_ARDUINO_DISABLE_WAKE_WORD;
+    return send_msg_to_sys_task(&message, nullptr) == pdPASS;
+#endif
+}
+
 static bool isValidCwslWordType(chipintelli_cwsl_word_type_t wordType,
                                 bool allowAll) {
     return wordType == CHIPINTELLI_CWSL_COMMAND_WORD ||

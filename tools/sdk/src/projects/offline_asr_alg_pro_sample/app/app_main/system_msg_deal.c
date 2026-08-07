@@ -49,6 +49,8 @@ static volatile uint32_t s_arduino_cmd_info_message_count = 0;
 static volatile uint32_t s_arduino_audio_started_message_count = 0;
 static volatile uint32_t s_arduino_asr_status_count[6] = {0};
 static volatile bool s_arduino_timeout_pending = false;
+/* Arduino starts in direct-command mode; sketches opt into wake-word gating. */
+static volatile bool s_arduino_wake_word_enabled = false;
 
 uint32_t ci_arduino_sys_message_count(void)
 {
@@ -304,6 +306,13 @@ void set_state_enter_wakeup(uint32_t exit_wakup_ms)
     ciss_set(CI_SS_WAKING_UP_STATE,CI_SS_WAKEUPED);
     ciss_set(CI_SS_WAKING_UP_STATE_FOR_SSP,CI_SS_WAKEUPED);
     xTimerStop(exit_wakeup_timer,0);
+#if defined(CI_ARDUINO_CORE)
+    if (!s_arduino_wake_word_enabled)
+    {
+        /* Direct-command mode remains awake until wake-word gating is enabled. */
+        return;
+    }
+#endif
     xTimerChangePeriod(exit_wakeup_timer,pdMS_TO_TICKS(exit_wakup_ms),0);/*or used a new timer*/
     xTimerStart(exit_wakeup_timer,0);
 }
@@ -672,6 +681,12 @@ void enter_wakeup_deal(uint32_t exit_wakup_ms, cmd_handle_t cmd_handle )
  */
 void exit_wakeup_timer_callback(TimerHandle_t xTimer)
 {
+#if defined(CI_ARDUINO_CORE)
+    if (!s_arduino_wake_word_enabled)
+    {
+        return;
+    }
+#endif
     #if USE_CWSL
     ciss_set(CI_SS_START_SLEEP_PROCESS, 1);
     #endif
@@ -767,6 +782,16 @@ void sys_deal_cmd_info_msg(sys_msg_cmd_info_data_t *cmd_info_msg)
          * 是由于在退出唤醒播放的过程中可能出现再次唤醒，这时候再发送切换模型的消息应该将其丢弃，系统状态已经
          * 被新的识别消息重置。切换完毕模型之后将进入低功耗策略，也就是切模型本身是工作于非低功耗下。
          */
+        #if defined(CI_ARDUINO_CORE)
+        if (!s_arduino_wake_word_enabled)
+        {
+            s_arduino_timeout_pending = false;
+            #if USE_CWSL
+            ciss_set(CI_SS_START_SLEEP_PROCESS, 0);
+            #endif
+        }
+        else
+        #endif
         if(ignore_exit_wakeup == 0)
         {
             /*change asr wakeup word*/
@@ -793,6 +818,16 @@ void sys_deal_cmd_info_msg(sys_msg_cmd_info_data_t *cmd_info_msg)
          * 如果识别消息已经处理，则此时系统状态已经更新，这里便不可继续退出唤醒的动作，直接丢弃消息即可，否则可能覆盖了
          * 唤醒状态而未完全执行完毕所有的唤醒动作，产生错误。而如果此消息先处理，则会被识别消息刷新状态，不会产生问题
          */
+        #if defined(CI_ARDUINO_CORE)
+        if (!s_arduino_wake_word_enabled)
+        {
+            s_arduino_timeout_pending = false;
+            #if USE_CWSL
+            ciss_set(CI_SS_START_SLEEP_PROCESS, 0);
+            #endif
+        }
+        else
+        #endif
         if(ignore_exit_wakeup == 0)
         {
             #if defined(CI_ARDUINO_CORE)
@@ -827,6 +862,34 @@ void sys_deal_cmd_info_msg(sys_msg_cmd_info_data_t *cmd_info_msg)
             ignore_asr_msg--;
         }
     }
+#if defined(CI_ARDUINO_CORE)
+    else if (MSG_CMD_INFO_STATUS_ARDUINO_ENABLE_WAKE_WORD ==
+             cmd_info_msg->cmd_info_status)
+    {
+        if (!s_arduino_wake_word_enabled)
+        {
+            s_arduino_wake_word_enabled = true;
+            s_arduino_timeout_pending = false;
+            /* Wait for an in-flight ASR result before entering wake-only mode. */
+            exit_wakeup_deal(1);
+        }
+    }
+    else if (MSG_CMD_INFO_STATUS_ARDUINO_DISABLE_WAKE_WORD ==
+             cmd_info_msg->cmd_info_status)
+    {
+        if (s_arduino_wake_word_enabled)
+        {
+            s_arduino_wake_word_enabled = false;
+            s_arduino_timeout_pending = false;
+            sys_manage_data.user_msg_state = USERSTATE_WAIT_MSG;
+            #if USE_CWSL
+            ciss_set(CI_SS_START_SLEEP_PROCESS, 0);
+            #endif
+            change_asr_normal_word();
+            set_state_enter_wakeup(EXIT_WAKEUP_TIME);
+        }
+    }
+#endif
 }
 
 static void *weakup_asr_hander = NULL;
@@ -1131,14 +1194,19 @@ void UserTaskManageProcess(void *p_arg)
     sys_msg_t rev_msg;
     BaseType_t err = pdPASS;
     /* 上电初始化状态 */
-    #if (USE_BEAMFORMING_MODULE && USE_AEC_MODULE)
+    #if defined(CI_ARDUINO_CORE)
+    sys_manage_data.wakeup_state = SYS_STATE_WAKEUP;
+    #elif (USE_BEAMFORMING_MODULE && USE_AEC_MODULE)
     sys_manage_data.wakeup_state = SYS_STATE_WAKEUP;//SYS_STATE_UNWAKEUP;
     #else
     sys_manage_data.wakeup_state = SYS_STATE_UNWAKEUP;
     #endif
     vTaskSuspendAll();
 
-    #if (USE_BEAMFORMING_MODULE && USE_AEC_MODULE)
+    #if defined(CI_ARDUINO_CORE)
+    ciss_set(CI_SS_WAKING_UP_STATE,CI_SS_WAKEUPED);
+    ciss_set(CI_SS_WAKING_UP_STATE_FOR_SSP,CI_SS_WAKEUPED);
+    #elif (USE_BEAMFORMING_MODULE && USE_AEC_MODULE)
     ciss_set(CI_SS_WAKING_UP_STATE,CI_SS_WAKEUPED);
     ciss_set(CI_SS_WAKING_UP_STATE_FOR_SSP,CI_SS_WAKEUPED);
     #else
@@ -1278,6 +1346,13 @@ void UserTaskManageProcess(void *p_arg)
             {
                 case SYS_STATE_WAKUP_TIMEOUT:
                 {
+#if defined(CI_ARDUINO_CORE)
+                    if (!s_arduino_wake_word_enabled)
+                    {
+                        sys_manage_data.user_msg_state = USERSTATE_WAIT_MSG;
+                        break;
+                    }
+#endif
                     if(SYS_STATE_ASR_IDLE == get_asr_state())
                     {
                         exit_wakeup_deal(0);

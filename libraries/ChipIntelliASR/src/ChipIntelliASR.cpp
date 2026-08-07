@@ -782,6 +782,10 @@ const char *ChipIntelliASRClass::errorString(Error error) {
     return "ASR handler table is full";
   case Error::ReentrantTick:
     return "tick cannot be called from an ASR callback";
+  case Error::NotBegun:
+    return "ASR has not been started";
+  case Error::ControlRequestFailed:
+    return "ASR control request queue is full";
   }
   return "unknown ASR error";
 }
@@ -801,6 +805,24 @@ bool ChipIntelliASRClass::isAwake() const {
  */
 bool ChipIntelliASRClass::keepAwakeFor(uint32_t timeoutMs) {
   return _begun && chipintelli_asr_keep_awake_for(timeoutMs);
+}
+
+/**
+ * @brief 异步切换唤醒词门控模式。
+ * @param enabled true 要求先说唤醒词；false 直接接受普通命令。
+ * @return SDK 系统消息任务已接受切换请求时为 true。
+ */
+bool ChipIntelliASRClass::setWakeWordEnabled(bool enabled) {
+  if (!_begun) {
+    setLastError(Error::NotBegun);
+    return false;
+  }
+  if (!chipintelli_asr_set_wake_word_enabled(enabled)) {
+    setLastError(Error::ControlRequestFailed);
+    return false;
+  }
+  setLastError(Error::None);
+  return true;
 }
 
 /**

@@ -158,7 +158,7 @@ chipintelli提供的部分开发板和模组，可以通过下面的宏选择，
 
 //**语音识别配置
 #define USE_SEPARATE_WAKEUP_EN          1       //是否使用独立的唤醒词模型。1:是 0:否。
-#define DEFAULT_MODEL_GROUP_ID          1       //模型ID,用于指定上电启动时，默认进入的语言模型。通常0为命令词模型,1为唤醒词模型
+#define DEFAULT_MODEL_GROUP_ID          0       //Arduino defaults to direct commands; runtime API can enable wake words.
     
 #if (!USE_SEPARATE_WAKEUP_EN)    
 #undef DEFAULT_MODEL_GROUP_ID    

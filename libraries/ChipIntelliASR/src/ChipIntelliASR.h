@@ -66,6 +66,8 @@ public:
     InvalidCallback,
     HandlerTableFull,
     ReentrantTick,
+    NotBegun,
+    ControlRequestFailed,
   };
 
   /** @brief 返回唯一的 ASR 硬件实例。通常直接使用全局 ChipIntelliASR。 */
@@ -260,6 +262,16 @@ public:
    *       新结果刷新连续命令窗口。
    */
   bool keepAwakeFor(uint32_t timeoutMs);
+
+  /**
+   * @brief 切换普通命令是否必须先经过唤醒词。
+   * @param enabled true 仅监听唤醒词，唤醒后才接受普通命令；false 直接接受
+   *                普通命令。库启动后的默认值为 false。
+   * @return 切换请求已进入 SDK 系统消息队列时为 true；库尚未 begin() 或
+   *         控制队列已满时为 false。
+   * @note 模型切换由 SDK 系统任务异步完成。请勿从中断服务程序调用。
+   */
+  bool setWakeWordEnabled(bool enabled);
 
   /**
    * @brief 查询编译时选择的算法配置是否启用了声学回声消除（AEC）。

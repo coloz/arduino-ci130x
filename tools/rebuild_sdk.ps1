@@ -125,6 +125,18 @@ function Write-MultiVariantUserConfig {
             1)
     }
 
+    # Keep both model groups in the image, but start Arduino in group 0 so
+    # sketches receive ordinary commands without a wake word by default.
+    $defaultModelPattern = '(?m)^#define DEFAULT_MODEL_GROUP_ID\s+1[^\r\n]*\r?$'
+    if ([regex]::Matches($content, $defaultModelPattern).Count -ne 1) {
+        throw "Unable to select the Arduino direct-command model in: $Source"
+    }
+    $content = [regex]::Replace(
+        $content,
+        $defaultModelPattern,
+        '#define DEFAULT_MODEL_GROUP_ID          0       //Arduino defaults to direct commands; runtime API can enable wake words.',
+        1)
+
     # Arduino owns UART0 as Serial. Disable the vendor SDK logger so it cannot
     # configure the same peripheral for 921600 baud or block before setup().
     $logUartPattern = '(?m)^#define CONFIG_CI_LOG_UART\s+HAL_UART0_BASE[^\r\n]*\r?$'
@@ -718,6 +730,8 @@ static volatile uint32_t s_arduino_cmd_info_message_count = 0;
 static volatile uint32_t s_arduino_audio_started_message_count = 0;
 static volatile uint32_t s_arduino_asr_status_count[6] = {0};
 static volatile bool s_arduino_timeout_pending = false;
+/* Arduino starts in direct-command mode; sketches opt into wake-word gating. */
+static volatile bool s_arduino_wake_word_enabled = false;
 
 uint32_t ci_arduino_sys_message_count(void)
 {
@@ -754,6 +768,45 @@ uint32_t ci_arduino_asr_status_count(uint32_t status)
     -Description "declare Arduino SDK readiness reporting in $systemMessageSourcePath"
 $systemMessageSourceContent = Replace-RequiredLiteral `
     -Content $systemMessageSourceContent `
+    -OldValue @'
+    xTimerStop(exit_wakeup_timer,0);
+    xTimerChangePeriod(exit_wakeup_timer,pdMS_TO_TICKS(exit_wakup_ms),0);/*or used a new timer*/
+'@.TrimEnd("`r", "`n") `
+    -NewValue @'
+    xTimerStop(exit_wakeup_timer,0);
+#if defined(CI_ARDUINO_CORE)
+    if (!s_arduino_wake_word_enabled)
+    {
+        /* Direct-command mode remains awake until wake-word gating is enabled. */
+        return;
+    }
+#endif
+    xTimerChangePeriod(exit_wakeup_timer,pdMS_TO_TICKS(exit_wakup_ms),0);/*or used a new timer*/
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "keep Arduino direct-command mode awake in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue @'
+void exit_wakeup_timer_callback(TimerHandle_t xTimer)
+{
+    #if USE_CWSL
+'@.TrimEnd("`r", "`n") `
+    -NewValue @'
+void exit_wakeup_timer_callback(TimerHandle_t xTimer)
+{
+#if defined(CI_ARDUINO_CORE)
+    if (!s_arduino_wake_word_enabled)
+    {
+        return;
+    }
+#endif
+    #if USE_CWSL
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "ignore the Arduino wake timer in direct-command mode in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
     -OldValue '    set_state_exit_wakeup();' `
     -NewValue @'
     set_state_exit_wakeup();
@@ -778,6 +831,16 @@ $systemMessageSourceContent = Replace-RequiredLiteral `
         }
 '@.TrimEnd("`r", "`n") `
     -NewValue @'
+        #if defined(CI_ARDUINO_CORE)
+        if (!s_arduino_wake_word_enabled)
+        {
+            s_arduino_timeout_pending = false;
+            #if USE_CWSL
+            ciss_set(CI_SS_START_SLEEP_PROCESS, 0);
+            #endif
+        }
+        else
+        #endif
         if(ignore_exit_wakeup == 0)
         {
             /*change asr wakeup word*/
@@ -797,13 +860,77 @@ $systemMessageSourceContent = Replace-RequiredLiteral `
     -OldValue '            exit_wakeup_deal(1);' `
     -NewValue @'
             #if defined(CI_ARDUINO_CORE)
-            s_arduino_timeout_pending =
-                (SYS_STATE_WAKEUP == get_wakeup_state());
+            if (!s_arduino_wake_word_enabled)
+            {
+                s_arduino_timeout_pending = false;
+                #if USE_CWSL
+                ciss_set(CI_SS_START_SLEEP_PROCESS, 0);
+                #endif
+            }
+            else
             #endif
-            exit_wakeup_deal(1);
+            {
+            #if defined(CI_ARDUINO_CORE)
+                s_arduino_timeout_pending =
+                    (SYS_STATE_WAKEUP == get_wakeup_state());
+            #endif
+                exit_wakeup_deal(1);
+            }
 '@.TrimEnd("`r", "`n") `
     -ExpectedCount 1 `
     -Description "mark timer-driven Arduino ASR timeout events in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue @'
+    else if (MSG_CMD_INFO_STATUS_ENABLE_PROCESS_ASR == cmd_info_msg->cmd_info_status)
+    {
+        if (ignore_asr_msg > 0)
+        {
+            ignore_asr_msg--;
+        }
+    }
+}
+'@.TrimEnd("`r", "`n") `
+    -NewValue @'
+    else if (MSG_CMD_INFO_STATUS_ENABLE_PROCESS_ASR == cmd_info_msg->cmd_info_status)
+    {
+        if (ignore_asr_msg > 0)
+        {
+            ignore_asr_msg--;
+        }
+    }
+#if defined(CI_ARDUINO_CORE)
+    else if (MSG_CMD_INFO_STATUS_ARDUINO_ENABLE_WAKE_WORD ==
+             cmd_info_msg->cmd_info_status)
+    {
+        if (!s_arduino_wake_word_enabled)
+        {
+            s_arduino_wake_word_enabled = true;
+            s_arduino_timeout_pending = false;
+            /* Wait for an in-flight ASR result before entering wake-only mode. */
+            exit_wakeup_deal(1);
+        }
+    }
+    else if (MSG_CMD_INFO_STATUS_ARDUINO_DISABLE_WAKE_WORD ==
+             cmd_info_msg->cmd_info_status)
+    {
+        if (s_arduino_wake_word_enabled)
+        {
+            s_arduino_wake_word_enabled = false;
+            s_arduino_timeout_pending = false;
+            sys_manage_data.user_msg_state = USERSTATE_WAIT_MSG;
+            #if USE_CWSL
+            ciss_set(CI_SS_START_SLEEP_PROCESS, 0);
+            #endif
+            change_asr_normal_word();
+            set_state_enter_wakeup(EXIT_WAKEUP_TIME);
+        }
+    }
+#endif
+}
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "add the Arduino wake-word runtime switch in $systemMessageSourcePath"
 $audioReadyPattern = '(?ms)(\s*#if !UART_BAUDRATE_CALIBRATE\r?\n\s*\{\r?\n\s*sys_power_on_hook\(\);\r?\n\s*\}\r?\n\s*#endif)(\r?\n\s*break;\r?\n\s*\}\r?\n\s*default:)'
 $audioReadyMatches = [regex]::Matches($systemMessageSourceContent, $audioReadyPattern)
 if ($audioReadyMatches.Count -ne 1) {
@@ -880,6 +1007,72 @@ $systemMessageSourceContent = Replace-RequiredLiteral `
 '@.TrimEnd("`r", "`n") `
     -ExpectedCount 1 `
     -Description "count Arduino audio-start messages in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue @'
+    #if (USE_BEAMFORMING_MODULE && USE_AEC_MODULE)
+    sys_manage_data.wakeup_state = SYS_STATE_WAKEUP;//SYS_STATE_UNWAKEUP;
+    #else
+    sys_manage_data.wakeup_state = SYS_STATE_UNWAKEUP;
+    #endif
+'@.TrimEnd("`r", "`n") `
+    -NewValue @'
+    #if defined(CI_ARDUINO_CORE)
+    sys_manage_data.wakeup_state = SYS_STATE_WAKEUP;
+    #elif (USE_BEAMFORMING_MODULE && USE_AEC_MODULE)
+    sys_manage_data.wakeup_state = SYS_STATE_WAKEUP;//SYS_STATE_UNWAKEUP;
+    #else
+    sys_manage_data.wakeup_state = SYS_STATE_UNWAKEUP;
+    #endif
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "start Arduino in direct-command state in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue @'
+    #if (USE_BEAMFORMING_MODULE && USE_AEC_MODULE)
+    ciss_set(CI_SS_WAKING_UP_STATE,CI_SS_WAKEUPED);
+    ciss_set(CI_SS_WAKING_UP_STATE_FOR_SSP,CI_SS_WAKEUPED);
+    #else
+    ciss_set(CI_SS_WAKING_UP_STATE,CI_SS_NO_WAKEUP);
+    ciss_set(CI_SS_WAKING_UP_STATE_FOR_SSP,CI_SS_NO_WAKEUP);
+    #endif
+'@.TrimEnd("`r", "`n") `
+    -NewValue @'
+    #if defined(CI_ARDUINO_CORE)
+    ciss_set(CI_SS_WAKING_UP_STATE,CI_SS_WAKEUPED);
+    ciss_set(CI_SS_WAKING_UP_STATE_FOR_SSP,CI_SS_WAKEUPED);
+    #elif (USE_BEAMFORMING_MODULE && USE_AEC_MODULE)
+    ciss_set(CI_SS_WAKING_UP_STATE,CI_SS_WAKEUPED);
+    ciss_set(CI_SS_WAKING_UP_STATE_FOR_SSP,CI_SS_WAKEUPED);
+    #else
+    ciss_set(CI_SS_WAKING_UP_STATE,CI_SS_NO_WAKEUP);
+    ciss_set(CI_SS_WAKING_UP_STATE_FOR_SSP,CI_SS_NO_WAKEUP);
+    #endif
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "publish Arduino's initial direct-command state in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue @'
+                case SYS_STATE_WAKUP_TIMEOUT:
+                {
+                    if(SYS_STATE_ASR_IDLE == get_asr_state())
+'@.TrimEnd("`r", "`n") `
+    -NewValue @'
+                case SYS_STATE_WAKUP_TIMEOUT:
+                {
+#if defined(CI_ARDUINO_CORE)
+                    if (!s_arduino_wake_word_enabled)
+                    {
+                        sys_manage_data.user_msg_state = USERSTATE_WAIT_MSG;
+                        break;
+                    }
+#endif
+                    if(SYS_STATE_ASR_IDLE == get_asr_state())
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "cancel delayed wake-only transitions in Arduino direct-command mode in $systemMessageSourcePath"
 $systemMessageSourceContent = $systemMessageSourceContent.Replace("`r`n", "`n").Replace("`n", "`r`n")
 [IO.File]::WriteAllText($systemMessageSourcePath, $systemMessageSourceContent, [Text.UTF8Encoding]::new($false))
 
@@ -1186,6 +1379,20 @@ foreach ($systemMessageHeaderPath in @(
         -NewValue 'BaseType_t sys_msg_task_initial(void);' `
         -ExpectedCount 1 `
         -Description "update the system-message initializer declaration in $systemMessageHeaderPath"
+    $wakeControlMessagePattern = '(?m)^(?<wake>\s*MSG_CMD_INFO_STATUS_POST_CHANGE_ASR_WAKEUP_WORD,\s*)\r?\n(?<normal>\s*MSG_CMD_INFO_STATUS_POST_CHANGE_ASR_NORMAL_WORD,\s*)$'
+    if ([regex]::Matches($systemMessageHeaderContent, $wakeControlMessagePattern).Count -ne 1) {
+        throw "Unable to declare Arduino wake-word control messages in: $systemMessageHeaderPath"
+    }
+    $systemMessageHeaderContent = [regex]::Replace(
+        $systemMessageHeaderContent,
+        $wakeControlMessagePattern,
+        @'
+    MSG_CMD_INFO_STATUS_POST_CHANGE_ASR_WAKEUP_WORD,
+    MSG_CMD_INFO_STATUS_POST_CHANGE_ASR_NORMAL_WORD,
+    MSG_CMD_INFO_STATUS_ARDUINO_ENABLE_WAKE_WORD,
+    MSG_CMD_INFO_STATUS_ARDUINO_DISABLE_WAKE_WORD,
+'@.TrimEnd("`r", "`n"),
+        1)
     $systemMessageHeaderContent = $systemMessageHeaderContent.Replace("`r`n", "`n").Replace("`n", "`r`n")
     [IO.File]::WriteAllText($systemMessageHeaderPath, $systemMessageHeaderContent, [Text.UTF8Encoding]::new($false))
 }
