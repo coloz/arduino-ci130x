@@ -1,5 +1,6 @@
-menu.Algorithm=算法配置
-menu.Clock=Clock source
+menu.Algorithm=Algorithm Profile
+menu.Microphone=Microphone Input
+menu.Clock=Clock Source
 
 ci1302.name=ChipIntelli CI1302 (SSOP24, 2 MB)
 
@@ -18,29 +19,30 @@ ci1302.build.board=CI1302
 ci1302.build.core=chipintelli
 ci1302.build.variant=ci1302
 ci1302.build.algorithm=aec
+ci1302.build.mic_flags=
 ci1302.build.user_code_max=458752
 ci1302.build.flash_size=2097152
 ci1302.build.chip=ci1302
 ci1302.build.extra_flags=-DCI_CHIP_CI1302 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=0 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DHOST_MIC_USE_NUMBER=1 -DHOST_CODEC_CHA_NUM=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
 
-ci1302.menu.Algorithm.aec=标准离线 ASR + AEC/语音打断（默认）
+ci1302.menu.Algorithm.aec=Standard Offline ASR + AEC / Barge-in (Default)
 ci1302.menu.Algorithm.aec.build.algorithm=aec
 ci1302.menu.Algorithm.aec.build.user_code_max=458752
 ci1302.menu.Algorithm.aec.upload.maximum_size=382121
 ci1302.menu.Algorithm.aec.build.extra_flags=-DCI_CHIP_CI1302 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=0 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DHOST_MIC_USE_NUMBER=1 -DHOST_CODEC_CHA_NUM=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
-ci1302.menu.Algorithm.null=标准离线 ASR（无 AEC）
+ci1302.menu.Algorithm.null=Standard Offline ASR (No AEC)
 ci1302.menu.Algorithm.null.build.algorithm=null
 ci1302.menu.Algorithm.null.build.user_code_max=458752
 ci1302.menu.Algorithm.null.upload.maximum_size=382577
 ci1302.menu.Algorithm.null.build.extra_flags=-DCI_CHIP_CI1302 -DNO_ASR_FLOW=0 -DUSE_NULL=1 -DUSE_CWSL=0 -DUSE_AEC_MODULE=0 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
-ci1302.menu.Algorithm.cwsl_aec=命令词自学习 CWSL + AEC/语音打断
+ci1302.menu.Algorithm.cwsl_aec=CWSL Command-Word Learning + AEC / Barge-in
 ci1302.menu.Algorithm.cwsl_aec.build.algorithm=cwsl_aec
 # The CWSL resource layout limits the complete dual-core image to 0x39000 on
 # CI1302.  The AEC-enabled CWSL core is 76,648 bytes.
 ci1302.menu.Algorithm.cwsl_aec.build.user_code_max=233472
 ci1302.menu.Algorithm.cwsl_aec.upload.maximum_size=156777
 ci1302.menu.Algorithm.cwsl_aec.build.extra_flags=-DCI_CHIP_CI1302 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=1 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DHOST_MIC_USE_NUMBER=1 -DHOST_CODEC_CHA_NUM=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
-ci1302.menu.Algorithm.cwsl=命令词自学习 CWSL（无 AEC）
+ci1302.menu.Algorithm.cwsl=CWSL Command-Word Learning (No AEC)
 ci1302.menu.Algorithm.cwsl.build.algorithm=cwsl
 # The official CWSL DNN/resource set leaves exactly 0x39000 bytes for the
 # dual-core user-code partition in the 2 MB layout. The reported sketch limit
@@ -73,27 +75,28 @@ ci1303.build.board=CI1303
 ci1303.build.core=chipintelli
 ci1303.build.variant=ci1303
 ci1303.build.algorithm=aec
+ci1303.build.mic_flags=
 ci1303.build.user_code_max=458752
 ci1303.build.flash_size=4194304
 ci1303.build.chip=ci1303
 ci1303.build.extra_flags=-DCI_CHIP_CI1303 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=0 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DHOST_MIC_USE_NUMBER=1 -DHOST_CODEC_CHA_NUM=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
 
-ci1303.menu.Algorithm.aec=标准离线 ASR + AEC/语音打断（默认）
+ci1303.menu.Algorithm.aec=Standard Offline ASR + AEC / Barge-in (Default)
 ci1303.menu.Algorithm.aec.build.algorithm=aec
 ci1303.menu.Algorithm.aec.build.user_code_max=458752
 ci1303.menu.Algorithm.aec.upload.maximum_size=382121
 ci1303.menu.Algorithm.aec.build.extra_flags=-DCI_CHIP_CI1303 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=0 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DHOST_MIC_USE_NUMBER=1 -DHOST_CODEC_CHA_NUM=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
-ci1303.menu.Algorithm.null=标准离线 ASR（无 AEC）
+ci1303.menu.Algorithm.null=Standard Offline ASR (No AEC)
 ci1303.menu.Algorithm.null.build.algorithm=null
 ci1303.menu.Algorithm.null.build.user_code_max=458752
 ci1303.menu.Algorithm.null.upload.maximum_size=382577
 ci1303.menu.Algorithm.null.build.extra_flags=-DCI_CHIP_CI1303 -DNO_ASR_FLOW=0 -DUSE_NULL=1 -DUSE_CWSL=0 -DUSE_AEC_MODULE=0 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
-ci1303.menu.Algorithm.cwsl_aec=命令词自学习 CWSL + AEC/语音打断
+ci1303.menu.Algorithm.cwsl_aec=CWSL Command-Word Learning + AEC / Barge-in
 ci1303.menu.Algorithm.cwsl_aec.build.algorithm=cwsl_aec
 ci1303.menu.Algorithm.cwsl_aec.build.user_code_max=458752
 ci1303.menu.Algorithm.cwsl_aec.upload.maximum_size=382057
 ci1303.menu.Algorithm.cwsl_aec.build.extra_flags=-DCI_CHIP_CI1303 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=1 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DHOST_MIC_USE_NUMBER=1 -DHOST_CODEC_CHA_NUM=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
-ci1303.menu.Algorithm.cwsl=命令词自学习 CWSL（无 AEC）
+ci1303.menu.Algorithm.cwsl=CWSL Command-Word Learning (No AEC)
 ci1303.menu.Algorithm.cwsl.build.algorithm=cwsl
 ci1303.menu.Algorithm.cwsl.build.user_code_max=458752
 ci1303.menu.Algorithm.cwsl.upload.maximum_size=382513
@@ -126,28 +129,94 @@ ci1306.build.board=CI1306
 ci1306.build.core=chipintelli
 ci1306.build.variant=ci1306
 ci1306.build.algorithm=aec
+ci1306.build.mic_flags=-DHOST_MIC_USE_NUMBER=1 -DAUDIO_IN_FROM_DMIC=0
 ci1306.build.user_code_max=458752
 ci1306.build.flash_size=4194304
 ci1306.build.chip=ci1306
-ci1306.build.extra_flags=-DARDUINO_CI1306 -DCI_CHIP_CI1306 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=0 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DHOST_MIC_USE_NUMBER=1 -DHOST_CODEC_CHA_NUM=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
+ci1306.build.extra_flags=-DARDUINO_CI1306 -DCI_CHIP_CI1306 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=0 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
 
-ci1306.menu.Algorithm.aec=标准离线 ASR + AEC/语音打断（默认）
+ci1306.menu.Algorithm.aec=Standard Offline ASR + AEC / Barge-in (Default, Analog Single Mic Only)
 ci1306.menu.Algorithm.aec.build.algorithm=aec
 ci1306.menu.Algorithm.aec.build.user_code_max=458752
 ci1306.menu.Algorithm.aec.upload.maximum_size=382121
-ci1306.menu.Algorithm.aec.build.extra_flags=-DARDUINO_CI1306 -DCI_CHIP_CI1306 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=0 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DHOST_MIC_USE_NUMBER=1 -DHOST_CODEC_CHA_NUM=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
-ci1306.menu.Algorithm.null=标准离线 ASR（无 AEC）
+ci1306.menu.Algorithm.aec.build.extra_flags=-DARDUINO_CI1306 -DCI_CHIP_CI1306 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=0 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
+ci1306.menu.Algorithm.null=Standard Offline ASR (No AEC)
 ci1306.menu.Algorithm.null.build.algorithm=null
 ci1306.menu.Algorithm.null.build.user_code_max=458752
 ci1306.menu.Algorithm.null.upload.maximum_size=382577
 ci1306.menu.Algorithm.null.build.extra_flags=-DARDUINO_CI1306 -DCI_CHIP_CI1306 -DNO_ASR_FLOW=0 -DUSE_NULL=1 -DUSE_CWSL=0 -DUSE_AEC_MODULE=0 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
-ci1306.menu.Algorithm.cwsl_aec=命令词自学习 CWSL + AEC/语音打断
+ci1306.menu.Algorithm.cwsl_aec=CWSL Command-Word Learning + AEC / Barge-in (Analog Single Mic Only)
 ci1306.menu.Algorithm.cwsl_aec.build.algorithm=cwsl_aec
 ci1306.menu.Algorithm.cwsl_aec.build.user_code_max=458752
 ci1306.menu.Algorithm.cwsl_aec.upload.maximum_size=382057
-ci1306.menu.Algorithm.cwsl_aec.build.extra_flags=-DARDUINO_CI1306 -DCI_CHIP_CI1306 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=1 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DHOST_MIC_USE_NUMBER=1 -DHOST_CODEC_CHA_NUM=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
-ci1306.menu.Algorithm.cwsl=命令词自学习 CWSL（无 AEC）
+ci1306.menu.Algorithm.cwsl_aec.build.extra_flags=-DARDUINO_CI1306 -DCI_CHIP_CI1306 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=1 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
+ci1306.menu.Algorithm.cwsl=CWSL Command-Word Learning (No AEC)
 ci1306.menu.Algorithm.cwsl.build.algorithm=cwsl
 ci1306.menu.Algorithm.cwsl.build.user_code_max=458752
 ci1306.menu.Algorithm.cwsl.upload.maximum_size=382513
 ci1306.menu.Algorithm.cwsl.build.extra_flags=-DARDUINO_CI1306 -DCI_CHIP_CI1306 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=1 -DUSE_AEC_MODULE=0 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
+
+ci1306.menu.Microphone.single=Analog Single Microphone (Default, Supports AEC)
+ci1306.menu.Microphone.single.build.mic_flags=-DHOST_MIC_USE_NUMBER=1 -DAUDIO_IN_FROM_DMIC=0
+ci1306.menu.Microphone.dual=Analog Dual Microphones (Non-AEC Profiles Only)
+ci1306.menu.Microphone.dual.build.mic_flags=-DHOST_MIC_USE_NUMBER=2 -DAUDIO_IN_FROM_DMIC=0
+ci1306.menu.Microphone.pdm_single=PDM Digital Single Microphone (Left Channel, Non-AEC Profiles Only)
+ci1306.menu.Microphone.pdm_single.build.mic_flags=-DHOST_MIC_USE_NUMBER=1 -DAUDIO_IN_FROM_DMIC=1
+ci1306.menu.Microphone.pdm_dual=PDM Digital Dual Microphones (Non-AEC Profiles Only)
+ci1306.menu.Microphone.pdm_dual.build.mic_flags=-DHOST_MIC_USE_NUMBER=2 -DAUDIO_IN_FROM_DMIC=1
+
+ci_d06gt01d.name=ChipIntelli CI-D06GT01D Dev Board (CI1306, 4 MB)
+
+ci_d06gt01d.upload.tool=citool-cli
+ci_d06gt01d.upload.tool.default=citool-cli
+ci_d06gt01d.upload.protocol=ci13xx_firmware
+# CI-D06GT01D uses the same CI1306 firmware layout and algorithm images as the
+# compatibility chip profile above. Its dual-microphone default uses the NULL
+# algorithm image; AEC remains available with the single-microphone menu option.
+ci_d06gt01d.upload.maximum_size=382577
+ci_d06gt01d.upload.maximum_data_size=532480
+ci_d06gt01d.upload.use_1200bps_touch=false
+ci_d06gt01d.upload.wait_for_upload_port=false
+
+ci_d06gt01d.build.mcu=ci1306
+ci_d06gt01d.build.f_cpu=246000000L
+ci_d06gt01d.build.clock_flags=-DUSE_EXTERNAL_CRYSTAL_OSC=1
+ci_d06gt01d.build.board=CI_D06GT01D
+ci_d06gt01d.build.core=chipintelli
+ci_d06gt01d.build.variant=ci_d06gt01d
+ci_d06gt01d.build.algorithm=null
+ci_d06gt01d.build.mic_flags=-DHOST_MIC_USE_NUMBER=2 -DAUDIO_IN_FROM_DMIC=0
+ci_d06gt01d.build.user_code_max=458752
+ci_d06gt01d.build.flash_size=4194304
+ci_d06gt01d.build.chip=ci1306
+ci_d06gt01d.build.extra_flags=-DARDUINO_CI1306 -DARDUINO_CI_D06GT01D -DCI_CHIP_CI1306 -DCI_BOARD_CI_D06GT01D=1 -DNO_ASR_FLOW=0 -DUSE_NULL=1 -DUSE_CWSL=0 -DUSE_AEC_MODULE=0 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
+
+ci_d06gt01d.menu.Algorithm.null=Standard Offline ASR (Default, No AEC)
+ci_d06gt01d.menu.Algorithm.null.build.algorithm=null
+ci_d06gt01d.menu.Algorithm.null.build.user_code_max=458752
+ci_d06gt01d.menu.Algorithm.null.upload.maximum_size=382577
+ci_d06gt01d.menu.Algorithm.null.build.extra_flags=-DARDUINO_CI1306 -DARDUINO_CI_D06GT01D -DCI_CHIP_CI1306 -DCI_BOARD_CI_D06GT01D=1 -DNO_ASR_FLOW=0 -DUSE_NULL=1 -DUSE_CWSL=0 -DUSE_AEC_MODULE=0 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
+ci_d06gt01d.menu.Algorithm.cwsl=CWSL Command-Word Learning (No AEC)
+ci_d06gt01d.menu.Algorithm.cwsl.build.algorithm=cwsl
+ci_d06gt01d.menu.Algorithm.cwsl.build.user_code_max=458752
+ci_d06gt01d.menu.Algorithm.cwsl.upload.maximum_size=382513
+ci_d06gt01d.menu.Algorithm.cwsl.build.extra_flags=-DARDUINO_CI1306 -DARDUINO_CI_D06GT01D -DCI_CHIP_CI1306 -DCI_BOARD_CI_D06GT01D=1 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=1 -DUSE_AEC_MODULE=0 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
+ci_d06gt01d.menu.Algorithm.aec=Standard Offline ASR + AEC / Barge-in (Analog Single Mic Only)
+ci_d06gt01d.menu.Algorithm.aec.build.algorithm=aec
+ci_d06gt01d.menu.Algorithm.aec.build.user_code_max=458752
+ci_d06gt01d.menu.Algorithm.aec.upload.maximum_size=382121
+ci_d06gt01d.menu.Algorithm.aec.build.extra_flags=-DARDUINO_CI1306 -DARDUINO_CI_D06GT01D -DCI_CHIP_CI1306 -DCI_BOARD_CI_D06GT01D=1 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=0 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
+ci_d06gt01d.menu.Algorithm.cwsl_aec=CWSL Command-Word Learning + AEC / Barge-in (Analog Single Mic Only)
+ci_d06gt01d.menu.Algorithm.cwsl_aec.build.algorithm=cwsl_aec
+ci_d06gt01d.menu.Algorithm.cwsl_aec.build.user_code_max=458752
+ci_d06gt01d.menu.Algorithm.cwsl_aec.upload.maximum_size=382057
+ci_d06gt01d.menu.Algorithm.cwsl_aec.build.extra_flags=-DARDUINO_CI1306 -DARDUINO_CI_D06GT01D -DCI_CHIP_CI1306 -DCI_BOARD_CI_D06GT01D=1 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=1 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
+
+ci_d06gt01d.menu.Microphone.dual=Analog Dual Microphones (Default, Non-AEC Profiles Only)
+ci_d06gt01d.menu.Microphone.dual.build.mic_flags=-DHOST_MIC_USE_NUMBER=2 -DAUDIO_IN_FROM_DMIC=0
+ci_d06gt01d.menu.Microphone.single=Analog Single Microphone (Supports AEC)
+ci_d06gt01d.menu.Microphone.single.build.mic_flags=-DHOST_MIC_USE_NUMBER=1 -DAUDIO_IN_FROM_DMIC=0
+ci_d06gt01d.menu.Microphone.pdm_dual=PDM Digital Dual Microphones (Onboard Pair, Non-AEC Profiles Only)
+ci_d06gt01d.menu.Microphone.pdm_dual.build.mic_flags=-DHOST_MIC_USE_NUMBER=2 -DAUDIO_IN_FROM_DMIC=1
+ci_d06gt01d.menu.Microphone.pdm_single=PDM Digital Single Microphone (Left Channel, Non-AEC Profiles Only)
+ci_d06gt01d.menu.Microphone.pdm_single.build.mic_flags=-DHOST_MIC_USE_NUMBER=1 -DAUDIO_IN_FROM_DMIC=1

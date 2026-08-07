@@ -29,6 +29,50 @@ The comprehensive `CI13XXSmoke` result was 137,083 bytes of program storage and
 type-mismatch warnings when all warnings are enabled; the final link and
 `user_code.bin` generation complete successfully.
 
+## CI-D06GT01D development-board variant validation
+
+On 2026-08-07, Arduino CLI 1.5.1 discovered the source-tree
+`CI-D06GT01D Dev Board` entry and compiled `CI13XXSmoke` with its dedicated
+variant. A second sketch used compile-time assertions for every board alias:
+the PD1 built-in LED, three RGB channels, ADC key ladder, buzzer, IR TX/RX,
+amplifier enable, OLED reset/DC/unused CS, PDM clock/data and all five IIS
+signals. Both compiled, linked and completed the firmware post-build flow. The
+current dual-microphone default `CI13XXSmoke` build used 129,909 / 382,577 bytes
+of program storage and 127,820 bytes of reported dynamic memory, generated a
+205,808-byte `user_code.bin`, and composed a 2,052,129-byte complete firmware
+image.
+
+The same date added a `Microphone Input` menu independent of the
+`Algorithm Profile` menu.
+`arduino-cli board details` confirmed that CI-D06GT01D defaults to dual analog
+microphones with Standard ASR without AEC, while the generic CI1306 profile
+defaults to one analog microphone with AEC. It also exposed PDM digital
+single/dual options for both profiles. The following matrix compiled dedicated
+assertion sketches through SDK source compilation, final linking and firmware
+composition:
+
+| FQBN / menu selection | Effective audio configuration | Program / maximum | Dynamic memory | `user_code.bin` | Complete firmware |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `ci_d06gt01d` (defaults) | 2 analog microphones, Standard ASR without AEC | 63,215 / 382,577 | 109,388 | 139,408 | 1,986,593 |
+| `ci_d06gt01d:Microphone=single,Algorithm=aec` | 1 analog microphone + 1 reference, AEC | 63,215 / 382,121 | 109,388 | 139,864 | 1,986,593 |
+| `ci1306` (defaults) | 1 analog microphone + 1 reference, AEC | 63,215 / 382,121 | 109,388 | 139,864 | 1,986,593 |
+| `ci1306:Microphone=dual,Algorithm=null` | 2 analog microphones, Standard ASR without AEC | 63,215 / 382,577 | 109,388 | 139,408 | 1,986,593 |
+| `ci_d06gt01d:Microphone=pdm_dual,Algorithm=null` | 2 PDM microphones, Standard ASR without AEC | 63,215 / 382,577 | 109,388 | 139,408 | 1,986,593 |
+| `ci1306:Microphone=pdm_single,Algorithm=null` | 1 PDM microphone, Standard ASR without AEC | 63,215 / 382,577 | 109,388 | 139,408 | 1,986,593 |
+
+The PDM assertions checked `AUDIO_IN_FROM_DMIC`, `HOST_MIC_USE_NUMBER`,
+`USE_DUAL_MIC_ANY`, the derived `HOST_CODEC_CHA_NUM`, and the PB7 DATA / PC0 CLK
+aliases. The core preserves the SDK's PDM mux when its Arduino task starts and
+reports both pads as system-owned through `PeripheralManager`. The profile
+guards reject PDM combined with AEC because the digital input carries no
+playback-reference channel. A negative
+`ci_d06gt01d:Microphone=pdm_dual,Algorithm=aec` build stopped in SDK source
+compilation as expected. The earlier negative
+`ci_d06gt01d:Microphone=dual,Algorithm=aec` build was run and stopped in the SDK
+source-compilation phase as expected. The four Algorithm profiles retain
+their CI1306/CI-D06GT01D macros, capacity metadata and external-crystal
+configuration.
+
 The validation found and fixed three package-only issues: UTF-8 BOM rejection
 in the JSON index, the tool archive wrapper directory being removed during
 installation, and the legacy GCC failing when its C++ header path reaches about

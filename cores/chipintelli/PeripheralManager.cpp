@@ -24,6 +24,17 @@ bool validResource(PeripheralResource resource) {
   return static_cast<size_t>(resource) < kResourceCount;
 }
 
+bool systemReservedPin(uint8_t pin) {
+#if defined(AUDIO_IN_FROM_DMIC) && AUDIO_IN_FROM_DMIC
+  // PDM DATA/CLK are configured by the SDK before setup() and remain owned by
+  // the audio input path for the lifetime of the firmware.
+  return pin == PB7 || pin == PC0;
+#else
+  (void)pin;
+  return false;
+#endif
+}
+
 bool systemReserved(PeripheralResource resource) {
 #if defined(USE_BLE) && USE_BLE
   // The fixed Arduino SDK profile enables the vendor BLE stack, whose RF
@@ -39,6 +50,10 @@ PeripheralOwner currentResourceOwner(PeripheralResource resource) {
   return systemReserved(resource)
              ? PeripheralOwner::System
              : s_resourceOwners[static_cast<size_t>(resource)];
+}
+
+PeripheralOwner currentPinOwner(uint8_t pin) {
+  return systemReservedPin(pin) ? PeripheralOwner::System : s_pinOwners[pin];
 }
 
 bool ownerCanReplace(PeripheralOwner current, PeripheralOwner requested) {
@@ -86,7 +101,7 @@ bool PeripheralManagerClass::claim(
 
   taskENTER_CRITICAL();
   for (size_t i = 0; i < pinCount; ++i) {
-    const PeripheralOwner current = s_pinOwners[pins[i]];
+    const PeripheralOwner current = currentPinOwner(pins[i]);
     if (!ownerCanReplace(current, owner)) {
       setConflict(PeripheralError::PinBusy, owner, current, pins[i],
                   PeripheralResource::Count);
@@ -177,7 +192,7 @@ PeripheralOwner PeripheralManagerClass::pinOwner(uint8_t pin) const {
     return PeripheralOwner::None;
   }
   taskENTER_CRITICAL();
-  const PeripheralOwner owner = s_pinOwners[pin];
+  const PeripheralOwner owner = currentPinOwner(pin);
   taskEXIT_CRITICAL();
   return owner;
 }

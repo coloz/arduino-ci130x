@@ -30,6 +30,11 @@ static void initializeDefaultPins() {
     // reset and unbonded pads untouched; make every usable pin a high-impedance
     // GPIO until the sketch explicitly selects another function.
     for (uint8_t pin = 0; pin < NUM_DIGITAL_PINS; ++pin) {
+#if defined(AUDIO_IN_FROM_DMIC) && AUDIO_IN_FROM_DMIC
+        // The vendor SDK configures the PDM DATA/CLK pads before the Arduino
+        // task starts. Preserve that mux instead of resetting it to GPIO.
+        if (pin == PB7 || pin == PC0) continue;
+#endif
         if (g_APinDescription[pin].capabilities & PIN_CAP_GPIO) {
             pinMode(pin, INPUT);
             detachInterrupt(pin);

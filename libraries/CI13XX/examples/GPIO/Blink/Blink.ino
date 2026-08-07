@@ -1,7 +1,9 @@
 #include <Arduino.h>
 
-// These boards have no Arduino-controlled built-in LED.
-#if defined(CI_CHIP_CI1302) || defined(CI_CHIP_CI1303)
+#if defined(CI_BOARD_CI_D06GT01D)
+// The development board has an active-high green LED on PD1.
+constexpr uint8_t kLedPin = LED_BUILTIN;
+#elif defined(CI_CHIP_CI1302) || defined(CI_CHIP_CI1303)
 // Connect an external LED and series resistor from pin 20 (PC4) to GND.
 constexpr uint8_t kLedPin = 20;
 #else

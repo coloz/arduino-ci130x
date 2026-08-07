@@ -36,7 +36,8 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 | Arduino CLI | 已使用 1.5.0 验证 |
 | 主机系统 | 完整固件流程：Windows 10/11 x64、macOS 15+ Apple Silicon；Linux x86_64 已通过编译/链接验证，完整回归待补充 |
 | 编译器 | Nuclei RISC-V GCC 9.2.0（`rv32imafc / ilp32f`）；macOS 由官方 `nuclei_9.2_fixjalr_forhw` 源码构建 |
-| 算法配置 | 默认标准离线 ASR + AEC/语音打断；可选无 AEC、CWSL+AEC 或 CWSL profile |
+| Algorithm Profile（算法） | CI1306 芯片默认标准 ASR + AEC；CI-D06GT01D 默认标准 ASR（无 AEC）；均可选择四种 profile |
+| Microphone Input（麦克风） | 支持模拟单/双麦和 PDM 数字单/双麦；CI1306 默认模拟单麦，CI-D06GT01D 默认模拟双麦 |
 | 公共 Boards Manager 发布 | `v1.0.8`（Windows x64、Linux x86_64、macOS Apple Silicon） |
 | 硬件运行验证 | CI1303：Windows/macOS Standard 启动和音频、CWSL 启动、核心外设、I2C/SSD1306 已通过；其余待验证 |
 
@@ -110,11 +111,14 @@ https://github.com/coloz/arduino-ci130x/releases/download/v1.0.8/package_chipint
 ## 快速开始
 
 1. 在 Arduino IDE 中选择对应开发板：
-   **ChipIntelli CI1302**、**ChipIntelli CI1303** 或 **ChipIntelli CI1306**。
-2. 默认使用 **标准离线 ASR + AEC/语音打断**；需要命令词自学习时选择
-   **命令词自学习 CWSL + AEC/语音打断**。兼容旧硬件或没有 AEC 参考回采线路时，
-   可选择名称中标有“无 AEC”的 profile。该选项会一起切换编译宏、链接脚本和
-   第二核算法镜像。
+   **ChipIntelli CI1302**、**ChipIntelli CI1303**、**ChipIntelli CI1306**，
+   或文档所述套件对应的 **ChipIntelli CI-D06GT01D Dev Board**。
+2. CI-D06GT01D 默认选择 **模拟双麦** 和 **标准离线 ASR（无 AEC）**；通用 CI1306
+   芯片配置默认选择 **模拟单麦** 和 **标准离线 ASR + AEC/语音打断**。可在
+   **Tools > Microphone Input** 中选择模拟/PDM、单麦/双麦，并在
+   **Tools > Algorithm Profile** 中
+   选择 Standard 或 CWSL profile。模拟双麦以及所有 PDM 方案只能搭配名称中标有
+   “无 AEC”的算法；AEC profile 必须选择模拟单麦，否则编译期会拒绝该无效组合。
 3. CI1302/CI1303 默认选择 **Internal RC (no crystal)**；只有板上确实安装
    12.288 MHz 晶振时才选择 **External 12.288 MHz crystal**。
 4. PA4 接有 LED 时可打开 **文件 > 示例 > CI13XX > GPIO > PA4BlinkSerial**，
@@ -125,7 +129,30 @@ https://github.com/coloz/arduino-ci130x/releases/download/v1.0.8/package_chipint
 Arduino CLI 编译示例：
 
 ```powershell
+arduino-cli compile --fqbn chipintelli:ci13xx:ci_d06gt01d `
+  examples\CI13XXSmoke
+
 arduino-cli compile --fqbn chipintelli:ci13xx:ci1306 `
+  examples\CI13XXSmoke
+
+# CI-D06GT01D：切换为单麦 + AEC
+arduino-cli compile `
+  --fqbn chipintelli:ci13xx:ci_d06gt01d:Microphone=single,Algorithm=aec `
+  examples\CI13XXSmoke
+
+# 通用 CI1306：切换为双麦 + 无 AEC
+arduino-cli compile `
+  --fqbn chipintelli:ci13xx:ci1306:Microphone=dual,Algorithm=null `
+  examples\CI13XXSmoke
+
+# CI-D06GT01D：切换为板载 PDM 数字双麦 + 无 AEC
+arduino-cli compile `
+  --fqbn chipintelli:ci13xx:ci_d06gt01d:Microphone=pdm_dual,Algorithm=null `
+  examples\CI13XXSmoke
+
+# 通用 CI1306：切换为 PDM 数字单麦 + 无 AEC
+arduino-cli compile `
+  --fqbn chipintelli:ci13xx:ci1306:Microphone=pdm_single,Algorithm=null `
   examples\CI13XXSmoke
 
 arduino-cli compile --fqbn chipintelli:ci13xx:ci1302 `
@@ -143,15 +170,42 @@ arduino-cli compile --fqbn chipintelli:ci13xx:ci1303 `
 同时保留 `<sketch>.user_code.bin` 和最终的 `<sketch>.bin`，Arduino IDE 导出的
 `.firmware.bin` 是可直接烧录的完整固件。
 
-## 支持的芯片
+## 支持的芯片与开发板
 
 | 芯片 | 参考板卡 / 模组 | 封装与 Flash | FQBN | 当前验证 |
 | --- | --- | --- | --- | --- |
 | CI1302 | CI-D02GS02S | SSOP24 / 2 MB | `chipintelli:ci13xx:ci1302` | 编译、链接、后处理通过 |
 | CI1303 | CI-D03GS02S | SSOP24 / 4 MB | `chipintelli:ci13xx:ci1303` | 编译、烧录、UART0 与 I2C/SSD1306 运行通过 |
-| CI1306 | CI-D06GT01D | QFN40 / 4 MB | `chipintelli:ci13xx:ci1306` | 编译、链接、后处理通过 |
+| CI1306 | QFN40 兼容配置 | QFN40 / 4 MB | `chipintelli:ci13xx:ci1306` | 编译、链接、后处理通过 |
+| CI1306 | CI-D06GT01D 开发板 | QFN40 / 4 MB | `chipintelli:ci13xx:ci_d06gt01d` | 板级引脚映射与编译通过 |
 
 开发板或模组是否实际引出某个 PAD，应以对应硬件原理图为准。
+CI-D06GT01D FQBN 的默认音频输入是两路差分模拟麦克风；通用 CI1306 FQBN 为兼容
+单麦 + AEC 设计，默认使用一路模拟麦克风和一路播放参考。两个 FQBN 的
+**Microphone Input** 菜单都提供模拟单/双麦和 PDM 数字单/双麦选项。PDM 使用
+PC0/`PIN_PDM_CLK` 和 PB7/`PIN_PDM_DATA`；CI-D06GT01D 板载两个 PDM 麦克风，
+选择数字双麦时分别作为左右通道输入。
+
+### CI-D06GT01D 板载资源别名
+
+专用开发板变体依据[官方开发板套件说明](https://document.chipintelli.com/%E7%A1%AC%E4%BB%B6%E5%BC%80%E5%8F%91/%E5%BC%80%E5%8F%91%E6%9D%BF%E5%A5%97%E4%BB%B6%E8%AF%B4%E6%98%8E/CI1306%E5%BC%80%E5%8F%91%E6%9D%BF%E5%A5%97%E4%BB%B6%E8%AF%B4%E6%98%8E/)
+及 V1.0 原理图公开以下常量：
+
+| 资源 | Arduino 常量 | 芯片管脚 |
+| --- | --- | --- |
+| 普通绿色 LED（高电平点亮） | `LED_BUILTIN`、`PIN_LED_BUILTIN` | PD1 |
+| RGB LED | `PIN_RGB_LED_RED`、`PIN_RGB_LED_GREEN`、`PIN_RGB_LED_BLUE` | PB0 / PB1 / PA7 |
+| 五键 ADC 电阻网络 | `PIN_KEY_ADC` | PC4 / AIN2 / `A0` |
+| 蜂鸣器 | `PIN_BUZZER` | PB4 / PWM5 |
+| 红外收发 | `PIN_IR_TX`、`PIN_IR_RX` | PA2 / PA4 |
+| 功放使能 | `PIN_POWER_AMPLIFIER_ENABLE` | PD0 |
+| OLED 控制 | `PIN_OLED_RESET`、`PIN_OLED_DC` | PD3 / PD4 |
+| PDM 数字麦克风 | `PIN_PDM_CLK`、`PIN_PDM_DATA` | PC0 / PB7 |
+| IIS 排针 | `PIN_I2S_MCLK`、`PIN_I2S_SCLK`、`PIN_I2S_SDOUT`、`PIN_I2S_LRCK`、`PIN_I2S_SDIN` | PA6 / PA5 / PA4 / PA3 / PA2 |
+
+OLED 接口的 `CS` 在原理图中未连接，`PIN_OLED_CS` 因而定义为 `255`。`Wire`、
+`Serial1` 和 PDM 麦克风共用 PB7/PC0；RGB、蜂鸣器、红外、IIS 与 software SPI
+也会复用 PWM 或 PAD，使用前应留意资源管理器报告的冲突。
 
 ## Arduino API 与库
 
@@ -171,7 +225,7 @@ arduino-cli compile --fqbn chipintelli:ci13xx:ci1303 `
 | SPI | [`SPI`](libraries/SPI/README.md)、`SPISettings` | GPIO software master、模式 0–3、MSB/LSB，最高 500 kHz |
 | SD 卡 | [`SD`](libraries/SD/README.md)、`File` | software SPI、SD/SDHC、FAT16/FAT32、8.3 短文件名 |
 | 持久化 | [`EEPROM`](libraries/EEPROM/README.md)、[`Preferences`](libraries/Preferences/README.md) | 基于 NVDM；EEPROM 缓冲提交，Preferences 提供 namespace/typed key-value |
-| 语音识别 | [`ChipIntelliASR`](libraries/ChipIntelliASR/README.md) | OneButton 风格的启动/唤醒/超时/命令/语义事件、512 项处理表及 `tick()`；提示音由 sketch 决定，默认 AEC 和语音打断 |
+| 语音识别 | [`ChipIntelliASR`](libraries/ChipIntelliASR/README.md) | OneButton 风格的启动/唤醒/超时/命令/语义事件、512 项处理表及 `tick()`；提示音由 sketch 决定，AEC/语音打断由所选板卡与算法 profile 决定 |
 | 命令词自学习 | [`ChipIntelliCWSL`](libraries/ChipIntelliCWSL/README.md) | 命令词/唤醒词学习、模板删除与计数、异步状态和识别事件 |
 | 提示音 | [`ChipIntelliAudio`](libraries/ChipIntelliAudio/README.md) | 播放 `voice.bin` 中已有的提示音，支持队列、停止、音量、静音和完成回调 |
 | 红外 | [`ChipIntelliIR`](libraries/ChipIntelliIR/README.md) | 38 kHz raw 收发、NEC、学习回放，以及官方 36 品牌空调码库和码组搜索 |
@@ -221,15 +275,19 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 
 ### 算法 Profile、AEC 与 CWSL
 
-- 默认 **标准离线 ASR + AEC/语音打断** 使用 `USE_AEC_MODULE=1`、
-  `AEC_INTERRUPT_TYPE=2`、AEC 专用链接脚本和第二核镜像；播报时保留麦克风输入和
-  ASR 任务，唤醒词及普通命令词均可打断。**CWSL+AEC** 在此基础上增加
-  `USE_CWSL=1`。两个名称中标有“无 AEC”的兼容 profile 分别使用原 NULL/CWSL
-  镜像，播报时会静音录音并暂停 ASR，因而不支持语音打断。
+- 通用 CI1306 芯片配置默认 **模拟单麦 + 标准离线 ASR + AEC/语音打断**；
+  CI-D06GT01D 开发板默认 **模拟双麦 + 标准离线 ASR（无 AEC）**。AEC profile 使用
+  `USE_AEC_MODULE=1`、`AEC_INTERRUPT_TYPE=2`、AEC 专用链接脚本和第二核镜像；
+  播报时保留麦克风输入和 ASR 任务，唤醒词及普通命令词均可打断。**CWSL+AEC**
+  在此基础上增加 `USE_CWSL=1`。两个名称中标有“无 AEC”的 profile 分别使用
+  NULL/CWSL 镜像，播报时会静音录音并暂停 ASR，因而不支持语音打断。
 - AEC 是单麦 + 一路参考信号算法：内部 Codec 左通道接麦克风，右通道必须接功放前
   的线电平播放参考。不能把功放或扬声器输出直接送入 Codec。参考通道未连接、削顶、
   极性/增益或延时不合适时，固件虽然显示 AEC 已启用，实际回声消除和打断可靠性仍会
-  很差；具体接线和衰减应以模块原理图及硬件设计为准。
+  很差；具体接线和衰减应以模块原理图及硬件设计为准。选择模拟双麦时，内部 Codec
+  左右通道都用于麦克风，不能再提供 AEC 参考；PDM 输入同样没有播放参考通道。因此
+  模拟双麦和 PDM 单/双麦只能搭配 Standard/CWSL 的无 AEC profile；无效组合会触发
+  编译错误。
 - 四个 profile 的分区均来自 V2.7.14 官方 `offline_asr_alg_pro_sample`；AEC 与无 AEC
   标准档共用 Standard ASR/DNN/Voice/UserFile，CWSL+AEC 与 CWSL 共用 CWSL 资源。
   这是编译期选择，同一固件不能在运行时切换；非 CWSL profile 中
@@ -281,8 +339,11 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
   校验。波特率必须是原厂驱动列出的固定值；不支持的参数会保留原端口状态并
   通过 `lastError()` 报错，不再静默回退。
 - `Wire` 与 `Serial1` 共用 PAD：CI1302/CI1303 为 PA2/PA3，CI1306 为 PB7/PC0。
-  后初始化者会在改写复用寄存器前失败，可通过 `PeripheralManager.lastConflict()`
-  查询占用者；先调用当前外设的 `end()` 才能安全切换。当前 SDK profile 还将
+  CI1306 选择 PDM 输入时，PB7/PC0 同时作为 DATA/CLK 并被标记为系统占用，
+  `Wire.begin()`、`Serial1.begin()`、`pinMode()` 和 `attachInterrupt()` 不会改写其复用；
+  PDM 是固件级音频输入配置，运行时不能释放或切换。其他情况下，后初始化者可通过
+  `PeripheralManager.lastConflict()` 查询占用者；先调用当前外设的 `end()` 才能安全
+  切换。当前 SDK profile 还将
   UART1 TX 配置为开漏输出，使用
   `Serial1` 时必须提供与目标电平匹配的外部上拉电阻。
 - `Serial2` 不会在 SDK 启动阶段自动占用 PAD。调用 `Serial2.begin()` 后才启用

@@ -1,7 +1,8 @@
 # ChipIntelliCWSL
 
 `ChipIntelliCWSL` exposes the CI130X command-word self-learning engine to an
-Arduino sketch. Select **工具 > 算法配置 > 命令词自学习 CWSL** before compiling.
+Arduino sketch. Select a **Tools > Algorithm Profile > CWSL Command-Word Learning**
+profile before compiling.
 `begin()` returns `false` under the
 standard offline-ASR profile.
 

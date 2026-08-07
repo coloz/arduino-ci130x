@@ -79,6 +79,10 @@ static constexpr uint8_t RX1 = PC0; // UART1
 static constexpr uint8_t TX2 = PB1; // UART2
 static constexpr uint8_t RX2 = PB2; // UART2
 
+// CI1306 PDM input shares the IIC0/UART1 pads.
+static constexpr uint8_t PIN_PDM_CLK = PC0;
+static constexpr uint8_t PIN_PDM_DATA = PB7;
+
 static constexpr uint8_t LED_BUILTIN = 255;
 
 #endif
