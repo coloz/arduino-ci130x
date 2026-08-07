@@ -26,8 +26,8 @@ jobs:
 
     env:
       GH_TOKEN: ${{ github.token }}
-      CITOOL_CLI_REPOSITORY: coloz/citool-cli
-      CITOOL_CLI_RELEASE_TAG: v1.2.1
+      CITOOL_CLI_REPOSITORY: coloz/arduino-ci130x
+      CITOOL_CLI_RELEASE_TAG: citool-cli-v1.2.1
       CITOOL_CLI_VERSION: 1.2.1
       NUCLEI_GCC_RELEASE_TAG: nuclei-gcc-v9.2.0-host1
       NUCLEI_GCC_VERSION: 9.2.0

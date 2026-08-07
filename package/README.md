@@ -16,16 +16,16 @@ The version-pinned `v1.0.8` index is also published as a GitHub Release asset:
 https://github.com/coloz/arduino-ci130x/releases/download/v1.0.8/package_chipintelli_index.json
 ```
 
-The package index uses the public `citool-cli@1.2.1` assets from the independent
-`coloz/citool-cli` release `v1.2.1` for Windows x64, macOS Universal (Intel and Apple
-Silicon), and Linux x86_64. It also
+The package index uses the public `citool-cli@1.2.1` assets mirrored in this
+repository's `citool-cli-v1.2.1` release for Windows x64, macOS Universal (Intel
+and Apple Silicon), and Linux x86_64. It also
 reuses Nuclei GCC 9.2.0 from the dedicated toolchain release for Windows x64,
 Linux x86_64, and macOS Apple Silicon. There is currently no matching Intel
 macOS compiler archive.
 
 For version 1.0.8, `.github/workflows/deploy-release.yml` downloads
-and verifies the public `citool-cli@1.2.1` archives from the independent
-`coloz/citool-cli` `v1.2.1` release and the three compiler archives from the
+and verifies the public `citool-cli@1.2.1` archives from this repository's
+`citool-cli-v1.2.1` release and the three compiler archives from the
 dedicated toolchain release. It publishes
 only the new Arduino platform archive, Boards Manager index and checksum file;
 the index points its tool records at those immutable shared releases instead
@@ -128,7 +128,7 @@ than a `dist/` subdirectory, add `-FlatAssetUrls`:
   -Version 1.0.8 `
   -BaseUrl https://github.com/OWNER/arduino-ci130x/releases/download/v1.0.8 `
   -ToolchainBaseUrl https://github.com/coloz/arduino-ci130x/releases/download/nuclei-gcc-v9.2.0-host1 `
-  -CitoolCliBaseUrl https://github.com/coloz/citool-cli/releases/download/v1.2.1 `
+  -CitoolCliBaseUrl https://github.com/coloz/arduino-ci130x/releases/download/citool-cli-v1.2.1 `
   -FlatAssetUrls
 ```
 
