@@ -13,7 +13,7 @@ The library supports:
 - playing audio by voice ID;
 - playing one copied sequence of up to 24 voice IDs with one completion event;
 - parsing decimal strings passed directly to `playVoice()` and composing them
-  from reusable Mandarin number-token audio at IDs 300 through 316;
+  in any of 15 supported languages from IDs beginning at 300;
 - playing the built-in beep prompt one to sixteen times;
 - playing a configured prompt by command ID, command text, or semantic ID;
 - stopping playback, checking playback status, adjusting the volume, and
@@ -143,19 +143,28 @@ does not. It also returns `false` when `count` is zero or greater than `16`.
 
 ## Variable Number Playback
 
-Variable-number playback uses 17 reusable Mandarin clips: `零` through `九`,
-then `十`, `百`, `千`, `万`, `亿`, `负`, and `点`, at fixed IDs 300 through
-316. When the linked program uses the string overload, the Arduino post-build
-automatically asks `citool-cli generate` to add all 17 clips to its TTS request;
-no resource macros are needed in the sketch. Callers can pass a numeric string
-directly:
+Variable-number playback supports Chinese, English, Japanese, Korean, Russian,
+Spanish, Thai, German, Indonesian, Vietnamese, French, Portuguese, Persian,
+Turkish, and Arabic. Each language has its own voice resource set beginning at
+ID 300, so only one language occupies those IDs in a firmware image. Select it
+before the library include; Chinese is the default:
 
 ```cpp
-ChipIntelliAudio.playVoice("300");   // 三百
-ChipIntelliAudio.playVoice("-1.5");  // 负一点五
-ChipIntelliAudio.playVoice("0.02");  // 零点零二
+#define CHIPINTELLI_LANGUAGE CHIPINTELLI_LANGUAGE_EN
+#include <ChipIntelliAudio.h>
+
+ChipIntelliAudio.playVoice("300");   // three hundred
+ChipIntelliAudio.playVoice("-1.5");  // minus one point five
+ChipIntelliAudio.playVoice("0.02");  // zero point zero two
 ChipIntelliAudio.playVoice("0.02", false);  // Queue the complete number
 ```
+
+The selector values are `_ZH`, `_EN`, `_JA`, `_KO`, `_RU`, `_ES`, `_TH`, `_DE`,
+`_ID`, `_VI`, `_FR`, `_PT`, `_FA`, `_TR`, and `_AR` with the full
+`CHIPINTELLI_LANGUAGE_` prefix. When the linked program uses the string
+overload, Arduino post-build asks `citool-cli generate` to add the complete
+token inventory for the selected language. No `VOICE300`-style macros are
+needed.
 
 `interruptCurrent` defaults to `true`. Pass `false` to queue the complete
 number after the prompt that is currently playing. The flag only controls how
@@ -168,10 +177,10 @@ The string syntax permits surrounding ASCII whitespace, an optional `+` or
 `-`, and one decimal point. Scientific notation is rejected. Fractional digits
 are spoken individually, including zeroes. Invalid input, an integer part
 larger than `uint32_t`, or a result longer than 24 clips returns `false`.
-Negative textual zero is spoken as zero without `负`.
+Negative textual zero is spoken as zero without a minus token.
 
-To use a different set of IDs, map them in a `NumberVoiceIds` value and call
-the lower-level number API:
+The lower-level `NumberVoiceIds` API retains its Mandarin composition rules.
+To use a custom Mandarin ID set, map it and call:
 
 ```cpp
 const ChipIntelliAudioClass::NumberVoiceIds numberVoices = {
@@ -199,8 +208,8 @@ generated ID sequence must be inspected or adjusted before passing it to
 `interruptCurrent` argument only controls how the group starts, and the group
 produces one completion event.
 
-See [`VARIABLE_VOICE_TEXTS_ZH.md`](VARIABLE_VOICE_TEXTS_ZH.md) for the complete
-core/optional Chinese text inventory and clip-production guidance.
+See [`VARIABLE_VOICE_TEXTS.md`](VARIABLE_VOICE_TEXTS.md) for every language's
+exact ID table, composition rules, examples, and clip-production guidance.
 
 ## Volume
 

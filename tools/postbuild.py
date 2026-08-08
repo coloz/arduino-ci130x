@@ -57,7 +57,7 @@ def arduino_asset_root(source_path):
 
 
 def variable_number_playback_is_linked(elf_path, objcopy_path):
-    """Detect the ChipIntelliAudio String playback overload in the final ELF."""
+    """Detect localized ChipIntelliAudio number playback in the final ELF."""
     nm_name = re.sub(
         r'objcopy(?P<suffix>\.exe)?$',
         r'nm\g<suffix>',
@@ -83,8 +83,10 @@ def variable_number_playback_is_linked(elf_path, objcopy_path):
             "nm failed while inspecting variable-number playback usage "
             f"(exit code {result.returncode}){detail}"
         )
-    symbol = '_ZN21ChipIntelliAudioClass9playVoiceERK6Stringb'
-    return symbol in result.stdout
+    # playVoice(String) is an inline language-selector wrapper. The linked
+    # implementation name remains visible in the raw C++ symbol regardless of
+    # which language enum value the wrapper passed.
+    return 'playLocalizedNumber' in result.stdout
 
 
 def build_user_code_container(host_code, algorithm_code):

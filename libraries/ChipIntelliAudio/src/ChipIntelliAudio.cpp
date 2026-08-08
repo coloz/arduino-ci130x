@@ -32,6 +32,175 @@ constexpr ChipIntelliAudioClass::NumberVoiceIds kDefaultNumberVoiceIds = {
     316U,  // 点
 };
 
+// Every language owns its selected voice.bin and reuses IDs beginning at 300.
+// Digits deliberately have the same IDs in every language so decimal digits
+// can be appended without a language-specific lookup table.
+constexpr uint16_t kDigitVoiceBase = 300U;
+
+constexpr uint16_t kEnglishTen = 310U;
+constexpr uint16_t kEnglishTwenty = 320U;
+constexpr uint16_t kEnglishHundred = 328U;
+constexpr uint16_t kEnglishThousand = 329U;
+constexpr uint16_t kEnglishMillion = 330U;
+constexpr uint16_t kEnglishBillion = 331U;
+constexpr uint16_t kEnglishNegative = 332U;
+constexpr uint16_t kEnglishDecimalPoint = 333U;
+
+constexpr uint16_t kJapaneseTen = 310U;
+constexpr uint16_t kJapaneseHundred = 319U;
+constexpr uint16_t kJapaneseThousand = 328U;
+constexpr uint16_t kJapaneseTenThousand = 337U;
+constexpr uint16_t kJapaneseHundredMillion = 338U;
+constexpr uint16_t kJapaneseNegative = 339U;
+constexpr uint16_t kJapaneseDecimalPoint = 340U;
+
+constexpr uint16_t kKoreanTen = 310U;
+constexpr uint16_t kKoreanHundred = 311U;
+constexpr uint16_t kKoreanThousand = 312U;
+constexpr uint16_t kKoreanTenThousand = 313U;
+constexpr uint16_t kKoreanHundredMillion = 314U;
+constexpr uint16_t kKoreanNegative = 315U;
+constexpr uint16_t kKoreanDecimalPoint = 316U;
+
+constexpr uint16_t kRussianTen = 310U;
+constexpr uint16_t kRussianTwenty = 320U;
+constexpr uint16_t kRussianHundred = 328U;
+constexpr uint16_t kRussianFeminineOne = 337U;
+constexpr uint16_t kRussianFeminineTwo = 338U;
+constexpr uint16_t kRussianThousand = 339U;
+constexpr uint16_t kRussianMillion = 342U;
+constexpr uint16_t kRussianBillion = 345U;
+constexpr uint16_t kRussianNegative = 348U;
+constexpr uint16_t kRussianDecimalPoint = 349U;
+
+constexpr uint16_t kSpanishTen = 310U;
+constexpr uint16_t kSpanishThirty = 330U;
+constexpr uint16_t kSpanishAnd = 337U;
+constexpr uint16_t kSpanishUn = 338U;
+constexpr uint16_t kSpanishTwentyOneApocopated = 339U;
+constexpr uint16_t kSpanishCien = 340U;
+constexpr uint16_t kSpanishCiento = 341U;
+constexpr uint16_t kSpanishTwoHundred = 342U;
+constexpr uint16_t kSpanishThousand = 350U;
+constexpr uint16_t kSpanishMillion = 351U;
+constexpr uint16_t kSpanishMillions = 352U;
+constexpr uint16_t kSpanishNegative = 353U;
+constexpr uint16_t kSpanishDecimalPoint = 354U;
+
+constexpr uint16_t kThaiFinalOne = 310U;
+constexpr uint16_t kThaiTwentyPrefix = 311U;
+constexpr uint16_t kThaiTen = 312U;
+constexpr uint16_t kThaiHundred = 313U;
+constexpr uint16_t kThaiThousand = 314U;
+constexpr uint16_t kThaiTenThousand = 315U;
+constexpr uint16_t kThaiHundredThousand = 316U;
+constexpr uint16_t kThaiMillion = 317U;
+constexpr uint16_t kThaiNegative = 318U;
+constexpr uint16_t kThaiDecimalPoint = 319U;
+
+constexpr uint16_t kGermanEin = 310U;
+constexpr uint16_t kGermanEine = 311U;
+constexpr uint16_t kGermanTen = 312U;
+constexpr uint16_t kGermanTwenty = 322U;
+constexpr uint16_t kGermanAnd = 330U;
+constexpr uint16_t kGermanHundred = 331U;
+constexpr uint16_t kGermanThousand = 332U;
+constexpr uint16_t kGermanMillion = 333U;
+constexpr uint16_t kGermanMillions = 334U;
+constexpr uint16_t kGermanBillion = 335U;
+constexpr uint16_t kGermanBillions = 336U;
+constexpr uint16_t kGermanNegative = 337U;
+constexpr uint16_t kGermanDecimalPoint = 338U;
+
+constexpr uint16_t kIndonesianTen = 310U;
+constexpr uint16_t kIndonesianEleven = 311U;
+constexpr uint16_t kIndonesianTeenSuffix = 312U;
+constexpr uint16_t kIndonesianTensSuffix = 313U;
+constexpr uint16_t kIndonesianOneHundred = 314U;
+constexpr uint16_t kIndonesianHundred = 315U;
+constexpr uint16_t kIndonesianOneThousand = 316U;
+constexpr uint16_t kIndonesianThousand = 317U;
+constexpr uint16_t kIndonesianMillion = 318U;
+constexpr uint16_t kIndonesianBillion = 319U;
+constexpr uint16_t kIndonesianNegative = 320U;
+constexpr uint16_t kIndonesianDecimalPoint = 321U;
+
+constexpr uint16_t kVietnameseFinalOne = 310U;
+constexpr uint16_t kVietnameseFinalFour = 311U;
+constexpr uint16_t kVietnameseFinalFive = 312U;
+constexpr uint16_t kVietnameseTen = 313U;
+constexpr uint16_t kVietnameseTensSuffix = 314U;
+constexpr uint16_t kVietnameseHundred = 315U;
+constexpr uint16_t kVietnameseZeroTens = 316U;
+constexpr uint16_t kVietnameseThousand = 317U;
+constexpr uint16_t kVietnameseMillion = 318U;
+constexpr uint16_t kVietnameseBillion = 319U;
+constexpr uint16_t kVietnameseNegative = 320U;
+constexpr uint16_t kVietnameseDecimalPoint = 321U;
+
+constexpr uint16_t kFrenchTen = 310U;
+constexpr uint16_t kFrenchTwenty = 320U;
+constexpr uint16_t kFrenchSixty = 324U;
+constexpr uint16_t kFrenchEighty = 325U;
+constexpr uint16_t kFrenchEightyCompound = 326U;
+constexpr uint16_t kFrenchAnd = 327U;
+constexpr uint16_t kFrenchHundred = 328U;
+constexpr uint16_t kFrenchThousand = 329U;
+constexpr uint16_t kFrenchMillion = 330U;
+constexpr uint16_t kFrenchMillions = 331U;
+constexpr uint16_t kFrenchBillion = 332U;
+constexpr uint16_t kFrenchBillions = 333U;
+constexpr uint16_t kFrenchNegative = 334U;
+constexpr uint16_t kFrenchDecimalPoint = 335U;
+
+constexpr uint16_t kPortugueseTen = 310U;
+constexpr uint16_t kPortugueseTwenty = 320U;
+constexpr uint16_t kPortugueseAnd = 328U;
+constexpr uint16_t kPortugueseOneHundred = 329U;
+constexpr uint16_t kPortugueseHundredAnd = 330U;
+constexpr uint16_t kPortugueseTwoHundred = 331U;
+constexpr uint16_t kPortugueseThousand = 339U;
+constexpr uint16_t kPortugueseMillion = 340U;
+constexpr uint16_t kPortugueseMillions = 341U;
+constexpr uint16_t kPortugueseBillion = 342U;
+constexpr uint16_t kPortugueseBillions = 343U;
+constexpr uint16_t kPortugueseNegative = 344U;
+constexpr uint16_t kPortugueseDecimalPoint = 345U;
+
+constexpr uint16_t kPersianTen = 310U;
+constexpr uint16_t kPersianTwenty = 320U;
+constexpr uint16_t kPersianHundred = 328U;
+constexpr uint16_t kPersianAnd = 337U;
+constexpr uint16_t kPersianThousand = 338U;
+constexpr uint16_t kPersianMillion = 339U;
+constexpr uint16_t kPersianBillion = 340U;
+constexpr uint16_t kPersianNegative = 341U;
+constexpr uint16_t kPersianDecimalPoint = 342U;
+
+constexpr uint16_t kTurkishTen = 310U;
+constexpr uint16_t kTurkishHundred = 319U;
+constexpr uint16_t kTurkishThousand = 320U;
+constexpr uint16_t kTurkishMillion = 321U;
+constexpr uint16_t kTurkishBillion = 322U;
+constexpr uint16_t kTurkishNegative = 323U;
+constexpr uint16_t kTurkishDecimalPoint = 324U;
+
+constexpr uint16_t kArabicTen = 310U;
+constexpr uint16_t kArabicTwenty = 320U;
+constexpr uint16_t kArabicAnd = 328U;
+constexpr uint16_t kArabicHundred = 329U;
+constexpr uint16_t kArabicThousand = 338U;
+constexpr uint16_t kArabicTwoThousand = 339U;
+constexpr uint16_t kArabicThousands = 340U;
+constexpr uint16_t kArabicMillion = 341U;
+constexpr uint16_t kArabicTwoMillion = 342U;
+constexpr uint16_t kArabicMillions = 343U;
+constexpr uint16_t kArabicBillion = 344U;
+constexpr uint16_t kArabicTwoBillion = 345U;
+constexpr uint16_t kArabicBillions = 346U;
+constexpr uint16_t kArabicNegative = 347U;
+constexpr uint16_t kArabicDecimalPoint = 348U;
+
 bool isAsciiWhitespace(char value) {
   return value == ' ' || value == '\t' || value == '\r' || value == '\n' ||
          value == '\f' || value == '\v';
@@ -138,6 +307,1019 @@ void appendUnsignedNumber(
     }
     emittedGroup = true;
     pendingZero = false;
+  }
+}
+
+void appendEnglishBelowHundred(uint8_t value,
+                               VoiceSequenceBuilder &output) {
+  if (value < 10U) {
+    output.append(kDigitVoiceBase + value);
+  } else if (value < 20U) {
+    output.append(kEnglishTen + value - 10U);
+  } else {
+    output.append(kEnglishTwenty + value / 10U - 2U);
+    if ((value % 10U) != 0U) {
+      output.append(kDigitVoiceBase + value % 10U);
+    }
+  }
+}
+
+void appendEnglishGroup(uint16_t value, VoiceSequenceBuilder &output) {
+  if (value >= 100U) {
+    output.append(kDigitVoiceBase + value / 100U);
+    output.append(kEnglishHundred);
+    value %= 100U;
+  }
+  if (value != 0U) {
+    appendEnglishBelowHundred(static_cast<uint8_t>(value), output);
+  }
+}
+
+void appendEnglishNumber(uint32_t value, VoiceSequenceBuilder &output) {
+  if (value == 0U) {
+    output.append(kDigitVoiceBase);
+    return;
+  }
+
+  const uint16_t groups[] = {
+      static_cast<uint16_t>(value / 1000000000U),
+      static_cast<uint16_t>((value / 1000000U) % 1000U),
+      static_cast<uint16_t>((value / 1000U) % 1000U),
+      static_cast<uint16_t>(value % 1000U),
+  };
+  const uint16_t scales[] = {
+      kEnglishBillion, kEnglishMillion, kEnglishThousand, 0U,
+  };
+  for (size_t index = 0U; index < 4U; ++index) {
+    if (groups[index] == 0U) {
+      continue;
+    }
+    appendEnglishGroup(groups[index], output);
+    if (scales[index] != 0U) {
+      output.append(scales[index]);
+    }
+  }
+}
+
+void appendJapaneseGroup(uint16_t value, VoiceSequenceBuilder &output) {
+  const uint16_t divisors[] = {1000U, 100U, 10U};
+  const uint16_t firstVoiceIds[] = {
+      kJapaneseThousand, kJapaneseHundred, kJapaneseTen,
+  };
+  for (size_t index = 0U; index < 3U; ++index) {
+    const uint8_t digit = static_cast<uint8_t>((value / divisors[index]) % 10U);
+    if (digit != 0U) {
+      // Complete multiples such as 三百 and 八千 preserve Japanese sound
+      // changes that cannot be produced by joining isolated digit/unit clips.
+      output.append(firstVoiceIds[index] + digit - 1U);
+    }
+  }
+  const uint8_t ones = static_cast<uint8_t>(value % 10U);
+  if (ones != 0U) {
+    output.append(kDigitVoiceBase + ones);
+  }
+}
+
+void appendJapaneseNumber(uint32_t value, VoiceSequenceBuilder &output) {
+  if (value == 0U) {
+    output.append(kDigitVoiceBase);
+    return;
+  }
+
+  const uint16_t groups[] = {
+      static_cast<uint16_t>(value / 100000000U),
+      static_cast<uint16_t>((value / 10000U) % 10000U),
+      static_cast<uint16_t>(value % 10000U),
+  };
+  const uint16_t scales[] = {
+      kJapaneseHundredMillion, kJapaneseTenThousand, 0U,
+  };
+  for (size_t index = 0U; index < 3U; ++index) {
+    if (groups[index] == 0U) {
+      continue;
+    }
+    appendJapaneseGroup(groups[index], output);
+    if (scales[index] != 0U) {
+      output.append(scales[index]);
+    }
+  }
+}
+
+void appendKoreanGroup(uint16_t value, VoiceSequenceBuilder &output) {
+  const uint16_t divisors[] = {1000U, 100U, 10U, 1U};
+  const uint16_t placeVoiceIds[] = {
+      kKoreanThousand, kKoreanHundred, kKoreanTen, 0U,
+  };
+  for (size_t index = 0U; index < 4U; ++index) {
+    const uint8_t digit = static_cast<uint8_t>((value / divisors[index]) % 10U);
+    if (digit == 0U) {
+      continue;
+    }
+    const bool omitOne = digit == 1U && placeVoiceIds[index] != 0U;
+    if (!omitOne) {
+      output.append(kDigitVoiceBase + digit);
+    }
+    if (placeVoiceIds[index] != 0U) {
+      output.append(placeVoiceIds[index]);
+    }
+  }
+}
+
+void appendKoreanNumber(uint32_t value, VoiceSequenceBuilder &output) {
+  if (value == 0U) {
+    output.append(kDigitVoiceBase);
+    return;
+  }
+
+  const uint16_t groups[] = {
+      static_cast<uint16_t>(value / 100000000U),
+      static_cast<uint16_t>((value / 10000U) % 10000U),
+      static_cast<uint16_t>(value % 10000U),
+  };
+  const uint16_t scales[] = {
+      kKoreanHundredMillion, kKoreanTenThousand, 0U,
+  };
+  for (size_t index = 0U; index < 3U; ++index) {
+    if (groups[index] == 0U) {
+      continue;
+    }
+    // Korean normally says 만 for exactly 10,000, but 일억 for 100,000,000.
+    if (!(index == 1U && groups[index] == 1U)) {
+      appendKoreanGroup(groups[index], output);
+    }
+    if (scales[index] != 0U) {
+      output.append(scales[index]);
+    }
+  }
+}
+
+void appendGermanBelowHundred(uint8_t value,
+                              VoiceSequenceBuilder &output) {
+  if (value < 10U) {
+    output.append(kDigitVoiceBase + value);
+  } else if (value < 20U) {
+    output.append(kGermanTen + value - 10U);
+  } else {
+    const uint8_t ones = value % 10U;
+    if (ones != 0U) {
+      output.append(ones == 1U ? kGermanEin : kDigitVoiceBase + ones);
+      output.append(kGermanAnd);
+    }
+    output.append(kGermanTwenty + value / 10U - 2U);
+  }
+}
+
+void appendGermanBelowThousand(uint16_t value,
+                               VoiceSequenceBuilder &output) {
+  if (value >= 100U) {
+    const uint8_t hundreds = static_cast<uint8_t>(value / 100U);
+    output.append(hundreds == 1U ? kGermanEin
+                                 : kDigitVoiceBase + hundreds);
+    output.append(kGermanHundred);
+    value %= 100U;
+  }
+  if (value != 0U) {
+    appendGermanBelowHundred(static_cast<uint8_t>(value), output);
+  }
+}
+
+void appendGermanBelowMillion(uint32_t value,
+                              VoiceSequenceBuilder &output) {
+  const uint16_t thousands = static_cast<uint16_t>(value / 1000U);
+  if (thousands != 0U) {
+    if (thousands == 1U) {
+      output.append(kGermanEin);
+    } else {
+      appendGermanBelowThousand(thousands, output);
+    }
+    output.append(kGermanThousand);
+  }
+  const uint16_t remainder = static_cast<uint16_t>(value % 1000U);
+  if (remainder != 0U) {
+    appendGermanBelowThousand(remainder, output);
+  }
+}
+
+void appendGermanNumber(uint32_t value, VoiceSequenceBuilder &output) {
+  if (value == 0U) {
+    output.append(kDigitVoiceBase);
+    return;
+  }
+
+  const uint8_t billions = static_cast<uint8_t>(value / 1000000000U);
+  if (billions != 0U) {
+    if (billions == 1U) {
+      output.append(kGermanEine);
+      output.append(kGermanBillion);
+    } else {
+      output.append(kDigitVoiceBase + billions);
+      output.append(kGermanBillions);
+    }
+  }
+
+  const uint16_t millions =
+      static_cast<uint16_t>((value / 1000000U) % 1000U);
+  if (millions != 0U) {
+    if (millions == 1U) {
+      output.append(kGermanEine);
+      output.append(kGermanMillion);
+    } else {
+      appendGermanBelowThousand(millions, output);
+      output.append(kGermanMillions);
+    }
+  }
+
+  const uint32_t remainder = value % 1000000U;
+  if (remainder != 0U) {
+    appendGermanBelowMillion(remainder, output);
+  }
+}
+
+void appendRussianGroup(uint16_t value, bool feminine,
+                        VoiceSequenceBuilder &output) {
+  if (value >= 100U) {
+    output.append(kRussianHundred + value / 100U - 1U);
+    value %= 100U;
+  }
+  if (value >= 20U) {
+    output.append(kRussianTwenty + value / 10U - 2U);
+    value %= 10U;
+  } else if (value >= 10U) {
+    output.append(kRussianTen + value - 10U);
+    return;
+  }
+  if (value != 0U) {
+    if (feminine && value == 1U) {
+      output.append(kRussianFeminineOne);
+    } else if (feminine && value == 2U) {
+      output.append(kRussianFeminineTwo);
+    } else {
+      output.append(kDigitVoiceBase + value);
+    }
+  }
+}
+
+uint16_t russianScaleVoice(uint16_t value, uint16_t singularVoice) {
+  const uint8_t lastTwo = static_cast<uint8_t>(value % 100U);
+  if (lastTwo >= 11U && lastTwo <= 14U) {
+    return singularVoice + 2U;
+  }
+  const uint8_t last = static_cast<uint8_t>(value % 10U);
+  if (last == 1U) {
+    return singularVoice;
+  }
+  if (last >= 2U && last <= 4U) {
+    return singularVoice + 1U;
+  }
+  return singularVoice + 2U;
+}
+
+void appendRussianNumber(uint32_t value, VoiceSequenceBuilder &output) {
+  if (value == 0U) {
+    output.append(kDigitVoiceBase);
+    return;
+  }
+  const uint16_t groups[] = {
+      static_cast<uint16_t>(value / 1000000000U),
+      static_cast<uint16_t>((value / 1000000U) % 1000U),
+      static_cast<uint16_t>((value / 1000U) % 1000U),
+      static_cast<uint16_t>(value % 1000U),
+  };
+  const uint16_t scaleVoices[] = {
+      kRussianBillion, kRussianMillion, kRussianThousand, 0U,
+  };
+  for (size_t index = 0U; index < 4U; ++index) {
+    if (groups[index] == 0U) {
+      continue;
+    }
+    appendRussianGroup(groups[index], index == 2U, output);
+    if (scaleVoices[index] != 0U) {
+      output.append(russianScaleVoice(groups[index], scaleVoices[index]));
+    }
+  }
+}
+
+void appendSpanishBelowHundred(uint8_t value, bool apocopated,
+                               VoiceSequenceBuilder &output) {
+  if (value < 30U) {
+    if (apocopated && value == 1U) {
+      output.append(kSpanishUn);
+    } else if (apocopated && value == 21U) {
+      output.append(kSpanishTwentyOneApocopated);
+    } else {
+      output.append(value < 10U ? kDigitVoiceBase + value
+                               : kSpanishTen + value - 10U);
+    }
+    return;
+  }
+
+  output.append(kSpanishThirty + value / 10U - 3U);
+  const uint8_t ones = value % 10U;
+  if (ones != 0U) {
+    output.append(kSpanishAnd);
+    output.append(apocopated && ones == 1U ? kSpanishUn
+                                           : kDigitVoiceBase + ones);
+  }
+}
+
+void appendSpanishGroup(uint16_t value, bool apocopated,
+                        VoiceSequenceBuilder &output) {
+  if (value == 100U) {
+    output.append(kSpanishCien);
+    return;
+  }
+  if (value > 100U) {
+    const uint8_t hundreds = static_cast<uint8_t>(value / 100U);
+    output.append(hundreds == 1U ? kSpanishCiento
+                                 : kSpanishTwoHundred + hundreds - 2U);
+    value %= 100U;
+  }
+  if (value != 0U) {
+    appendSpanishBelowHundred(static_cast<uint8_t>(value), apocopated,
+                              output);
+  }
+}
+
+void appendSpanishNumber(uint32_t value, VoiceSequenceBuilder &output) {
+  if (value == 0U) {
+    output.append(kDigitVoiceBase);
+    return;
+  }
+
+  const uint8_t billions = static_cast<uint8_t>(value / 1000000000U);
+  if (billions != 0U) {
+    if (billions != 1U) {
+      appendSpanishGroup(billions, true, output);
+    }
+    output.append(kSpanishThousand);
+    output.append(kSpanishMillions);
+  }
+
+  const uint16_t millions =
+      static_cast<uint16_t>((value / 1000000U) % 1000U);
+  if (millions != 0U) {
+    if (millions == 1U) {
+      output.append(kSpanishUn);
+      output.append(kSpanishMillion);
+    } else {
+      appendSpanishGroup(millions, true, output);
+      output.append(kSpanishMillions);
+    }
+  }
+
+  const uint16_t thousands =
+      static_cast<uint16_t>((value / 1000U) % 1000U);
+  if (thousands != 0U) {
+    if (thousands != 1U) {
+      appendSpanishGroup(thousands, true, output);
+    }
+    output.append(kSpanishThousand);
+  }
+
+  const uint16_t remainder = static_cast<uint16_t>(value % 1000U);
+  if (remainder != 0U) {
+    appendSpanishGroup(remainder, false, output);
+  }
+}
+
+void appendThaiGroup(uint32_t value, bool hasHigherGroup,
+                     VoiceSequenceBuilder &output) {
+  const uint32_t divisors[] = {100000U, 10000U, 1000U, 100U};
+  const uint16_t units[] = {
+      kThaiHundredThousand, kThaiTenThousand, kThaiThousand, kThaiHundred,
+  };
+  bool emitted = hasHigherGroup;
+  for (size_t index = 0U; index < 4U; ++index) {
+    const uint8_t digit =
+        static_cast<uint8_t>((value / divisors[index]) % 10U);
+    if (digit != 0U) {
+      output.append(kDigitVoiceBase + digit);
+      output.append(units[index]);
+      emitted = true;
+    }
+  }
+
+  const uint8_t tens = static_cast<uint8_t>((value / 10U) % 10U);
+  if (tens != 0U) {
+    if (tens == 2U) {
+      output.append(kThaiTwentyPrefix);
+    } else if (tens != 1U) {
+      output.append(kDigitVoiceBase + tens);
+    }
+    output.append(kThaiTen);
+    emitted = true;
+  }
+
+  const uint8_t ones = static_cast<uint8_t>(value % 10U);
+  if (ones != 0U) {
+    output.append(ones == 1U && emitted ? kThaiFinalOne
+                                        : kDigitVoiceBase + ones);
+  }
+}
+
+void appendThaiNumber(uint32_t value, VoiceSequenceBuilder &output) {
+  if (value == 0U) {
+    output.append(kDigitVoiceBase);
+    return;
+  }
+  const uint32_t millions = value / 1000000U;
+  if (millions != 0U) {
+    appendThaiGroup(millions, false, output);
+    output.append(kThaiMillion);
+  }
+  const uint32_t remainder = value % 1000000U;
+  if (remainder != 0U) {
+    appendThaiGroup(remainder, millions != 0U, output);
+  }
+}
+
+void appendIndonesianBelowHundred(uint8_t value,
+                                  VoiceSequenceBuilder &output) {
+  if (value < 10U) {
+    output.append(kDigitVoiceBase + value);
+  } else if (value == 10U) {
+    output.append(kIndonesianTen);
+  } else if (value == 11U) {
+    output.append(kIndonesianEleven);
+  } else if (value < 20U) {
+    output.append(kDigitVoiceBase + value - 10U);
+    output.append(kIndonesianTeenSuffix);
+  } else {
+    output.append(kDigitVoiceBase + value / 10U);
+    output.append(kIndonesianTensSuffix);
+    if ((value % 10U) != 0U) {
+      output.append(kDigitVoiceBase + value % 10U);
+    }
+  }
+}
+
+void appendIndonesianGroup(uint16_t value, VoiceSequenceBuilder &output) {
+  if (value >= 100U) {
+    const uint8_t hundreds = static_cast<uint8_t>(value / 100U);
+    if (hundreds == 1U) {
+      output.append(kIndonesianOneHundred);
+    } else {
+      output.append(kDigitVoiceBase + hundreds);
+      output.append(kIndonesianHundred);
+    }
+    value %= 100U;
+  }
+  if (value != 0U) {
+    appendIndonesianBelowHundred(static_cast<uint8_t>(value), output);
+  }
+}
+
+void appendIndonesianBelowMillion(uint32_t value,
+                                  VoiceSequenceBuilder &output) {
+  const uint16_t thousands = static_cast<uint16_t>(value / 1000U);
+  if (thousands != 0U) {
+    if (thousands == 1U) {
+      output.append(kIndonesianOneThousand);
+    } else {
+      appendIndonesianGroup(thousands, output);
+      output.append(kIndonesianThousand);
+    }
+  }
+  const uint16_t remainder = static_cast<uint16_t>(value % 1000U);
+  if (remainder != 0U) {
+    appendIndonesianGroup(remainder, output);
+  }
+}
+
+void appendIndonesianNumber(uint32_t value,
+                            VoiceSequenceBuilder &output) {
+  if (value == 0U) {
+    output.append(kDigitVoiceBase);
+    return;
+  }
+  const uint8_t billions = static_cast<uint8_t>(value / 1000000000U);
+  if (billions != 0U) {
+    appendIndonesianGroup(billions, output);
+    output.append(kIndonesianBillion);
+  }
+  const uint16_t millions =
+      static_cast<uint16_t>((value / 1000000U) % 1000U);
+  if (millions != 0U) {
+    appendIndonesianGroup(millions, output);
+    output.append(kIndonesianMillion);
+  }
+  const uint32_t remainder = value % 1000000U;
+  if (remainder != 0U) {
+    appendIndonesianBelowMillion(remainder, output);
+  }
+}
+
+void appendVietnameseBelowHundred(uint8_t value,
+                                  VoiceSequenceBuilder &output) {
+  if (value < 10U) {
+    output.append(kDigitVoiceBase + value);
+    return;
+  }
+  const uint8_t tens = value / 10U;
+  const uint8_t ones = value % 10U;
+  if (tens == 1U) {
+    output.append(kVietnameseTen);
+  } else {
+    output.append(kDigitVoiceBase + tens);
+    output.append(kVietnameseTensSuffix);
+  }
+  if (ones == 1U && tens > 1U) {
+    output.append(kVietnameseFinalOne);
+  } else if (ones == 4U && tens > 1U) {
+    output.append(kVietnameseFinalFour);
+  } else if (ones == 5U) {
+    output.append(kVietnameseFinalFive);
+  } else if (ones != 0U) {
+    output.append(kDigitVoiceBase + ones);
+  }
+}
+
+void appendVietnameseGroup(uint16_t value, bool forceHundreds,
+                           VoiceSequenceBuilder &output) {
+  if (value >= 100U || forceHundreds) {
+    output.append(kDigitVoiceBase + value / 100U);
+    output.append(kVietnameseHundred);
+    value %= 100U;
+    if (value != 0U && value < 10U) {
+      output.append(kVietnameseZeroTens);
+    }
+  }
+  if (value != 0U) {
+    appendVietnameseBelowHundred(static_cast<uint8_t>(value), output);
+  }
+}
+
+void appendVietnameseNumber(uint32_t value, VoiceSequenceBuilder &output) {
+  if (value == 0U) {
+    output.append(kDigitVoiceBase);
+    return;
+  }
+  const uint16_t groups[] = {
+      static_cast<uint16_t>(value / 1000000000U),
+      static_cast<uint16_t>((value / 1000000U) % 1000U),
+      static_cast<uint16_t>((value / 1000U) % 1000U),
+      static_cast<uint16_t>(value % 1000U),
+  };
+  const uint16_t scales[] = {
+      kVietnameseBillion, kVietnameseMillion, kVietnameseThousand, 0U,
+  };
+  bool emitted = false;
+  for (size_t index = 0U; index < 4U; ++index) {
+    if (groups[index] == 0U) {
+      continue;
+    }
+    appendVietnameseGroup(groups[index], emitted && groups[index] < 100U,
+                          output);
+    if (scales[index] != 0U) {
+      output.append(scales[index]);
+    }
+    emitted = true;
+  }
+}
+
+void appendFrenchBelowHundred(uint8_t value,
+                              VoiceSequenceBuilder &output) {
+  if (value < 20U) {
+    output.append(value < 10U ? kDigitVoiceBase + value
+                             : kFrenchTen + value - 10U);
+    return;
+  }
+  if (value < 70U) {
+    output.append(kFrenchTwenty + value / 10U - 2U);
+    const uint8_t ones = value % 10U;
+    if (ones == 1U) {
+      output.append(kFrenchAnd);
+    }
+    if (ones != 0U) {
+      output.append(kDigitVoiceBase + ones);
+    }
+    return;
+  }
+  if (value < 80U) {
+    output.append(kFrenchSixty);
+    const uint8_t remainder = value - 60U;
+    if (remainder == 11U) {
+      output.append(kFrenchAnd);
+    }
+    output.append(kFrenchTen + remainder - 10U);
+    return;
+  }
+  if (value == 80U) {
+    output.append(kFrenchEighty);
+    return;
+  }
+  output.append(kFrenchEightyCompound);
+  const uint8_t remainder = value - 80U;
+  output.append(remainder < 10U ? kDigitVoiceBase + remainder
+                                : kFrenchTen + remainder - 10U);
+}
+
+void appendFrenchGroup(uint16_t value, VoiceSequenceBuilder &output) {
+  if (value >= 100U) {
+    const uint8_t hundreds = static_cast<uint8_t>(value / 100U);
+    if (hundreds != 1U) {
+      output.append(kDigitVoiceBase + hundreds);
+    }
+    output.append(kFrenchHundred);
+    value %= 100U;
+  }
+  if (value != 0U) {
+    appendFrenchBelowHundred(static_cast<uint8_t>(value), output);
+  }
+}
+
+void appendFrenchNumber(uint32_t value, VoiceSequenceBuilder &output) {
+  if (value == 0U) {
+    output.append(kDigitVoiceBase);
+    return;
+  }
+  const uint8_t billions = static_cast<uint8_t>(value / 1000000000U);
+  if (billions != 0U) {
+    appendFrenchGroup(billions, output);
+    output.append(billions == 1U ? kFrenchBillion : kFrenchBillions);
+  }
+  const uint16_t millions =
+      static_cast<uint16_t>((value / 1000000U) % 1000U);
+  if (millions != 0U) {
+    appendFrenchGroup(millions, output);
+    output.append(millions == 1U ? kFrenchMillion : kFrenchMillions);
+  }
+  const uint16_t thousands =
+      static_cast<uint16_t>((value / 1000U) % 1000U);
+  if (thousands != 0U) {
+    if (thousands != 1U) {
+      appendFrenchGroup(thousands, output);
+    }
+    output.append(kFrenchThousand);
+  }
+  const uint16_t remainder = static_cast<uint16_t>(value % 1000U);
+  if (remainder != 0U) {
+    appendFrenchGroup(remainder, output);
+  }
+}
+
+void appendPortugueseBelowHundred(uint8_t value,
+                                  VoiceSequenceBuilder &output) {
+  if (value < 20U) {
+    output.append(value < 10U ? kDigitVoiceBase + value
+                             : kPortugueseTen + value - 10U);
+    return;
+  }
+  output.append(kPortugueseTwenty + value / 10U - 2U);
+  const uint8_t ones = value % 10U;
+  if (ones != 0U) {
+    output.append(kPortugueseAnd);
+    output.append(kDigitVoiceBase + ones);
+  }
+}
+
+void appendPortugueseGroup(uint16_t value, VoiceSequenceBuilder &output) {
+  if (value == 100U) {
+    output.append(kPortugueseOneHundred);
+    return;
+  }
+  if (value > 100U) {
+    const uint8_t hundreds = static_cast<uint8_t>(value / 100U);
+    output.append(hundreds == 1U
+                      ? kPortugueseHundredAnd
+                      : kPortugueseTwoHundred + hundreds - 2U);
+    value %= 100U;
+    if (value != 0U) {
+      output.append(kPortugueseAnd);
+    }
+  }
+  if (value != 0U) {
+    appendPortugueseBelowHundred(static_cast<uint8_t>(value), output);
+  }
+}
+
+bool portugueseScaleNeedsAnd(uint32_t remainder) {
+  return remainder != 0U &&
+         (remainder < 100U || (remainder % 100U) == 0U);
+}
+
+void appendPortugueseNumber(uint32_t value,
+                            VoiceSequenceBuilder &output) {
+  if (value == 0U) {
+    output.append(kDigitVoiceBase);
+    return;
+  }
+  const uint8_t billions = static_cast<uint8_t>(value / 1000000000U);
+  if (billions != 0U) {
+    appendPortugueseGroup(billions, output);
+    output.append(billions == 1U ? kPortugueseBillion
+                                 : kPortugueseBillions);
+    if (portugueseScaleNeedsAnd(value % 1000000000U)) {
+      output.append(kPortugueseAnd);
+    }
+  }
+  const uint16_t millions =
+      static_cast<uint16_t>((value / 1000000U) % 1000U);
+  if (millions != 0U) {
+    appendPortugueseGroup(millions, output);
+    output.append(millions == 1U ? kPortugueseMillion
+                                 : kPortugueseMillions);
+    if (portugueseScaleNeedsAnd(value % 1000000U)) {
+      output.append(kPortugueseAnd);
+    }
+  }
+  const uint16_t thousands =
+      static_cast<uint16_t>((value / 1000U) % 1000U);
+  if (thousands != 0U) {
+    if (thousands != 1U) {
+      appendPortugueseGroup(thousands, output);
+    }
+    output.append(kPortugueseThousand);
+    if (portugueseScaleNeedsAnd(value % 1000U)) {
+      output.append(kPortugueseAnd);
+    }
+  }
+  const uint16_t remainder = static_cast<uint16_t>(value % 1000U);
+  if (remainder != 0U) {
+    appendPortugueseGroup(remainder, output);
+  }
+}
+
+void appendPersianGroup(uint16_t value, VoiceSequenceBuilder &output) {
+  bool emitted = false;
+  if (value >= 100U) {
+    output.append(kPersianHundred + value / 100U - 1U);
+    value %= 100U;
+    emitted = true;
+  }
+  if (value >= 20U) {
+    if (emitted) {
+      output.append(kPersianAnd);
+    }
+    output.append(kPersianTwenty + value / 10U - 2U);
+    value %= 10U;
+    emitted = true;
+  } else if (value >= 10U) {
+    if (emitted) {
+      output.append(kPersianAnd);
+    }
+    output.append(kPersianTen + value - 10U);
+    return;
+  }
+  if (value != 0U) {
+    if (emitted) {
+      output.append(kPersianAnd);
+    }
+    output.append(kDigitVoiceBase + value);
+  }
+}
+
+void appendPersianNumber(uint32_t value, VoiceSequenceBuilder &output) {
+  if (value == 0U) {
+    output.append(kDigitVoiceBase);
+    return;
+  }
+  const uint16_t groups[] = {
+      static_cast<uint16_t>(value / 1000000000U),
+      static_cast<uint16_t>((value / 1000000U) % 1000U),
+      static_cast<uint16_t>((value / 1000U) % 1000U),
+      static_cast<uint16_t>(value % 1000U)};
+  const uint16_t scales[] = {
+      kPersianBillion, kPersianMillion, kPersianThousand, 0U};
+  bool emitted = false;
+  for (size_t index = 0U; index < 4U; ++index) {
+    if (groups[index] == 0U) continue;
+    if (emitted) output.append(kPersianAnd);
+    if (index != 2U || groups[index] != 1U) {
+      appendPersianGroup(groups[index], output);
+    }
+    if (scales[index] != 0U) output.append(scales[index]);
+    emitted = true;
+  }
+}
+
+void appendTurkishGroup(uint16_t value, VoiceSequenceBuilder &output) {
+  if (value >= 100U) {
+    const uint8_t hundreds = static_cast<uint8_t>(value / 100U);
+    if (hundreds != 1U) output.append(kDigitVoiceBase + hundreds);
+    output.append(kTurkishHundred);
+    value %= 100U;
+  }
+  if (value >= 10U) {
+    output.append(kTurkishTen + value / 10U - 1U);
+    value %= 10U;
+  }
+  if (value != 0U) output.append(kDigitVoiceBase + value);
+}
+
+void appendTurkishNumber(uint32_t value, VoiceSequenceBuilder &output) {
+  if (value == 0U) {
+    output.append(kDigitVoiceBase);
+    return;
+  }
+  const uint16_t groups[] = {
+      static_cast<uint16_t>(value / 1000000000U),
+      static_cast<uint16_t>((value / 1000000U) % 1000U),
+      static_cast<uint16_t>((value / 1000U) % 1000U),
+      static_cast<uint16_t>(value % 1000U)};
+  const uint16_t scales[] = {
+      kTurkishBillion, kTurkishMillion, kTurkishThousand, 0U};
+  for (size_t index = 0U; index < 4U; ++index) {
+    if (groups[index] == 0U) continue;
+    if (index != 2U || groups[index] != 1U) {
+      appendTurkishGroup(groups[index], output);
+    }
+    if (scales[index] != 0U) output.append(scales[index]);
+  }
+}
+
+void appendArabicBelowHundred(uint8_t value,
+                              VoiceSequenceBuilder &output) {
+  if (value < 20U) {
+    output.append(value < 10U ? kDigitVoiceBase + value
+                             : kArabicTen + value - 10U);
+    return;
+  }
+  const uint8_t ones = value % 10U;
+  if (ones != 0U) {
+    output.append(kDigitVoiceBase + ones);
+    output.append(kArabicAnd);
+  }
+  output.append(kArabicTwenty + value / 10U - 2U);
+}
+
+void appendArabicGroup(uint16_t value, VoiceSequenceBuilder &output) {
+  if (value >= 100U) {
+    output.append(kArabicHundred + value / 100U - 1U);
+    value %= 100U;
+    if (value != 0U) output.append(kArabicAnd);
+  }
+  if (value != 0U) {
+    appendArabicBelowHundred(static_cast<uint8_t>(value), output);
+  }
+}
+
+void appendArabicScale(uint16_t value, uint16_t singular,
+                       uint16_t dual, uint16_t plural,
+                       VoiceSequenceBuilder &output) {
+  if (value == 1U) {
+    output.append(singular);
+  } else if (value == 2U) {
+    output.append(dual);
+  } else {
+    appendArabicGroup(value, output);
+    output.append(value <= 10U ? plural : singular);
+  }
+}
+
+void appendArabicNumber(uint32_t value, VoiceSequenceBuilder &output) {
+  if (value == 0U) {
+    output.append(kDigitVoiceBase);
+    return;
+  }
+  const uint16_t groups[] = {
+      static_cast<uint16_t>(value / 1000000000U),
+      static_cast<uint16_t>((value / 1000000U) % 1000U),
+      static_cast<uint16_t>((value / 1000U) % 1000U),
+      static_cast<uint16_t>(value % 1000U)};
+  bool emitted = false;
+  for (size_t index = 0U; index < 4U; ++index) {
+    if (groups[index] == 0U) continue;
+    if (emitted) output.append(kArabicAnd);
+    if (index == 0U) {
+      appendArabicScale(groups[index], kArabicBillion,
+                        kArabicTwoBillion, kArabicBillions, output);
+    } else if (index == 1U) {
+      appendArabicScale(groups[index], kArabicMillion,
+                        kArabicTwoMillion, kArabicMillions, output);
+    } else if (index == 2U) {
+      appendArabicScale(groups[index], kArabicThousand,
+                        kArabicTwoThousand, kArabicThousands, output);
+    } else {
+      appendArabicGroup(groups[index], output);
+    }
+    emitted = true;
+  }
+}
+
+uint16_t negativeVoiceId(ChipIntelliAudioClass::NumberLanguage language) {
+  switch (language) {
+    case ChipIntelliAudioClass::NumberLanguage::English:
+      return kEnglishNegative;
+    case ChipIntelliAudioClass::NumberLanguage::Japanese:
+      return kJapaneseNegative;
+    case ChipIntelliAudioClass::NumberLanguage::Korean:
+      return kKoreanNegative;
+    case ChipIntelliAudioClass::NumberLanguage::Russian:
+      return kRussianNegative;
+    case ChipIntelliAudioClass::NumberLanguage::Spanish:
+      return kSpanishNegative;
+    case ChipIntelliAudioClass::NumberLanguage::Thai:
+      return kThaiNegative;
+    case ChipIntelliAudioClass::NumberLanguage::German:
+      return kGermanNegative;
+    case ChipIntelliAudioClass::NumberLanguage::Indonesian:
+      return kIndonesianNegative;
+    case ChipIntelliAudioClass::NumberLanguage::Vietnamese:
+      return kVietnameseNegative;
+    case ChipIntelliAudioClass::NumberLanguage::French:
+      return kFrenchNegative;
+    case ChipIntelliAudioClass::NumberLanguage::Portuguese:
+      return kPortugueseNegative;
+    case ChipIntelliAudioClass::NumberLanguage::Persian:
+      return kPersianNegative;
+    case ChipIntelliAudioClass::NumberLanguage::Turkish:
+      return kTurkishNegative;
+    case ChipIntelliAudioClass::NumberLanguage::Arabic:
+      return kArabicNegative;
+    case ChipIntelliAudioClass::NumberLanguage::Chinese:
+    default:
+      return kDefaultNumberVoiceIds.negative;
+  }
+}
+
+uint16_t decimalPointVoiceId(
+    ChipIntelliAudioClass::NumberLanguage language) {
+  switch (language) {
+    case ChipIntelliAudioClass::NumberLanguage::English:
+      return kEnglishDecimalPoint;
+    case ChipIntelliAudioClass::NumberLanguage::Japanese:
+      return kJapaneseDecimalPoint;
+    case ChipIntelliAudioClass::NumberLanguage::Korean:
+      return kKoreanDecimalPoint;
+    case ChipIntelliAudioClass::NumberLanguage::Russian:
+      return kRussianDecimalPoint;
+    case ChipIntelliAudioClass::NumberLanguage::Spanish:
+      return kSpanishDecimalPoint;
+    case ChipIntelliAudioClass::NumberLanguage::Thai:
+      return kThaiDecimalPoint;
+    case ChipIntelliAudioClass::NumberLanguage::German:
+      return kGermanDecimalPoint;
+    case ChipIntelliAudioClass::NumberLanguage::Indonesian:
+      return kIndonesianDecimalPoint;
+    case ChipIntelliAudioClass::NumberLanguage::Vietnamese:
+      return kVietnameseDecimalPoint;
+    case ChipIntelliAudioClass::NumberLanguage::French:
+      return kFrenchDecimalPoint;
+    case ChipIntelliAudioClass::NumberLanguage::Portuguese:
+      return kPortugueseDecimalPoint;
+    case ChipIntelliAudioClass::NumberLanguage::Persian:
+      return kPersianDecimalPoint;
+    case ChipIntelliAudioClass::NumberLanguage::Turkish:
+      return kTurkishDecimalPoint;
+    case ChipIntelliAudioClass::NumberLanguage::Arabic:
+      return kArabicDecimalPoint;
+    case ChipIntelliAudioClass::NumberLanguage::Chinese:
+    default:
+      return kDefaultNumberVoiceIds.decimalPoint;
+  }
+}
+
+void appendLocalizedNumber(uint32_t value,
+                           ChipIntelliAudioClass::NumberLanguage language,
+                           VoiceSequenceBuilder &output) {
+  switch (language) {
+    case ChipIntelliAudioClass::NumberLanguage::English:
+      appendEnglishNumber(value, output);
+      break;
+    case ChipIntelliAudioClass::NumberLanguage::Japanese:
+      appendJapaneseNumber(value, output);
+      break;
+    case ChipIntelliAudioClass::NumberLanguage::Korean:
+      appendKoreanNumber(value, output);
+      break;
+    case ChipIntelliAudioClass::NumberLanguage::Russian:
+      appendRussianNumber(value, output);
+      break;
+    case ChipIntelliAudioClass::NumberLanguage::Spanish:
+      appendSpanishNumber(value, output);
+      break;
+    case ChipIntelliAudioClass::NumberLanguage::Thai:
+      appendThaiNumber(value, output);
+      break;
+    case ChipIntelliAudioClass::NumberLanguage::German:
+      appendGermanNumber(value, output);
+      break;
+    case ChipIntelliAudioClass::NumberLanguage::Indonesian:
+      appendIndonesianNumber(value, output);
+      break;
+    case ChipIntelliAudioClass::NumberLanguage::Vietnamese:
+      appendVietnameseNumber(value, output);
+      break;
+    case ChipIntelliAudioClass::NumberLanguage::French:
+      appendFrenchNumber(value, output);
+      break;
+    case ChipIntelliAudioClass::NumberLanguage::Portuguese:
+      appendPortugueseNumber(value, output);
+      break;
+    case ChipIntelliAudioClass::NumberLanguage::Persian:
+      appendPersianNumber(value, output);
+      break;
+    case ChipIntelliAudioClass::NumberLanguage::Turkish:
+      appendTurkishNumber(value, output);
+      break;
+    case ChipIntelliAudioClass::NumberLanguage::Arabic:
+      appendArabicNumber(value, output);
+      break;
+    case ChipIntelliAudioClass::NumberLanguage::Chinese:
+    default:
+      appendUnsignedNumber(value, kDefaultNumberVoiceIds, output);
+      break;
   }
 }
 
@@ -265,8 +1447,9 @@ bool ChipIntelliAudioClass::playVoice(uint16_t voiceId,
              interruptCurrent) == 0U;
 }
 
-bool ChipIntelliAudioClass::playVoice(const String &numberText,
-                                      bool interruptCurrent) {
+bool ChipIntelliAudioClass::playLocalizedNumber(
+    const String &numberText, NumberLanguage language,
+    bool interruptCurrent) {
   const char *text = numberText.c_str();
   size_t begin = 0U;
   size_t end = numberText.length();
@@ -331,14 +1514,14 @@ bool ChipIntelliAudioClass::playVoice(const String &numberText,
   uint16_t sequence[kMaxVoiceSequenceLength];
   VoiceSequenceBuilder builder(sequence, kMaxVoiceSequenceLength);
   if (negative && nonzeroDigitSeen) {
-    builder.append(kDefaultNumberVoiceIds.negative);
+    builder.append(negativeVoiceId(language));
   }
-  appendUnsignedNumber(integerPart, kDefaultNumberVoiceIds, builder);
+  appendLocalizedNumber(integerPart, language, builder);
 
   if (decimalPointSeen && fractionalDigits != 0U) {
-    builder.append(kDefaultNumberVoiceIds.decimalPoint);
+    builder.append(decimalPointVoiceId(language));
     for (size_t index = fractionalStart; index < end; ++index) {
-      builder.append(kDefaultNumberVoiceIds.digits[text[index] - '0']);
+      builder.append(kDigitVoiceBase + text[index] - '0');
     }
   }
 

@@ -10,7 +10,7 @@
 
 - 按语音 ID 播放；
 - 将 1～24 个语音 ID 作为一条连续提示音播放；
-- 直接用 `playVoice("数字字符串")` 和 ID 300～316 的基础音频拼接整数、小数；
+- 直接用 `playVoice("数字字符串")` 和从 ID 300 开始的中英日韩德词元拼接整数、小数；
 - 连续播放 1～16 声内置“滴”提示音；
 - 按命令 ID、命令文本或语义 ID 查找并播放已配置的提示音；
 - 中断当前提示音或排队播放；
@@ -84,17 +84,25 @@ ID `1` 不保证存在于自定义资源包中。
 
 ## 变量数字播报
 
-变量数字播报使用 17 条可复用的短音频：`零、一、二、三、四、五、六、七、八、九、十、百、千、万、亿、负、点`，
-固定使用 ID 300～316。当最终程序链接了字符串版 `playVoice()` 时，Arduino 构建后处理会
-自动让 `citool-cli generate` 把这 17 条内容加入 TTS 请求，程序中不需要声明资源宏。
-用户可以直接传入字符串：
+变量数字播报支持中文、英语、日语、韩语、俄语、西班牙语、泰语、德语、
+印度尼西亚语、越南语、法语、葡萄牙语、波斯语、土耳其语和阿拉伯语。每种语言使用
+一套独立资源，但都从 ID 300 开始，一个固件只占用所选语言的编号。语言宏必须位于
+库头文件之前；未声明时默认中文：
 
 ```cpp
+#define CHIPINTELLI_LANGUAGE CHIPINTELLI_LANGUAGE_ZH
+#include <ChipIntelliAudio.h>
+
 ChipIntelliAudio.playVoice("300");   // 三百
 ChipIntelliAudio.playVoice("-1.5");  // 负一点五
 ChipIntelliAudio.playVoice("0.02");  // 零点零二
 ChipIntelliAudio.playVoice("0.02", false);  // 将整组数字加入播放队列
 ```
+
+宏值可选择带完整前缀的 `_ZH`、`_EN`、`_JA`、`_KO`、`_RU`、`_ES`、`_TH`、
+`_DE`、`_ID`、`_VI`、`_FR`、`_PT`、`_FA`、`_TR`、`_AR`。最终程序使用字符串版
+`playVoice()` 时，Arduino 构建后处理会让 `citool-cli generate` 根据这个宏自动加入
+对应语言的完整数字词表，程序中不需要声明 `VOICE300` 等资源宏。
 
 `interruptCurrent` 默认为 `true`；传入 `false` 时，整组数字会排在当前提示音之后。
 这个参数只影响数字第一段音频如何开始，后续各段始终连续播放，整组完成后只回调一次。
@@ -103,9 +111,10 @@ ChipIntelliAudio.playVoice("0.02", false);  // 将整组数字加入播放队列
 
 字符串允许首尾 ASCII 空白、可选的 `+`/`-` 符号和一个小数点，不接受科学计数法。
 小数部分逐位播报并保留零；非法字符串、整数部分超过 `uint32_t` 或最终超过 24 个词元时
-返回 `false`。字符串 `-0` 和 `-0.00` 按数值零播报，不读“负”。
+返回 `false`。字符串 `-0` 和 `-0.00` 按数值零播报，不读负号。
 
-需要使用另一套语音 ID 时，可以把对应 ID 填入 `NumberVoiceIds`，再调用底层数字接口：
+底层 `NumberVoiceIds` 接口继续使用中文数字拆分规则。需要自定义中文语音 ID 时，
+可以填入对应 ID 后调用：
 
 ```cpp
 const ChipIntelliAudioClass::NumberVoiceIds numberVoices = {
@@ -131,6 +140,7 @@ ChipIntelliAudio.playFixedPoint(235, 1, numberVoices);   // 二十三点五
 
 每组最多包含 24 段音频；可选的 `interruptCurrent` 参数只影响整组如何开始，SDK 将它
 作为一个逻辑播放请求处理，整组完成后只触发一次完成回调。详细的必选、按需词表及录音建议见
+[`VARIABLE_VOICE_TEXTS.md`](VARIABLE_VOICE_TEXTS.md)。中文词元的补充制作建议见
 [`VARIABLE_VOICE_TEXTS_ZH.md`](VARIABLE_VOICE_TEXTS_ZH.md)。
 
 ## 音量和静音
@@ -189,5 +199,5 @@ Flash 写入或大量打印。建议只设置 `volatile` 标志或发送非阻�
 ## 示例
 
 - `PlayVoiceId`：初始化播放器，按语音 ID 播放并安全处理完成事件；
-- `VariableNumber`：用 ID 300～316 的 17 个基础数字词元拼接整数和小数；
+- `VariableNumber`：按语言宏选择从 ID 300 开始的数字词元并拼接整数和小数；
 - `PromptControl`：通过 115200 波特率串口演示提示音、“滴”声、停止、状态、音量和静音控制。

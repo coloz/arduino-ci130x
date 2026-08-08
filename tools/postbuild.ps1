@@ -152,12 +152,11 @@ $hasResourceMacros = [bool](Select-String `
         -Pattern $resourceMacroPattern `
         -Encoding UTF8 `
         -Quiet)
-$variableNumberVoiceSymbol = '_ZN21ChipIntelliAudioClass9playVoiceERK6Stringb'
 $elfSymbols = & $nmPath $elfPath 2>&1
 if ($LASTEXITCODE -ne 0) {
     throw "nm failed while inspecting variable-number playback usage (exit code $LASTEXITCODE)"
 }
-$usesVariableNumberVoices = [bool]($elfSymbols -match [regex]::Escape($variableNumberVoiceSymbol))
+$usesVariableNumberVoices = [bool]($elfSymbols -match 'playLocalizedNumber')
 $needsGeneratedResources = $hasResourceMacros -or $usesVariableNumberVoices
 if ($needsGeneratedResources) {
     $generatedResources = Join-Path $stagingRoot 'generated_resources'

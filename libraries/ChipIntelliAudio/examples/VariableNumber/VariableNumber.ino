@@ -1,3 +1,4 @@
+#define CHIPINTELLI_LANGUAGE CHIPINTELLI_LANGUAGE_ZH
 #include <ChipIntelliAudio.h>
 
 namespace {

@@ -4,6 +4,31 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define CHIPINTELLI_LANGUAGE_ZH 0
+#define CHIPINTELLI_LANGUAGE_EN 1
+#define CHIPINTELLI_LANGUAGE_JA 2
+#define CHIPINTELLI_LANGUAGE_KO 3
+#define CHIPINTELLI_LANGUAGE_RU 4
+#define CHIPINTELLI_LANGUAGE_ES 5
+#define CHIPINTELLI_LANGUAGE_TH 6
+#define CHIPINTELLI_LANGUAGE_DE 7
+#define CHIPINTELLI_LANGUAGE_ID 8
+#define CHIPINTELLI_LANGUAGE_VI 9
+#define CHIPINTELLI_LANGUAGE_FR 10
+#define CHIPINTELLI_LANGUAGE_PT 11
+#define CHIPINTELLI_LANGUAGE_FA 12
+#define CHIPINTELLI_LANGUAGE_TR 13
+#define CHIPINTELLI_LANGUAGE_AR 14
+
+#ifndef CHIPINTELLI_LANGUAGE
+#define CHIPINTELLI_LANGUAGE CHIPINTELLI_LANGUAGE_ZH
+#endif
+
+#if CHIPINTELLI_LANGUAGE < CHIPINTELLI_LANGUAGE_ZH || \
+    CHIPINTELLI_LANGUAGE > CHIPINTELLI_LANGUAGE_AR
+#error "Unsupported CHIPINTELLI_LANGUAGE value"
+#endif
+
 extern "C" void chipintelli_sdk_prompt_unlocked(void);
 
 class ChipIntelliAudioFactory;
@@ -11,6 +36,24 @@ class ChipIntelliAudioFactory;
 class ChipIntelliAudioClass {
 public:
   using FinishedCallback = void (*)(void *context);
+
+  enum class NumberLanguage : uint8_t {
+    Chinese = CHIPINTELLI_LANGUAGE_ZH,
+    English = CHIPINTELLI_LANGUAGE_EN,
+    Japanese = CHIPINTELLI_LANGUAGE_JA,
+    Korean = CHIPINTELLI_LANGUAGE_KO,
+    Russian = CHIPINTELLI_LANGUAGE_RU,
+    Spanish = CHIPINTELLI_LANGUAGE_ES,
+    Thai = CHIPINTELLI_LANGUAGE_TH,
+    German = CHIPINTELLI_LANGUAGE_DE,
+    Indonesian = CHIPINTELLI_LANGUAGE_ID,
+    Vietnamese = CHIPINTELLI_LANGUAGE_VI,
+    French = CHIPINTELLI_LANGUAGE_FR,
+    Portuguese = CHIPINTELLI_LANGUAGE_PT,
+    Persian = CHIPINTELLI_LANGUAGE_FA,
+    Turkish = CHIPINTELLI_LANGUAGE_TR,
+    Arabic = CHIPINTELLI_LANGUAGE_AR,
+  };
 
   // Voice IDs for the reusable Mandarin number tokens in voice.bin.
   // digits[0] through digits[9] are 零 through 九.
@@ -48,7 +91,7 @@ public:
   bool playVoice(uint16_t voiceId, bool interruptCurrent = true);
 
   /**
-   * @brief Parse and play a decimal number using fixed voice IDs 300..316.
+   * @brief Parse and play a localized decimal number using voice IDs from 300.
    *
    * Accepts an optional leading sign, an optional decimal point, and ASCII
    * whitespace around the value. Examples: "300", "-1.5", and "0.02".
@@ -60,7 +103,12 @@ public:
    *        clips in that number play continuously.
    * @return true when the SDK accepts the complete number sequence.
    */
-  bool playVoice(const String &numberText, bool interruptCurrent = true);
+  bool playVoice(const String &numberText, bool interruptCurrent = true) {
+    return playLocalizedNumber(
+        numberText,
+        static_cast<NumberLanguage>(CHIPINTELLI_LANGUAGE),
+        interruptCurrent);
+  }
 
   /**
    * @brief Play a copied sequence of voice IDs as one uninterrupted prompt.
@@ -180,6 +228,9 @@ private:
   static void sdkPlaybackFinished(void *commandHandle);
   void dispatchFinishedCallbacks();
   bool hasFinishedCallback() const;
+  bool playLocalizedNumber(const String &numberText,
+                           NumberLanguage language,
+                           bool interruptCurrent);
 
   FinishedCallback _finishedCallback;
   void *_finishedContext;
