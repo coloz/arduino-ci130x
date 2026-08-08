@@ -70,7 +70,7 @@ recipe.ar.pattern="{compiler.path}{compiler.ar.cmd}" {compiler.ar.flags} {compil
 recipe.c.combine.pattern="{compiler.path}{compiler.c.elf.cmd}" {compiler.c.elf.flags} {compiler.c.elf.wrap} {compiler.c.elf.extra_flags} -o "{build.path}/{build.project_name}.elf" -Wl,--start-group "@{build.path}/ci13xx_sdk_objects.rsp" {object_files} "{archive_file_path}" {compiler.libraries.ldflags} {compiler.c.elf.libs} -Wl,--end-group -Wl,-EL
 
 # First build the CI13XX two-image user-code container. If the sketch declares
-# COMMAND/VOICE resource macros, generate fresh resources through ci-service;
+# WAKEWORD/COMMAND/VOICE resource macros, generate fresh resources through ci-service;
 # then compose and inspect the complete image uploaded from Flash address 0.
 # Windows PowerShell postbuild
 recipe.objcopy.bin.pattern.windows=powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{runtime.platform.path}/tools/postbuild.ps1" -Elf "{build.path}/{build.project_name}.elf" -Source "{build.source.path}/{build.project_name}" -Output "{build.path}/{build.project_name}.user_code.bin" -FirmwareOutput "{build.path}/{build.project_name}.bin" -Objcopy "{compiler.path}{compiler.objcopy.cmd}" -PlatformPath "{runtime.platform.path}" -CitoolCli "{runtime.tools.citool-cli.path}/{tools.citool-cli.cmd}" -ServiceUrl "{build.ci_service_url}" -ProjectResources "{build.source.path}/recursos" -Chip "{build.chip}" -Algorithm "{build.algorithm}" -MaxUserCodeSize {build.user_code_max}

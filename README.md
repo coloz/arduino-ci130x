@@ -53,10 +53,11 @@ Arduino package 的对应 profile 补齐。
 链接完成后先生成双核 `user_code.bin`，再由 `citool-cli compose` 合成完整固件并执行
 `inspect`；Arduino 上传阶段使用 `citool-cli flash` 从 Flash 地址 0 烧录该完整固件。
 `citool-cli` 内置 CI130X FW_V2 Bootloader，合成时不再依赖完整固件模板。
-如果主 `.ino` 文件中存在 `COMMAND<n>`、`VOICE<n>` 或 `VOICEMP3<n>` 宏，post-build
+如果主 `.ino` 文件中存在 `WAKEWORD<n>`、`COMMAND<n>`、`VOICE<n>` 或 `VOICEMP3<n>` 宏，post-build
 会先自动运行 `citool-cli generate`，通过默认的 `https://gen.yiyu.pro/ci` 按需生成或复用
-资源：存在 `COMMAND<n>` 时请求 ASR，存在 `VOICE<n>` 时请求 TTS，两类宏互不依赖；仅一条
-`COMMAND<n>` 的纯唤醒词配置也有效。生成文件只写入构建暂存目录，不覆盖 sketch 中的
+资源：存在 `WAKEWORD<n>` 或 `COMMAND<n>` 时请求 ASR，存在 `VOICE<n>` 时请求 TTS，两类宏互不依赖；
+`WAKEWORD<n>` 可显式定义多个唤醒词。没有 `WAKEWORD<n>` 的旧项目仍把第一条
+`COMMAND<n>` 作为唤醒词。生成文件只写入构建暂存目录，不覆盖 sketch 中的
 `recursos/`；没有这些宏时保持原有 sketch 资源流程。缓存保存在操作系统的用户缓存目录，
 因此 Arduino 清理临时构建目录后仍可复用相同请求。
 Arduino CLI 可用 `--build-property build.ci_service_url=https://...` 覆盖服务地址。

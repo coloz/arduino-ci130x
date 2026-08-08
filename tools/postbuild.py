@@ -182,7 +182,7 @@ def main():
 
     source_text = source_path.read_text(encoding='utf-8-sig')
     resource_macro_pattern = re.compile(
-        r'^\s*#define\s+(?:VOICEMP3|VOICE|COMMAND)[0-9]+\s+',
+        r'^\s*#define\s+(?:VOICEMP3|VOICE|WAKEWORD|COMMAND)[0-9]+\s+',
         re.MULTILINE,
     )
     if resource_macro_pattern.search(source_text):

@@ -140,7 +140,7 @@ if (Test-Path -LiteralPath $stagingRoot) {
 $staging = Join-Path $stagingRoot 'user_code'
 New-Item -ItemType Directory -Path $staging | Out-Null
 
-$resourceMacroPattern = '^\s*#define\s+(?:VOICEMP3|VOICE|COMMAND)[0-9]+\s+'
+$resourceMacroPattern = '^\s*#define\s+(?:VOICEMP3|VOICE|WAKEWORD|COMMAND)[0-9]+\s+'
 $hasResourceMacros = [bool](Select-String `
         -LiteralPath $sourcePath `
         -Pattern $resourceMacroPattern `
