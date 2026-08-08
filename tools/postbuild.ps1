@@ -89,6 +89,12 @@ if (-not (Test-Path -LiteralPath $objcopyCandidate -PathType Leaf) -and
     $objcopyCandidate += '.exe'
 }
 $objcopyPath = (Resolve-Path -LiteralPath $objcopyCandidate).Path
+$nmFileName = [System.IO.Path]::GetFileName($objcopyPath) -replace 'objcopy(\.exe)?$', 'nm$1'
+$nmCandidate = Join-Path (Split-Path -Parent $objcopyPath) $nmFileName
+if (-not (Test-Path -LiteralPath $nmCandidate -PathType Leaf)) {
+    throw "CI13XX toolchain nm executable not found next to objcopy: $nmCandidate"
+}
+$nmPath = (Resolve-Path -LiteralPath $nmCandidate).Path
 $citoolCandidate = $CitoolCli
 if (-not (Test-Path -LiteralPath $citoolCandidate -PathType Leaf) -and
     (Test-Path -LiteralPath ($citoolCandidate + '.exe') -PathType Leaf)) {
@@ -146,20 +152,38 @@ $hasResourceMacros = [bool](Select-String `
         -Pattern $resourceMacroPattern `
         -Encoding UTF8 `
         -Quiet)
-if ($hasResourceMacros) {
+$variableNumberVoiceSymbol = '_ZN21ChipIntelliAudioClass9playVoiceERK6Stringb'
+$elfSymbols = & $nmPath $elfPath 2>&1
+if ($LASTEXITCODE -ne 0) {
+    throw "nm failed while inspecting variable-number playback usage (exit code $LASTEXITCODE)"
+}
+$usesVariableNumberVoices = [bool]($elfSymbols -match [regex]::Escape($variableNumberVoiceSymbol))
+$needsGeneratedResources = $hasResourceMacros -or $usesVariableNumberVoices
+if ($needsGeneratedResources) {
     $generatedResources = Join-Path $stagingRoot 'generated_resources'
     New-Item -ItemType Directory -Path $generatedResources | Out-Null
     foreach ($resource in $resourceFiles.GetEnumerator()) {
         Copy-Item -LiteralPath $resource.Value -Destination (Join-Path $generatedResources ([System.IO.Path]::GetFileName($resource.Value)))
     }
 
-    Write-Host "CI13XX source resource macros found; generating resources through ci-service."
-    & $citoolPath generate `
-        --source $sourcePath `
-        --asset-root $assetRoot `
-        --service-url $ServiceUrl `
-        --chip $Chip `
-        --output $generatedResources
+    $generationReasons = [System.Collections.Generic.List[string]]::new()
+    if ($hasResourceMacros) {
+        $generationReasons.Add('source resource macros')
+    }
+    if ($usesVariableNumberVoices) {
+        $generationReasons.Add('variable-number playback')
+    }
+    Write-Host "CI13XX $($generationReasons -join ' and ') found; generating resources through ci-service."
+
+    $generateArguments = @(
+        'generate',
+        '--source', $sourcePath,
+        '--asset-root', $assetRoot,
+        '--service-url', $ServiceUrl,
+        '--chip', $Chip,
+        '--output', $generatedResources
+    )
+    & $citoolPath @generateArguments
     if ($LASTEXITCODE -ne 0) {
         throw "citool-cli generate failed with exit code $LASTEXITCODE"
     }
@@ -177,7 +201,7 @@ if ($hasResourceMacros) {
     }
 }
 else {
-    Write-Host 'CI13XX source resource macros not found; using the sketch resource set.'
+    Write-Host 'CI13XX generated resources are not required; using the sketch resource set.'
 }
 
 $effectiveUserFile = $resourceFiles.UserFile

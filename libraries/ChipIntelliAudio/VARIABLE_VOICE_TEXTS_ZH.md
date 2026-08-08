@@ -25,27 +25,9 @@
 | 315 | 负 | 数值可能为负数时需要；建议保留 |
 | 316 | 点 | 需要播报小数时使用；建议保留 |
 
-对应的 Arduino 资源宏可以直接写成：
-
-```cpp
-#define VOICE300 300  //零
-#define VOICE301 301  //一
-#define VOICE302 302  //二
-#define VOICE303 303  //三
-#define VOICE304 304  //四
-#define VOICE305 305  //五
-#define VOICE306 306  //六
-#define VOICE307 307  //七
-#define VOICE308 308  //八
-#define VOICE309 309  //九
-#define VOICE310 310  //十
-#define VOICE311 311  //百
-#define VOICE312 312  //千
-#define VOICE313 313  //万
-#define VOICE314 314  //亿
-#define VOICE315 315  //负
-#define VOICE316 316  //点
-```
+Arduino 程序中不需要声明这些资源宏。只要最终程序链接了字符串版
+`ChipIntelliAudio.playVoice()`，构建后处理就会自动要求 `citool-cli generate`
+把完整的 17 条词元加入 TTS 请求。
 
 只播报非负整数且范围小于一亿时，最小集合是前 14 条，即“零～九、十、百、千、万”。
 不过资源允许时，建议直接保留完整 17 条，以免后续增加负数或小数后重新制作同一套音色。

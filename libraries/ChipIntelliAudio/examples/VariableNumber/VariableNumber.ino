@@ -1,25 +1,5 @@
 #include <ChipIntelliAudio.h>
 
-// The post-build resource generator converts these comments to voice.bin
-// entries. Keep the IDs in sync with kNumberVoices below.
-#define VOICE300 300  //零
-#define VOICE301 301  //一
-#define VOICE302 302  //二
-#define VOICE303 303  //三
-#define VOICE304 304  //四
-#define VOICE305 305  //五
-#define VOICE306 306  //六
-#define VOICE307 307  //七
-#define VOICE308 308  //八
-#define VOICE309 309  //九
-#define VOICE310 310  //十
-#define VOICE311 311  //百
-#define VOICE312 312  //千
-#define VOICE313 313  //万
-#define VOICE314 314  //亿
-#define VOICE315 315  //负
-#define VOICE316 316  //点
-
 namespace {
 volatile bool playbackFinished = false;
 uint8_t nextNumber = 0;

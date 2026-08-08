@@ -143,9 +143,12 @@ does not. It also returns `false` when `count` is zero or greater than `16`.
 
 ## Variable Number Playback
 
-Generate these 17 reusable Mandarin clips in advance: `零` through `九`, then
-`十`, `百`, `千`, `万`, `亿`, `负`, and `点`. Their fixed IDs are 300 through
-316, so callers can pass a numeric string directly:
+Variable-number playback uses 17 reusable Mandarin clips: `零` through `九`,
+then `十`, `百`, `千`, `万`, `亿`, `负`, and `点`, at fixed IDs 300 through
+316. When the linked program uses the string overload, the Arduino post-build
+automatically asks `citool-cli generate` to add all 17 clips to its TTS request;
+no resource macros are needed in the sketch. Callers can pass a numeric string
+directly:
 
 ```cpp
 ChipIntelliAudio.playVoice("300");   // 三百

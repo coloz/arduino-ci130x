@@ -35,6 +35,11 @@ define multiple fixed wake words. Without explicit wake-word macros, a single
 `COMMAND<n>` remains a valid legacy wake-word-only configuration. The CLI's verified user cache allows identical
 requests to be reused across Arduino build-directory cleanups.
 
+The post-build hook also detects the linked `ChipIntelliAudio.playVoice(String)`
+overload. In that case it runs generation even without resource macros and asks
+the CLI to add the built-in Mandarin number clips at IDs 300 through 316 to the
+TTS request.
+
 When the package first copies a complete profile set into a sketch, it also
 writes `.chipintelli-package-resources.json`. A later package can upgrade that
 set only while every file still matches the recorded size and hash. Version

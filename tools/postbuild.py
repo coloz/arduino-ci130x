@@ -56,6 +56,37 @@ def arduino_asset_root(source_path):
     return source_directory
 
 
+def variable_number_playback_is_linked(elf_path, objcopy_path):
+    """Detect the ChipIntelliAudio String playback overload in the final ELF."""
+    nm_name = re.sub(
+        r'objcopy(?P<suffix>\.exe)?$',
+        r'nm\g<suffix>',
+        objcopy_path.name,
+        flags=re.IGNORECASE,
+    )
+    if nm_name == objcopy_path.name:
+        raise ValueError(f"Cannot derive nm path from objcopy path: {objcopy_path}")
+    nm_path = objcopy_path.with_name(nm_name)
+    if not nm_path.is_file():
+        raise ValueError(f"CI13XX toolchain nm executable not found next to objcopy: {nm_path}")
+
+    result = subprocess.run(
+        [str(nm_path), str(elf_path)],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip()
+        if detail:
+            detail = f": {detail}"
+        raise RuntimeError(
+            "nm failed while inspecting variable-number playback usage "
+            f"(exit code {result.returncode}){detail}"
+        )
+    symbol = '_ZN21ChipIntelliAudioClass9playVoiceERK6Stringb'
+    return symbol in result.stdout
+
+
 def build_user_code_container(host_code, algorithm_code):
     """Build the two-image container emitted by ci-tool-kit merge user-file.
 
@@ -135,6 +166,8 @@ def main():
 
     if not citool_path.is_file():
         raise ValueError(f"citool-cli not found: {citool_path}")
+    if not objcopy_path.is_file():
+        raise ValueError(f"objcopy not found: {objcopy_path}")
 
     platform_root = Path(args.platform_path).resolve()
     tool_kit = platform_root / 'tools' / 'sdk' / 'bin' / 'ci-tool-kit.exe'
@@ -185,21 +218,35 @@ def main():
         r'^\s*#define\s+(?:VOICEMP3|VOICE|WAKEWORD|COMMAND)[0-9]+\s+',
         re.MULTILINE,
     )
-    if resource_macro_pattern.search(source_text):
+    has_resource_macros = bool(resource_macro_pattern.search(source_text))
+    uses_variable_number_voices = variable_number_playback_is_linked(
+        elf_path,
+        objcopy_path,
+    )
+    if has_resource_macros or uses_variable_number_voices:
         generated_resources = staging_root / 'generated_resources'
         generated_resources.mkdir()
         for resource_path in resource_files.values():
             shutil.copy2(resource_path, generated_resources / resource_path.name)
 
-        print('CI13XX source resource macros found; generating resources through ci-service.')
-        run_command([
+        generation_reasons = []
+        if has_resource_macros:
+            generation_reasons.append('source resource macros')
+        if uses_variable_number_voices:
+            generation_reasons.append('variable-number playback')
+        print(
+            f"CI13XX {' and '.join(generation_reasons)} found; "
+            "generating resources through ci-service."
+        )
+        generate_command = [
             str(citool_path), 'generate',
             '--source', str(source_path),
             '--asset-root', str(asset_root),
             '--service-url', args.service_url,
             '--chip', args.chip,
             '--output', str(generated_resources),
-        ], "citool-cli generate")
+        ]
+        run_command(generate_command, "citool-cli generate")
 
         resource_files = {
             'ASR': generated_resources / 'asr.bin',
@@ -214,7 +261,7 @@ def main():
                     f"resource: {resource_path}"
                 )
     else:
-        print('CI13XX source resource macros not found; using the sketch resource set.')
+        print('CI13XX generated resources are not required; using the sketch resource set.')
 
     # Handle user_file_entries
     effective_user_file = resource_files['UserFile']
