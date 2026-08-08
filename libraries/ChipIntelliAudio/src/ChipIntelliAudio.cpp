@@ -9,11 +9,142 @@ extern "C" {
 #include "task.h"
 
 uint32_t ci_arduino_audio_started_message_count(void);
+uint32_t ci_arduino_prompt_play_voice_sequence(
+    const uint16_t *voiceIds, uint8_t count,
+    play_done_callback_t playDoneCallback, bool preemptive);
 }
 
 namespace {
 constexpr uint32_t kInitTimeoutMs = 10000;
 constexpr uint32_t kIdleStabilityMs = 500;
+constexpr uint32_t kPowersOfTen[] = {
+    1U,          10U,        100U,       1000U,      10000U,
+    100000U,     1000000U,   10000000U,  100000000U, 1000000000U,
+};
+constexpr ChipIntelliAudioClass::NumberVoiceIds kDefaultNumberVoiceIds = {
+    {300U, 301U, 302U, 303U, 304U, 305U, 306U, 307U, 308U, 309U},
+    310U,  // 十
+    311U,  // 百
+    312U,  // 千
+    313U,  // 万
+    314U,  // 亿
+    315U,  // 负
+    316U,  // 点
+};
+
+bool isAsciiWhitespace(char value) {
+  return value == ' ' || value == '\t' || value == '\r' || value == '\n' ||
+         value == '\f' || value == '\v';
+}
+
+class VoiceSequenceBuilder {
+ public:
+  VoiceSequenceBuilder(uint16_t *output, size_t capacity)
+      : _output(output), _capacity(capacity), _count(0U), _valid(true) {}
+
+  bool append(uint16_t voiceId) {
+    if (!_valid || _output == nullptr || _count >= _capacity) {
+      _valid = false;
+      return false;
+    }
+    _output[_count++] = voiceId;
+    return true;
+  }
+
+  size_t size() const { return _valid ? _count : 0U; }
+
+ private:
+  uint16_t *_output;
+  size_t _capacity;
+  size_t _count;
+  bool _valid;
+};
+
+void appendNumberGroup(uint16_t group, bool omitLeadingOne,
+                       const ChipIntelliAudioClass::NumberVoiceIds &voiceIds,
+                       VoiceSequenceBuilder &output) {
+  const uint16_t placeValues[] = {
+      0U, voiceIds.ten, voiceIds.hundred, voiceIds.thousand,
+  };
+  const uint16_t divisors[] = {1000U, 100U, 10U, 1U};
+  bool emittedDigit = false;
+  bool pendingZero = false;
+
+  for (size_t index = 0U; index < 4U; ++index) {
+    const uint16_t divisor = divisors[index];
+    const uint8_t digit = static_cast<uint8_t>((group / divisor) % 10U);
+    const uint8_t position = static_cast<uint8_t>(3U - index);
+
+    if (digit == 0U) {
+      if (emittedDigit) {
+        pendingZero = true;
+      }
+      continue;
+    }
+
+    if (pendingZero) {
+      output.append(voiceIds.digits[0]);
+      pendingZero = false;
+    }
+
+    const bool omitDigit = omitLeadingOne && !emittedDigit &&
+                           position == 1U && digit == 1U;
+    if (!omitDigit) {
+      output.append(voiceIds.digits[digit]);
+    }
+    if (position != 0U) {
+      output.append(placeValues[position]);
+    }
+    emittedDigit = true;
+  }
+}
+
+void appendUnsignedNumber(
+    uint32_t value,
+    const ChipIntelliAudioClass::NumberVoiceIds &voiceIds,
+    VoiceSequenceBuilder &output) {
+  if (value == 0U) {
+    output.append(voiceIds.digits[0]);
+    return;
+  }
+
+  const uint16_t groups[] = {
+      static_cast<uint16_t>(value % 10000U),
+      static_cast<uint16_t>((value / 10000U) % 10000U),
+      static_cast<uint16_t>(value / 100000000U),
+  };
+  bool emittedGroup = false;
+  bool pendingZero = false;
+
+  for (int index = 2; index >= 0; --index) {
+    const uint16_t group = groups[index];
+    if (group == 0U) {
+      if (emittedGroup) {
+        pendingZero = true;
+      }
+      continue;
+    }
+
+    const bool highestGroup = !emittedGroup;
+    if (emittedGroup && (pendingZero || group < 1000U)) {
+      output.append(voiceIds.digits[0]);
+    }
+
+    appendNumberGroup(group, highestGroup, voiceIds, output);
+    if (index == 2) {
+      output.append(voiceIds.hundredMillion);
+    } else if (index == 1) {
+      output.append(voiceIds.tenThousand);
+    }
+    emittedGroup = true;
+    pendingZero = false;
+  }
+}
+
+uint32_t signedMagnitude(int32_t value) {
+  const uint32_t unsignedValue = static_cast<uint32_t>(value);
+  return value < 0 ? 0U - unsignedValue : unsignedValue;
+}
 
 bool sdkAudioReady() {
   bool flashReady = false;
@@ -132,6 +263,161 @@ bool ChipIntelliAudioClass::playVoice(uint16_t voiceId,
              voiceId,
              hasFinishedCallback() ? sdkPlaybackFinished : nullptr,
              interruptCurrent) == 0U;
+}
+
+bool ChipIntelliAudioClass::playVoice(const String &numberText,
+                                      bool interruptCurrent) {
+  const char *text = numberText.c_str();
+  size_t begin = 0U;
+  size_t end = numberText.length();
+  while (begin < end && isAsciiWhitespace(text[begin])) {
+    ++begin;
+  }
+  while (end > begin && isAsciiWhitespace(text[end - 1U])) {
+    --end;
+  }
+  if (begin == end) {
+    return false;
+  }
+
+  bool negative = false;
+  if (text[begin] == '+' || text[begin] == '-') {
+    negative = text[begin] == '-';
+    ++begin;
+  }
+  if (begin == end) {
+    return false;
+  }
+
+  uint32_t integerPart = 0U;
+  bool decimalPointSeen = false;
+  bool digitSeen = false;
+  bool nonzeroDigitSeen = false;
+  size_t fractionalStart = end;
+  size_t fractionalDigits = 0U;
+
+  for (size_t index = begin; index < end; ++index) {
+    const char current = text[index];
+    if (current >= '0' && current <= '9') {
+      const uint8_t digit = static_cast<uint8_t>(current - '0');
+      digitSeen = true;
+      nonzeroDigitSeen = nonzeroDigitSeen || digit != 0U;
+      if (decimalPointSeen) {
+        ++fractionalDigits;
+        if (fractionalDigits > kMaxVoiceSequenceLength) {
+          return false;
+        }
+      } else {
+        if (integerPart > (UINT32_MAX - digit) / 10U) {
+          return false;
+        }
+        integerPart = integerPart * 10U + digit;
+      }
+      continue;
+    }
+
+    if (current == '.' && !decimalPointSeen) {
+      decimalPointSeen = true;
+      fractionalStart = index + 1U;
+      continue;
+    }
+    return false;
+  }
+
+  if (!digitSeen) {
+    return false;
+  }
+
+  uint16_t sequence[kMaxVoiceSequenceLength];
+  VoiceSequenceBuilder builder(sequence, kMaxVoiceSequenceLength);
+  if (negative && nonzeroDigitSeen) {
+    builder.append(kDefaultNumberVoiceIds.negative);
+  }
+  appendUnsignedNumber(integerPart, kDefaultNumberVoiceIds, builder);
+
+  if (decimalPointSeen && fractionalDigits != 0U) {
+    builder.append(kDefaultNumberVoiceIds.decimalPoint);
+    for (size_t index = fractionalStart; index < end; ++index) {
+      builder.append(kDefaultNumberVoiceIds.digits[text[index] - '0']);
+    }
+  }
+
+  const size_t count = builder.size();
+  return count != 0U &&
+         playVoiceSequence(sequence, count, interruptCurrent);
+}
+
+bool ChipIntelliAudioClass::playVoiceSequence(const uint16_t *voiceIds,
+                                              size_t count,
+                                              bool interruptCurrent) {
+  if (!_begun || voiceIds == nullptr || count == 0U ||
+      count > kMaxVoiceSequenceLength) {
+    return false;
+  }
+  return ci_arduino_prompt_play_voice_sequence(
+             voiceIds, static_cast<uint8_t>(count),
+             hasFinishedCallback() ? sdkPlaybackFinished : nullptr,
+             interruptCurrent) == 0U;
+}
+
+size_t ChipIntelliAudioClass::buildNumberVoiceSequence(
+    int32_t value, const NumberVoiceIds &voiceIds, uint16_t *output,
+    size_t capacity) const {
+  VoiceSequenceBuilder builder(output, capacity);
+  if (value < 0) {
+    builder.append(voiceIds.negative);
+  }
+  appendUnsignedNumber(signedMagnitude(value), voiceIds, builder);
+  return builder.size();
+}
+
+size_t ChipIntelliAudioClass::buildFixedPointVoiceSequence(
+    int32_t value, uint8_t fractionalDigits,
+    const NumberVoiceIds &voiceIds, uint16_t *output,
+    size_t capacity) const {
+  if (fractionalDigits > 9U) {
+    return 0U;
+  }
+  if (fractionalDigits == 0U) {
+    return buildNumberVoiceSequence(value, voiceIds, output, capacity);
+  }
+
+  VoiceSequenceBuilder builder(output, capacity);
+  if (value < 0) {
+    builder.append(voiceIds.negative);
+  }
+
+  const uint32_t magnitude = signedMagnitude(value);
+  const uint32_t scale = kPowersOfTen[fractionalDigits];
+  appendUnsignedNumber(magnitude / scale, voiceIds, builder);
+  builder.append(voiceIds.decimalPoint);
+
+  uint32_t remainder = magnitude % scale;
+  for (uint8_t digitsLeft = fractionalDigits; digitsLeft > 0U;
+       --digitsLeft) {
+    const uint32_t divisor = kPowersOfTen[digitsLeft - 1U];
+    builder.append(voiceIds.digits[remainder / divisor]);
+    remainder %= divisor;
+  }
+  return builder.size();
+}
+
+bool ChipIntelliAudioClass::playNumber(
+    int32_t value, const NumberVoiceIds &voiceIds) {
+  uint16_t sequence[kMaxVoiceSequenceLength];
+  const size_t count = buildNumberVoiceSequence(
+      value, voiceIds, sequence, kMaxVoiceSequenceLength);
+  return count != 0U && playVoiceSequence(sequence, count);
+}
+
+bool ChipIntelliAudioClass::playFixedPoint(
+    int32_t value, uint8_t fractionalDigits,
+    const NumberVoiceIds &voiceIds) {
+  uint16_t sequence[kMaxVoiceSequenceLength];
+  const size_t count = buildFixedPointVoiceSequence(
+      value, fractionalDigits, voiceIds, sequence,
+      kMaxVoiceSequenceLength);
+  return count != 0U && playVoiceSequence(sequence, count);
 }
 
 bool ChipIntelliAudioClass::playBeep(unsigned int count) {

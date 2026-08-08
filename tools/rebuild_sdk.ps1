@@ -663,6 +663,327 @@ static void prompt_player_unlock(void)
 '@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
     -ExpectedCount 1 `
     -Description "add the post-unlock Arduino prompt hook to $promptPlayerSourcePath"
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue @'
+#include "audio_play_api.h"
+#endif
+
+typedef struct voice_play_info_st
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -NewValue @'
+#include "audio_play_api.h"
+#endif
+
+#if defined(CI_ARDUINO_CORE)
+#define CI_ARDUINO_VOICE_SEQUENCE_COUNT 24
+#define PROMPT_COMBINATION_BUFFER_COUNT CI_ARDUINO_VOICE_SEQUENCE_COUNT
+#else
+#define PROMPT_COMBINATION_BUFFER_COUNT MAX_COMBINATION_COUNT
+#endif
+
+typedef struct voice_play_info_st
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -ExpectedCount 1 `
+    -Description "set the Arduino voice-sequence capacity in $promptPlayerSourcePath"
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue @'
+}voice_play_info_t;
+
+typedef struct prompt_player_st
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -NewValue @'
+#if defined(CI_ARDUINO_CORE)
+    uint8_t voice_sequence_number;
+    uint32_t voice_sequence_list[CI_ARDUINO_VOICE_SEQUENCE_COUNT];
+#endif
+}voice_play_info_t;
+
+typedef struct prompt_player_st
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -ExpectedCount 1 `
+    -Description "store an Arduino voice sequence in each prompt queue item in $promptPlayerSourcePath"
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue '    uint32_t combination_list[MAX_COMBINATION_COUNT];' `
+    -NewValue '    uint32_t combination_list[PROMPT_COMBINATION_BUFFER_COUNT];' `
+    -ExpectedCount 1 `
+    -Description "expand the Arduino prompt combination buffer in $promptPlayerSourcePath"
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue '    int32_t combination_number;' `
+    -NewValue @'
+    int32_t combination_number;
+#if defined(CI_ARDUINO_CORE)
+    bool resolved_voice_sequence = (p_voice_play_info->select_index == -3);
+    if (resolved_voice_sequence)
+    {
+        combination_number = p_voice_play_info->voice_sequence_number;
+    }
+    else
+#endif
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -ExpectedCount 1 `
+    -Description "recognize queued Arduino voice sequences in $promptPlayerSourcePath"
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue @'
+    else
+    {
+        if (combination_number <= MAX_COMBINATION_COUNT)
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -NewValue @'
+    else
+    {
+#if defined(CI_ARDUINO_CORE)
+        if (resolved_voice_sequence &&
+            (combination_number <= PROMPT_COMBINATION_BUFFER_COUNT))
+        {
+            for (int32_t index = 0; index < combination_number; index++)
+            {
+                prompt_player.combination_list[index] =
+                    p_voice_play_info->voice_sequence_list[index];
+            }
+        }
+        else
+#endif
+        if (combination_number <= MAX_COMBINATION_COUNT)
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -ExpectedCount 1 `
+    -Description "copy a queued Arduino voice sequence into the active buffer in $promptPlayerSourcePath"
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue @'
+                return 1;
+            }
+            prompt_player.combination_number = combination_number;
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -NewValue @'
+                return 1;
+            }
+        }
+        else
+        {
+            ci_logerr(CI_LOG_ERROR,"too many combination voice\n");
+            clean_play_queue();
+            return 1;
+        }
+
+        prompt_player.combination_number = combination_number;
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -ExpectedCount 1 `
+    -Description "start both standard and Arduino prompt sequences through the common path in $promptPlayerSourcePath"
+$promptInnerStartBlockOld = @'
+        prompt_player.combination_number = combination_number;
+            prompt_player.combination_index = 0;
+
+            /*audio PA on*/
+            #if (PLAYER_CONTROL_PA)
+            //audio_play_hw_start(ENABLE);
+            audio_play_hw_pa_da_ctl(ENABLE,true);
+            vTaskDelay(pdMS_TO_TICKS(100));
+            #else
+            audio_play_hw_pa_da_ctl(ENABLE,false);
+            #endif
+<TAB><TAB><TAB>#if SIMPLE_AUDIO_PLAYER_ENABLE
+<TAB><TAB><TAB>sap_play(prompt_player.combination_list[prompt_player.combination_index++], combination_callback);
+<TAB><TAB><TAB>#else
+            pause_audio_play_prompt(prompt_player.combination_list[prompt_player.combination_index++], 1, combination_callback);
+<TAB><TAB><TAB>#endif
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n").Replace('<TAB>', "`t")
+$promptInnerStartBlockNew = @'
+        prompt_player.combination_number = combination_number;
+        prompt_player.combination_index = 0;
+
+        /*audio PA on*/
+        #if (PLAYER_CONTROL_PA)
+        //audio_play_hw_start(ENABLE);
+        audio_play_hw_pa_da_ctl(ENABLE,true);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        #else
+        audio_play_hw_pa_da_ctl(ENABLE,false);
+        #endif
+<TAB><TAB>#if SIMPLE_AUDIO_PLAYER_ENABLE
+<TAB><TAB>sap_play(prompt_player.combination_list[prompt_player.combination_index++], combination_callback);
+<TAB><TAB>#else
+        pause_audio_play_prompt(prompt_player.combination_list[prompt_player.combination_index++], 1, combination_callback);
+<TAB><TAB>#endif
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n").Replace('<TAB>', "`t")
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue $promptInnerStartBlockOld `
+    -NewValue $promptInnerStartBlockNew `
+    -ExpectedCount 1 `
+    -Description "align the common prompt-sequence playback block in $promptPlayerSourcePath"
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue @'
+        }
+        else
+        {
+            ci_logerr(CI_LOG_ERROR,"too many combination voice\n");
+            clean_play_queue();
+        }
+    }
+    return 0;
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -NewValue @'
+    }
+    return 0;
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -ExpectedCount 1 `
+    -Description "finish the common prompt-sequence playback path in $promptPlayerSourcePath"
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue @'
+uint32_t prompt_play_by_voice_id(uint16_t voice_id, play_done_callback_t play_done_callback, bool preemptive)
+{
+    return prompt_play_by_cmd_handle(voice_id, -2, play_done_callback, preemptive);
+}
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -NewValue @'
+uint32_t prompt_play_by_voice_id(uint16_t voice_id, play_done_callback_t play_done_callback, bool preemptive)
+{
+    return prompt_play_by_cmd_handle(voice_id, -2, play_done_callback, preemptive);
+}
+
+#if defined(CI_ARDUINO_CORE)
+/*
+ * Play raw voice IDs as one logical prompt. The vendor multi-command API
+ * cannot accept voice IDs directly and its five-entry request queue is too
+ * short for composed numbers, so the Arduino wrapper stores the complete
+ * resolved list in one queue item. The preemptive flag only controls how the
+ * group starts; clips inside the group never preempt one another. One
+ * completion callback is emitted for the complete group.
+ */
+uint32_t ci_arduino_prompt_play_voice_sequence(
+            const uint16_t *voice_ids,
+            uint8_t number,
+            play_done_callback_t play_done_callback,
+            bool preemptive)
+{
+    uint32_t ret = 1;
+    if (prompt_player.semaphore == NULL)
+    {
+        prompt_player.semaphore = xSemaphoreCreateMutex();
+    }
+    if (prompt_player.semaphore)
+    {
+        xSemaphoreTake(prompt_player.semaphore, portMAX_DELAY);
+    }
+    if (!prompt_player.play_queue)
+    {
+        prompt_player.play_queue = xQueueCreate(5, sizeof(voice_play_info_t));
+    }
+
+    if ((!prompt_player.play_queue) || (!prompt_player.enabled_flag) ||
+        (voice_ids == NULL) || (number == 0) ||
+        (number > CI_ARDUINO_VOICE_SEQUENCE_COUNT))
+    {
+        if (play_done_callback)
+        {
+            play_done_callback(0);
+        }
+        prompt_player_unlock();
+        return ret;
+    }
+
+    voice_play_info_t voice_play_info;
+    voice_play_info.cmd_handle = 0;
+    voice_play_info.start_index = 0;
+    voice_play_info.end_index = 0;
+    voice_play_info.select_index = -3;
+    voice_play_info.play_done_callback = play_done_callback;
+    voice_play_info.voice_sequence_number = number;
+    if (get_voice_addr_by_id((uint16_t *)voice_ids,
+                             voice_play_info.voice_sequence_list,
+                             number) != 0)
+    {
+        if (play_done_callback)
+        {
+            play_done_callback(0);
+        }
+        prompt_player_unlock();
+        return ret;
+    }
+
+    if ((prompt_player.combination_number > 0) && preemptive)
+    {
+#if SIMPLE_AUDIO_PLAYER_ENABLE
+        sap_stop();
+#else
+        if (RETURN_ERR == pause_play(NULL, NULL))
+        {
+            vTaskDelay(1);
+            pause_play(NULL, NULL);
+        }
+#endif
+        prompt_player_unlock();
+
+        int timeout = 2000;
+        while ((prompt_player.combination_number > 0) && (timeout > 0))
+        {
+            timeout--;
+            vTaskDelay(1);
+        }
+        if (prompt_player.semaphore)
+        {
+            xSemaphoreTake(prompt_player.semaphore, portMAX_DELAY);
+        }
+        if ((prompt_player.combination_number > 0) ||
+            (!prompt_player.enabled_flag))
+        {
+            if (play_done_callback)
+            {
+                play_done_callback(0);
+            }
+            prompt_player_unlock();
+            return ret;
+        }
+    }
+
+    ret = voice_play_info_add_to_queue(&voice_play_info);
+    if (ret != 0)
+    {
+        if (play_done_callback)
+        {
+            play_done_callback(0);
+        }
+        prompt_player_unlock();
+        return ret;
+    }
+
+#if ONE_SHOT_ENABLE
+    uint32_t rst = cmd_info_is_wakeup_word(voice_play_info.cmd_handle);
+    pause_asr(!rst, !rst);
+#elif USE_AEC_MODULE
+    if (CI_SS_CWSL_AEC_MUTE_ON == ciss_get(CI_SS_CWSL_AEC_MUTE_STATE))
+    {
+        pause_asr(1, 1);
+    }
+    else
+    {
+        pause_asr(0, 0);
+    }
+#else
+    pause_asr(1, 1);
+#endif
+    if (preemptive || prompt_player.combination_number <= 0)
+    {
+        if (prompt_play_inner(&voice_play_info, false) != 0)
+        {
+            resume_asr();
+        }
+    }
+
+    prompt_player_unlock();
+    return 0;
+}
+#endif
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -ExpectedCount 1 `
+    -Description "add raw voice-sequence playback to $promptPlayerSourcePath"
 $promptPlayerSourceContent = $promptPlayerSourceContent.Replace("`r`n", "`n").Replace("`n", "`r`n")
 [IO.File]::WriteAllText($promptPlayerSourcePath, $promptPlayerSourceContent, [Text.UTF8Encoding]::new($false))
 

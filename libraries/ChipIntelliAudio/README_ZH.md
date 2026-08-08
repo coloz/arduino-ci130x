@@ -9,6 +9,8 @@
 它支持：
 
 - 按语音 ID 播放；
+- 将 1～24 个语音 ID 作为一条连续提示音播放；
+- 直接用 `playVoice("数字字符串")` 和 ID 300～316 的基础音频拼接整数、小数；
 - 连续播放 1～16 声内置“滴”提示音；
 - 按命令 ID、命令文本或语义 ID 查找并播放已配置的提示音；
 - 中断当前提示音或排队播放；
@@ -16,7 +18,8 @@
 - 在 SDK 处理完提示音请求时执行回调。
 
 本库不是 TTS 引擎。`playCommand(const char *)` 只查找资源包中已有的命令词，
-不会把任意文本转换成语音；当前也不能直接播放 SD 卡中的 WAV 或 MP3 文件。
+不会把任意文本转换成语音；变量数字接口只拼接 `voice.bin` 中预先生成的短音频。
+当前也不能直接播放 SD 卡中的 WAV 或 MP3 文件。
 
 ## 快速开始
 
@@ -49,7 +52,13 @@ SDK；与 `stop()` 一样，它无法确认 SDK 是否在有限等待结束前�
 
 | API | 作用 |
 | --- | --- |
-| `playVoice(voiceId, interruptCurrent)` | 播放 `voice.bin` 中的 16 位语音 ID |
+| `playVoice(voiceId, interruptCurrent)` | 数字参数：播放 `voice.bin` 中的 16 位语音 ID |
+| `playVoice(numberText, interruptCurrent)` | 字符串参数：解析并播报十进制数字 |
+| `playVoiceSequence(voiceIds, count, interruptCurrent)` | 连续播放 1～24 个语音 ID；整组只回调一次 |
+| `playNumber(value, voiceIds)` | 拼接并播放 32 位有符号中文整数 |
+| `playFixedPoint(value, fractionalDigits, voiceIds)` | 按定点数方式拼接并播放小数 |
+| `buildNumberVoiceSequence(...)` | 生成整数语音 ID 序列，便于检查或调整结果 |
+| `buildFixedPointVoiceSequence(...)` | 生成定点小数语音 ID 序列，便于检查或调整结果 |
 | `playBeep(count)` | 连续播放 1～16 声内置“滴”提示音 |
 | `playCommand(commandId, optionIndex, interruptCurrent)` | 播放命令 ID 对应的提示音 |
 | `playCommand(commandText, optionIndex, interruptCurrent)` | 按已配置的命令文本查找提示音 |
@@ -72,6 +81,55 @@ SDK 提示音队列。`optionIndex` 默认为 `-1`，表示使用资源包配置
 
 语音、命令和语义 ID 必须与当前工程 `recursos/voice.bin` 及命令资源匹配；示例中的
 ID `1` 不保证存在于自定义资源包中。
+
+## 变量数字播报
+
+推荐预先生成 17 条可复用的短音频：`零、一、二、三、四、五、六、七、八、九、十、百、千、万、亿、负、点`。
+这些音频固定使用 ID 300～316。用户可以直接传入字符串：
+
+```cpp
+ChipIntelliAudio.playVoice("300");   // 三百
+ChipIntelliAudio.playVoice("-1.5");  // 负一点五
+ChipIntelliAudio.playVoice("0.02");  // 零点零二
+ChipIntelliAudio.playVoice("0.02", false);  // 将整组数字加入播放队列
+```
+
+`interruptCurrent` 默认为 `true`；传入 `false` 时，整组数字会排在当前提示音之后。
+这个参数只影响数字第一段音频如何开始，后续各段始终连续播放，整组完成后只回调一次。
+整数参数仍保持原有含义：`playVoice(300)` 是直接播放语音 ID 300，
+而 `playVoice("300")` 才是播报数值“三百”。
+
+字符串允许首尾 ASCII 空白、可选的 `+`/`-` 符号和一个小数点，不接受科学计数法。
+小数部分逐位播报并保留零；非法字符串、整数部分超过 `uint32_t` 或最终超过 24 个词元时
+返回 `false`。字符串 `-0` 和 `-0.00` 按数值零播报，不读“负”。
+
+需要使用另一套语音 ID 时，可以把对应 ID 填入 `NumberVoiceIds`，再调用底层数字接口：
+
+```cpp
+const ChipIntelliAudioClass::NumberVoiceIds numberVoices = {
+    {300, 301, 302, 303, 304, 305, 306, 307, 308, 309},
+    310,  // 十
+    311,  // 百
+    312,  // 千
+    313,  // 万
+    314,  // 亿
+    315,  // 负
+    316,  // 点
+};
+
+ChipIntelliAudio.playNumber(-10010, numberVoices);       // 负一万零一十
+ChipIntelliAudio.playFixedPoint(235, 1, numberVoices);   // 二十三点五
+```
+
+`playFixedPoint()` 使用整数表示定点值，不使用浮点运算。例如 `(235, 1)` 表示 `23.5`，
+`(2300, 2)` 表示 `23.00`，小数末尾的零会保留；小数位数范围为 `0`～`9`。
+
+如需先检查或调整拆分结果，可用 `buildNumberVoiceSequence()` 或
+`buildFixedPointVoiceSequence()` 取得语音 ID 数组，再调用 `playVoiceSequence()`。
+
+每组最多包含 24 段音频；可选的 `interruptCurrent` 参数只影响整组如何开始，SDK 将它
+作为一个逻辑播放请求处理，整组完成后只触发一次完成回调。详细的必选、按需词表及录音建议见
+[`VARIABLE_VOICE_TEXTS_ZH.md`](VARIABLE_VOICE_TEXTS_ZH.md)。
 
 ## 音量和静音
 
@@ -129,4 +187,5 @@ Flash 写入或大量打印。建议只设置 `volatile` 标志或发送非阻�
 ## 示例
 
 - `PlayVoiceId`：初始化播放器，按语音 ID 播放并安全处理完成事件；
+- `VariableNumber`：用 ID 300～316 的 17 个基础数字词元拼接整数和小数；
 - `PromptControl`：通过 115200 波特率串口演示提示音、“滴”声、停止、状态、音量和静音控制。
