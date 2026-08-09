@@ -7,6 +7,20 @@ prompts; sketches select every user-facing response explicitly. The recommended 
 [OneButton](https://github.com/mathertel/OneButton) pattern: attach handlers in
 `setup()` and call one non-blocking `tick()` from `loop()`.
 
+The Arduino integration starts in direct-command mode: ordinary commands are
+accepted without a wake word. Enable wake-word gating at runtime when a sketch
+needs it:
+
+```cpp
+ChipIntelliASR.setWakeWordEnabled(true);   // require a wake word
+ChipIntelliASR.setWakeWordEnabled(false);  // accept commands directly
+```
+
+The request is queued to the vendor system task so model changes cannot race
+prompt playback or ASR result handling. Call it after `begin()` and check the
+boolean result. Enabling selects wake model group 1; disabling selects command
+model group 0 and cancels the wake-window timer.
+
 ```cpp
 constexpr uint16_t kLightOnCommandId = 1;  // from cmd_info
 
@@ -44,7 +58,9 @@ void setup() {
   ChipIntelliASR.attachStartup(handleStartup);
   ChipIntelliASR.attachWakeup(handleWakeup);
   ChipIntelliASR.attachTimeout(handleTimeout);
-  ChipIntelliASR.begin();
+  if (ChipIntelliASR.begin()) {
+    ChipIntelliASR.setWakeWordEnabled(true);
+  }
 }
 
 void loop() {
@@ -158,16 +174,19 @@ The ASR engine is a hardware singleton, just like Arduino `Serial`. The class
 cannot be copied or constructed independently; use the global
 `ChipIntelliASR` object or `ChipIntelliASRClass::instance()`.
 
-When `begin()`, `attachCommand()`, `attachSemantic()`, or `tick()` returns
+When `begin()`, `setWakeWordEnabled()`, `attachCommand()`, `attachSemantic()`, or `tick()` returns
 `false`, `lastError()` distinguishes disabled ASR, queue allocation and SDK
-startup failures, timeout, an invalid callback, a full handler table, and a
-recursive `tick()` call. `errorString()` provides a static printable message
-without allocating memory.
+startup failures, timeout, an invalid callback, a full handler table, a
+recursive `tick()` call, a call made before `begin()`, and a rejected control
+request. `errorString()` provides a static printable message without allocating
+memory.
 
 ## Wake and command window
 
 Each result exposes `isWakeWord`, and `isAwake()` reports whether the vendor
 recognizer's command session is awake rather than in wake-word-only mode.
+Because wake-word gating is disabled by default, `isAwake()` normally remains
+`true`; call `setWakeWordEnabled(true)` to use the finite wake/command window.
 `keepAwakeFor(timeoutMs)` restarts the official SDK wake timer only when the
 recognizer is already awake; it never turns a stale queued result into a new
 wake event. A non-AEC profile may still pause recognition temporarily while a

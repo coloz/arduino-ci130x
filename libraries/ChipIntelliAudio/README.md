@@ -11,6 +11,9 @@ or copied as an independent second player.
 The library supports:
 
 - playing audio by voice ID;
+- playing one copied sequence of up to 24 voice IDs with one completion event;
+- parsing decimal strings passed directly to `playVoice()` and composing them
+  in any of 15 supported languages from IDs beginning at 300;
 - playing the built-in beep prompt one to sixteen times;
 - playing a configured prompt by command ID, command text, or semantic ID;
 - stopping playback, checking playback status, adjusting the volume, and
@@ -20,8 +23,9 @@ The library supports:
 
 This library is not a TTS engine. The string overload of `playCommand()` only
 looks up a configured command; it does not convert arbitrary text to speech.
-The current version also cannot open WAV or MP3 files directly from an SD card
-or filesystem.
+The variable-number APIs only concatenate clips that were generated in
+advance and stored in `voice.bin`. The current version also cannot open WAV or
+MP3 files directly from an SD card or filesystem.
 
 ## Quick Start
 
@@ -92,7 +96,13 @@ example and is not guaranteed to exist in every custom resource package.
 
 | API | Purpose |
 | --- | --- |
-| `playVoice(voiceId, interruptCurrent)` | Play the 16-bit voice ID from `voice.bin` |
+| `playVoice(voiceId, interruptCurrent)` | Numeric argument: play a 16-bit voice ID from `voice.bin` |
+| `playVoice(numberText, interruptCurrent)` | String argument: parse and speak a decimal number |
+| `playVoiceSequence(voiceIds, count, interruptCurrent)` | Play 1 to 24 voice IDs as one logical prompt |
+| `playNumber(value, voiceIds)` | Compose and play a signed 32-bit Mandarin integer |
+| `playFixedPoint(value, fractionalDigits, voiceIds)` | Compose and play a deterministic fixed-point value |
+| `buildNumberVoiceSequence(...)` | Build and inspect an integer voice-ID sequence |
+| `buildFixedPointVoiceSequence(...)` | Build and inspect a fixed-point voice-ID sequence |
 | `playBeep(count)` | Play the built-in beep prompt 1 to 16 times |
 | `playCommand(commandId, optionIndex, interruptCurrent)` | Play the prompt associated with a command ID |
 | `playCommand(commandText, optionIndex, interruptCurrent)` | Look up a configured command by text and play its prompt |
@@ -130,6 +140,76 @@ the resource package's special `<beep>` command, interrupts the current prompt,
 and emits one completion callback after the whole group. The standard resource
 package includes this command; the method returns `false` if a custom package
 does not. It also returns `false` when `count` is zero or greater than `16`.
+
+## Variable Number Playback
+
+Variable-number playback supports Chinese, English, Japanese, Korean, Russian,
+Spanish, Thai, German, Indonesian, Vietnamese, French, Portuguese, Persian,
+Turkish, and Arabic. Each language has its own voice resource set beginning at
+ID 300, so only one language occupies those IDs in a firmware image. Select it
+before the library include; Chinese is the default:
+
+```cpp
+#define CHIPINTELLI_LANGUAGE CHIPINTELLI_LANGUAGE_EN
+#include <ChipIntelliAudio.h>
+
+ChipIntelliAudio.playVoice("300");   // three hundred
+ChipIntelliAudio.playVoice("-1.5");  // minus one point five
+ChipIntelliAudio.playVoice("0.02");  // zero point zero two
+ChipIntelliAudio.playVoice("0.02", false);  // Queue the complete number
+```
+
+The selector values are `_ZH`, `_EN`, `_JA`, `_KO`, `_RU`, `_ES`, `_TH`, `_DE`,
+`_ID`, `_VI`, `_FR`, `_PT`, `_FA`, `_TR`, and `_AR` with the full
+`CHIPINTELLI_LANGUAGE_` prefix. When the linked program uses the string
+overload, Arduino post-build asks `citool-cli generate` to add the complete
+token inventory for the selected language. No `VOICE300`-style macros are
+needed.
+
+`interruptCurrent` defaults to `true`. Pass `false` to queue the complete
+number after the prompt that is currently playing. The flag only controls how
+the first clip starts; later clips in the composed number always play
+continuously and the complete number emits one completion callback.
+An integer argument retains the original meaning: `playVoice(300)` plays raw
+voice ID 300, while `playVoice("300")` speaks the number three hundred.
+
+The string syntax permits surrounding ASCII whitespace, an optional `+` or
+`-`, and one decimal point. Scientific notation is rejected. Fractional digits
+are spoken individually, including zeroes. Invalid input, an integer part
+larger than `uint32_t`, or a result longer than 24 clips returns `false`.
+Negative textual zero is spoken as zero without a minus token.
+
+The lower-level `NumberVoiceIds` API retains its Mandarin composition rules.
+To use a custom Mandarin ID set, map it and call:
+
+```cpp
+const ChipIntelliAudioClass::NumberVoiceIds numberVoices = {
+    {300, 301, 302, 303, 304, 305, 306, 307, 308, 309},
+    310,  // 十
+    311,  // 百
+    312,  // 千
+    313,  // 万
+    314,  // 亿
+    315,  // 负
+    316,  // 点
+};
+
+ChipIntelliAudio.playNumber(-10010, numberVoices);      // 负一万零一十
+ChipIntelliAudio.playFixedPoint(235, 1, numberVoices);  // 二十三点五
+```
+
+`playFixedPoint()` avoids floating-point formatting: `(235, 1)` means `23.5`,
+while `(2300, 2)` means `23.00`, including the two trailing zero tokens. The
+fractional digit count must be from `0` through `9`.
+
+Use `buildNumberVoiceSequence()` or `buildFixedPointVoiceSequence()` when the
+generated ID sequence must be inspected or adjusted before passing it to
+`playVoiceSequence()`. A sequence contains at most 24 clips. Its optional
+`interruptCurrent` argument only controls how the group starts, and the group
+produces one completion event.
+
+See [`VARIABLE_VOICE_TEXTS.md`](VARIABLE_VOICE_TEXTS.md) for every language's
+exact ID table, composition rules, examples, and clip-production guidance.
 
 ## Volume
 
@@ -212,6 +292,8 @@ failure. The `context` passed to `onFinished()` is forwarded unchanged. Call
 
 - `PlayVoiceId` initializes the player, plays a voice ID, and uses a safe flag
   to handle the playback-completion event.
+- `VariableNumber` composes integer and fixed-point values from reusable audio
+  tokens numbered 300 through 316.
 - `PromptControl` accepts commands from a serial monitor at `115200` baud and
   demonstrates all four prompt lookup modes, stopping playback, checking
   status, and adjusting volume.

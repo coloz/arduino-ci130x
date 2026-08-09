@@ -28,6 +28,10 @@ void setup() {
     Serial.println("Audio/ASR initialization failed or timed out.");
     return;
   }
+  if (!ChipIntelliASR.setWakeWordEnabled(true)) {
+    Serial.println("Failed to enable wake-word mode.");
+    return;
+  }
 
   printProfile();
   if (!ChipIntelliASR.isBargeInEnabled()) {

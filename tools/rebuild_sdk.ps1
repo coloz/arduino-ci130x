@@ -125,6 +125,18 @@ function Write-MultiVariantUserConfig {
             1)
     }
 
+    # Keep both model groups in the image, but start Arduino in group 0 so
+    # sketches receive ordinary commands without a wake word by default.
+    $defaultModelPattern = '(?m)^#define DEFAULT_MODEL_GROUP_ID\s+1[^\r\n]*\r?$'
+    if ([regex]::Matches($content, $defaultModelPattern).Count -ne 1) {
+        throw "Unable to select the Arduino direct-command model in: $Source"
+    }
+    $content = [regex]::Replace(
+        $content,
+        $defaultModelPattern,
+        '#define DEFAULT_MODEL_GROUP_ID          0       //Arduino defaults to direct commands; runtime API can enable wake words.',
+        1)
+
     # Arduino owns UART0 as Serial. Disable the vendor SDK logger so it cannot
     # configure the same peripheral for 921600 baud or block before setup().
     $logUartPattern = '(?m)^#define CONFIG_CI_LOG_UART\s+HAL_UART0_BASE[^\r\n]*\r?$'
@@ -651,6 +663,327 @@ static void prompt_player_unlock(void)
 '@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
     -ExpectedCount 1 `
     -Description "add the post-unlock Arduino prompt hook to $promptPlayerSourcePath"
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue @'
+#include "audio_play_api.h"
+#endif
+
+typedef struct voice_play_info_st
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -NewValue @'
+#include "audio_play_api.h"
+#endif
+
+#if defined(CI_ARDUINO_CORE)
+#define CI_ARDUINO_VOICE_SEQUENCE_COUNT 24
+#define PROMPT_COMBINATION_BUFFER_COUNT CI_ARDUINO_VOICE_SEQUENCE_COUNT
+#else
+#define PROMPT_COMBINATION_BUFFER_COUNT MAX_COMBINATION_COUNT
+#endif
+
+typedef struct voice_play_info_st
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -ExpectedCount 1 `
+    -Description "set the Arduino voice-sequence capacity in $promptPlayerSourcePath"
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue @'
+}voice_play_info_t;
+
+typedef struct prompt_player_st
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -NewValue @'
+#if defined(CI_ARDUINO_CORE)
+    uint8_t voice_sequence_number;
+    uint32_t voice_sequence_list[CI_ARDUINO_VOICE_SEQUENCE_COUNT];
+#endif
+}voice_play_info_t;
+
+typedef struct prompt_player_st
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -ExpectedCount 1 `
+    -Description "store an Arduino voice sequence in each prompt queue item in $promptPlayerSourcePath"
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue '    uint32_t combination_list[MAX_COMBINATION_COUNT];' `
+    -NewValue '    uint32_t combination_list[PROMPT_COMBINATION_BUFFER_COUNT];' `
+    -ExpectedCount 1 `
+    -Description "expand the Arduino prompt combination buffer in $promptPlayerSourcePath"
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue '    int32_t combination_number;' `
+    -NewValue @'
+    int32_t combination_number;
+#if defined(CI_ARDUINO_CORE)
+    bool resolved_voice_sequence = (p_voice_play_info->select_index == -3);
+    if (resolved_voice_sequence)
+    {
+        combination_number = p_voice_play_info->voice_sequence_number;
+    }
+    else
+#endif
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -ExpectedCount 1 `
+    -Description "recognize queued Arduino voice sequences in $promptPlayerSourcePath"
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue @'
+    else
+    {
+        if (combination_number <= MAX_COMBINATION_COUNT)
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -NewValue @'
+    else
+    {
+#if defined(CI_ARDUINO_CORE)
+        if (resolved_voice_sequence &&
+            (combination_number <= PROMPT_COMBINATION_BUFFER_COUNT))
+        {
+            for (int32_t index = 0; index < combination_number; index++)
+            {
+                prompt_player.combination_list[index] =
+                    p_voice_play_info->voice_sequence_list[index];
+            }
+        }
+        else
+#endif
+        if (combination_number <= MAX_COMBINATION_COUNT)
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -ExpectedCount 1 `
+    -Description "copy a queued Arduino voice sequence into the active buffer in $promptPlayerSourcePath"
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue @'
+                return 1;
+            }
+            prompt_player.combination_number = combination_number;
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -NewValue @'
+                return 1;
+            }
+        }
+        else
+        {
+            ci_logerr(CI_LOG_ERROR,"too many combination voice\n");
+            clean_play_queue();
+            return 1;
+        }
+
+        prompt_player.combination_number = combination_number;
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -ExpectedCount 1 `
+    -Description "start both standard and Arduino prompt sequences through the common path in $promptPlayerSourcePath"
+$promptInnerStartBlockOld = @'
+        prompt_player.combination_number = combination_number;
+            prompt_player.combination_index = 0;
+
+            /*audio PA on*/
+            #if (PLAYER_CONTROL_PA)
+            //audio_play_hw_start(ENABLE);
+            audio_play_hw_pa_da_ctl(ENABLE,true);
+            vTaskDelay(pdMS_TO_TICKS(100));
+            #else
+            audio_play_hw_pa_da_ctl(ENABLE,false);
+            #endif
+<TAB><TAB><TAB>#if SIMPLE_AUDIO_PLAYER_ENABLE
+<TAB><TAB><TAB>sap_play(prompt_player.combination_list[prompt_player.combination_index++], combination_callback);
+<TAB><TAB><TAB>#else
+            pause_audio_play_prompt(prompt_player.combination_list[prompt_player.combination_index++], 1, combination_callback);
+<TAB><TAB><TAB>#endif
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n").Replace('<TAB>', "`t")
+$promptInnerStartBlockNew = @'
+        prompt_player.combination_number = combination_number;
+        prompt_player.combination_index = 0;
+
+        /*audio PA on*/
+        #if (PLAYER_CONTROL_PA)
+        //audio_play_hw_start(ENABLE);
+        audio_play_hw_pa_da_ctl(ENABLE,true);
+        vTaskDelay(pdMS_TO_TICKS(100));
+        #else
+        audio_play_hw_pa_da_ctl(ENABLE,false);
+        #endif
+<TAB><TAB>#if SIMPLE_AUDIO_PLAYER_ENABLE
+<TAB><TAB>sap_play(prompt_player.combination_list[prompt_player.combination_index++], combination_callback);
+<TAB><TAB>#else
+        pause_audio_play_prompt(prompt_player.combination_list[prompt_player.combination_index++], 1, combination_callback);
+<TAB><TAB>#endif
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n").Replace('<TAB>', "`t")
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue $promptInnerStartBlockOld `
+    -NewValue $promptInnerStartBlockNew `
+    -ExpectedCount 1 `
+    -Description "align the common prompt-sequence playback block in $promptPlayerSourcePath"
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue @'
+        }
+        else
+        {
+            ci_logerr(CI_LOG_ERROR,"too many combination voice\n");
+            clean_play_queue();
+        }
+    }
+    return 0;
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -NewValue @'
+    }
+    return 0;
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -ExpectedCount 1 `
+    -Description "finish the common prompt-sequence playback path in $promptPlayerSourcePath"
+$promptPlayerSourceContent = Replace-RequiredLiteral `
+    -Content $promptPlayerSourceContent `
+    -OldValue @'
+uint32_t prompt_play_by_voice_id(uint16_t voice_id, play_done_callback_t play_done_callback, bool preemptive)
+{
+    return prompt_play_by_cmd_handle(voice_id, -2, play_done_callback, preemptive);
+}
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -NewValue @'
+uint32_t prompt_play_by_voice_id(uint16_t voice_id, play_done_callback_t play_done_callback, bool preemptive)
+{
+    return prompt_play_by_cmd_handle(voice_id, -2, play_done_callback, preemptive);
+}
+
+#if defined(CI_ARDUINO_CORE)
+/*
+ * Play raw voice IDs as one logical prompt. The vendor multi-command API
+ * cannot accept voice IDs directly and its five-entry request queue is too
+ * short for composed numbers, so the Arduino wrapper stores the complete
+ * resolved list in one queue item. The preemptive flag only controls how the
+ * group starts; clips inside the group never preempt one another. One
+ * completion callback is emitted for the complete group.
+ */
+uint32_t ci_arduino_prompt_play_voice_sequence(
+            const uint16_t *voice_ids,
+            uint8_t number,
+            play_done_callback_t play_done_callback,
+            bool preemptive)
+{
+    uint32_t ret = 1;
+    if (prompt_player.semaphore == NULL)
+    {
+        prompt_player.semaphore = xSemaphoreCreateMutex();
+    }
+    if (prompt_player.semaphore)
+    {
+        xSemaphoreTake(prompt_player.semaphore, portMAX_DELAY);
+    }
+    if (!prompt_player.play_queue)
+    {
+        prompt_player.play_queue = xQueueCreate(5, sizeof(voice_play_info_t));
+    }
+
+    if ((!prompt_player.play_queue) || (!prompt_player.enabled_flag) ||
+        (voice_ids == NULL) || (number == 0) ||
+        (number > CI_ARDUINO_VOICE_SEQUENCE_COUNT))
+    {
+        if (play_done_callback)
+        {
+            play_done_callback(0);
+        }
+        prompt_player_unlock();
+        return ret;
+    }
+
+    voice_play_info_t voice_play_info;
+    voice_play_info.cmd_handle = 0;
+    voice_play_info.start_index = 0;
+    voice_play_info.end_index = 0;
+    voice_play_info.select_index = -3;
+    voice_play_info.play_done_callback = play_done_callback;
+    voice_play_info.voice_sequence_number = number;
+    if (get_voice_addr_by_id((uint16_t *)voice_ids,
+                             voice_play_info.voice_sequence_list,
+                             number) != 0)
+    {
+        if (play_done_callback)
+        {
+            play_done_callback(0);
+        }
+        prompt_player_unlock();
+        return ret;
+    }
+
+    if ((prompt_player.combination_number > 0) && preemptive)
+    {
+#if SIMPLE_AUDIO_PLAYER_ENABLE
+        sap_stop();
+#else
+        if (RETURN_ERR == pause_play(NULL, NULL))
+        {
+            vTaskDelay(1);
+            pause_play(NULL, NULL);
+        }
+#endif
+        prompt_player_unlock();
+
+        int timeout = 2000;
+        while ((prompt_player.combination_number > 0) && (timeout > 0))
+        {
+            timeout--;
+            vTaskDelay(1);
+        }
+        if (prompt_player.semaphore)
+        {
+            xSemaphoreTake(prompt_player.semaphore, portMAX_DELAY);
+        }
+        if ((prompt_player.combination_number > 0) ||
+            (!prompt_player.enabled_flag))
+        {
+            if (play_done_callback)
+            {
+                play_done_callback(0);
+            }
+            prompt_player_unlock();
+            return ret;
+        }
+    }
+
+    ret = voice_play_info_add_to_queue(&voice_play_info);
+    if (ret != 0)
+    {
+        if (play_done_callback)
+        {
+            play_done_callback(0);
+        }
+        prompt_player_unlock();
+        return ret;
+    }
+
+#if ONE_SHOT_ENABLE
+    uint32_t rst = cmd_info_is_wakeup_word(voice_play_info.cmd_handle);
+    pause_asr(!rst, !rst);
+#elif USE_AEC_MODULE
+    if (CI_SS_CWSL_AEC_MUTE_ON == ciss_get(CI_SS_CWSL_AEC_MUTE_STATE))
+    {
+        pause_asr(1, 1);
+    }
+    else
+    {
+        pause_asr(0, 0);
+    }
+#else
+    pause_asr(1, 1);
+#endif
+    if (preemptive || prompt_player.combination_number <= 0)
+    {
+        if (prompt_play_inner(&voice_play_info, false) != 0)
+        {
+            resume_asr();
+        }
+    }
+
+    prompt_player_unlock();
+    return 0;
+}
+#endif
+'@.TrimEnd("`r", "`n").Replace("`r`n", "`n") `
+    -ExpectedCount 1 `
+    -Description "add raw voice-sequence playback to $promptPlayerSourcePath"
 $promptPlayerSourceContent = $promptPlayerSourceContent.Replace("`r`n", "`n").Replace("`n", "`r`n")
 [IO.File]::WriteAllText($promptPlayerSourcePath, $promptPlayerSourceContent, [Text.UTF8Encoding]::new($false))
 
@@ -718,6 +1051,8 @@ static volatile uint32_t s_arduino_cmd_info_message_count = 0;
 static volatile uint32_t s_arduino_audio_started_message_count = 0;
 static volatile uint32_t s_arduino_asr_status_count[6] = {0};
 static volatile bool s_arduino_timeout_pending = false;
+/* Arduino starts in direct-command mode; sketches opt into wake-word gating. */
+static volatile bool s_arduino_wake_word_enabled = false;
 
 uint32_t ci_arduino_sys_message_count(void)
 {
@@ -754,6 +1089,45 @@ uint32_t ci_arduino_asr_status_count(uint32_t status)
     -Description "declare Arduino SDK readiness reporting in $systemMessageSourcePath"
 $systemMessageSourceContent = Replace-RequiredLiteral `
     -Content $systemMessageSourceContent `
+    -OldValue @'
+    xTimerStop(exit_wakeup_timer,0);
+    xTimerChangePeriod(exit_wakeup_timer,pdMS_TO_TICKS(exit_wakup_ms),0);/*or used a new timer*/
+'@.TrimEnd("`r", "`n") `
+    -NewValue @'
+    xTimerStop(exit_wakeup_timer,0);
+#if defined(CI_ARDUINO_CORE)
+    if (!s_arduino_wake_word_enabled)
+    {
+        /* Direct-command mode remains awake until wake-word gating is enabled. */
+        return;
+    }
+#endif
+    xTimerChangePeriod(exit_wakeup_timer,pdMS_TO_TICKS(exit_wakup_ms),0);/*or used a new timer*/
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "keep Arduino direct-command mode awake in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue @'
+void exit_wakeup_timer_callback(TimerHandle_t xTimer)
+{
+    #if USE_CWSL
+'@.TrimEnd("`r", "`n") `
+    -NewValue @'
+void exit_wakeup_timer_callback(TimerHandle_t xTimer)
+{
+#if defined(CI_ARDUINO_CORE)
+    if (!s_arduino_wake_word_enabled)
+    {
+        return;
+    }
+#endif
+    #if USE_CWSL
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "ignore the Arduino wake timer in direct-command mode in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
     -OldValue '    set_state_exit_wakeup();' `
     -NewValue @'
     set_state_exit_wakeup();
@@ -778,6 +1152,16 @@ $systemMessageSourceContent = Replace-RequiredLiteral `
         }
 '@.TrimEnd("`r", "`n") `
     -NewValue @'
+        #if defined(CI_ARDUINO_CORE)
+        if (!s_arduino_wake_word_enabled)
+        {
+            s_arduino_timeout_pending = false;
+            #if USE_CWSL
+            ciss_set(CI_SS_START_SLEEP_PROCESS, 0);
+            #endif
+        }
+        else
+        #endif
         if(ignore_exit_wakeup == 0)
         {
             /*change asr wakeup word*/
@@ -797,13 +1181,77 @@ $systemMessageSourceContent = Replace-RequiredLiteral `
     -OldValue '            exit_wakeup_deal(1);' `
     -NewValue @'
             #if defined(CI_ARDUINO_CORE)
-            s_arduino_timeout_pending =
-                (SYS_STATE_WAKEUP == get_wakeup_state());
+            if (!s_arduino_wake_word_enabled)
+            {
+                s_arduino_timeout_pending = false;
+                #if USE_CWSL
+                ciss_set(CI_SS_START_SLEEP_PROCESS, 0);
+                #endif
+            }
+            else
             #endif
-            exit_wakeup_deal(1);
+            {
+            #if defined(CI_ARDUINO_CORE)
+                s_arduino_timeout_pending =
+                    (SYS_STATE_WAKEUP == get_wakeup_state());
+            #endif
+                exit_wakeup_deal(1);
+            }
 '@.TrimEnd("`r", "`n") `
     -ExpectedCount 1 `
     -Description "mark timer-driven Arduino ASR timeout events in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue @'
+    else if (MSG_CMD_INFO_STATUS_ENABLE_PROCESS_ASR == cmd_info_msg->cmd_info_status)
+    {
+        if (ignore_asr_msg > 0)
+        {
+            ignore_asr_msg--;
+        }
+    }
+}
+'@.TrimEnd("`r", "`n") `
+    -NewValue @'
+    else if (MSG_CMD_INFO_STATUS_ENABLE_PROCESS_ASR == cmd_info_msg->cmd_info_status)
+    {
+        if (ignore_asr_msg > 0)
+        {
+            ignore_asr_msg--;
+        }
+    }
+#if defined(CI_ARDUINO_CORE)
+    else if (MSG_CMD_INFO_STATUS_ARDUINO_ENABLE_WAKE_WORD ==
+             cmd_info_msg->cmd_info_status)
+    {
+        if (!s_arduino_wake_word_enabled)
+        {
+            s_arduino_wake_word_enabled = true;
+            s_arduino_timeout_pending = false;
+            /* Wait for an in-flight ASR result before entering wake-only mode. */
+            exit_wakeup_deal(1);
+        }
+    }
+    else if (MSG_CMD_INFO_STATUS_ARDUINO_DISABLE_WAKE_WORD ==
+             cmd_info_msg->cmd_info_status)
+    {
+        if (s_arduino_wake_word_enabled)
+        {
+            s_arduino_wake_word_enabled = false;
+            s_arduino_timeout_pending = false;
+            sys_manage_data.user_msg_state = USERSTATE_WAIT_MSG;
+            #if USE_CWSL
+            ciss_set(CI_SS_START_SLEEP_PROCESS, 0);
+            #endif
+            change_asr_normal_word();
+            set_state_enter_wakeup(EXIT_WAKEUP_TIME);
+        }
+    }
+#endif
+}
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "add the Arduino wake-word runtime switch in $systemMessageSourcePath"
 $audioReadyPattern = '(?ms)(\s*#if !UART_BAUDRATE_CALIBRATE\r?\n\s*\{\r?\n\s*sys_power_on_hook\(\);\r?\n\s*\}\r?\n\s*#endif)(\r?\n\s*break;\r?\n\s*\}\r?\n\s*default:)'
 $audioReadyMatches = [regex]::Matches($systemMessageSourceContent, $audioReadyPattern)
 if ($audioReadyMatches.Count -ne 1) {
@@ -880,6 +1328,72 @@ $systemMessageSourceContent = Replace-RequiredLiteral `
 '@.TrimEnd("`r", "`n") `
     -ExpectedCount 1 `
     -Description "count Arduino audio-start messages in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue @'
+    #if (USE_BEAMFORMING_MODULE && USE_AEC_MODULE)
+    sys_manage_data.wakeup_state = SYS_STATE_WAKEUP;//SYS_STATE_UNWAKEUP;
+    #else
+    sys_manage_data.wakeup_state = SYS_STATE_UNWAKEUP;
+    #endif
+'@.TrimEnd("`r", "`n") `
+    -NewValue @'
+    #if defined(CI_ARDUINO_CORE)
+    sys_manage_data.wakeup_state = SYS_STATE_WAKEUP;
+    #elif (USE_BEAMFORMING_MODULE && USE_AEC_MODULE)
+    sys_manage_data.wakeup_state = SYS_STATE_WAKEUP;//SYS_STATE_UNWAKEUP;
+    #else
+    sys_manage_data.wakeup_state = SYS_STATE_UNWAKEUP;
+    #endif
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "start Arduino in direct-command state in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue @'
+    #if (USE_BEAMFORMING_MODULE && USE_AEC_MODULE)
+    ciss_set(CI_SS_WAKING_UP_STATE,CI_SS_WAKEUPED);
+    ciss_set(CI_SS_WAKING_UP_STATE_FOR_SSP,CI_SS_WAKEUPED);
+    #else
+    ciss_set(CI_SS_WAKING_UP_STATE,CI_SS_NO_WAKEUP);
+    ciss_set(CI_SS_WAKING_UP_STATE_FOR_SSP,CI_SS_NO_WAKEUP);
+    #endif
+'@.TrimEnd("`r", "`n") `
+    -NewValue @'
+    #if defined(CI_ARDUINO_CORE)
+    ciss_set(CI_SS_WAKING_UP_STATE,CI_SS_WAKEUPED);
+    ciss_set(CI_SS_WAKING_UP_STATE_FOR_SSP,CI_SS_WAKEUPED);
+    #elif (USE_BEAMFORMING_MODULE && USE_AEC_MODULE)
+    ciss_set(CI_SS_WAKING_UP_STATE,CI_SS_WAKEUPED);
+    ciss_set(CI_SS_WAKING_UP_STATE_FOR_SSP,CI_SS_WAKEUPED);
+    #else
+    ciss_set(CI_SS_WAKING_UP_STATE,CI_SS_NO_WAKEUP);
+    ciss_set(CI_SS_WAKING_UP_STATE_FOR_SSP,CI_SS_NO_WAKEUP);
+    #endif
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "publish Arduino's initial direct-command state in $systemMessageSourcePath"
+$systemMessageSourceContent = Replace-RequiredLiteral `
+    -Content $systemMessageSourceContent `
+    -OldValue @'
+                case SYS_STATE_WAKUP_TIMEOUT:
+                {
+                    if(SYS_STATE_ASR_IDLE == get_asr_state())
+'@.TrimEnd("`r", "`n") `
+    -NewValue @'
+                case SYS_STATE_WAKUP_TIMEOUT:
+                {
+#if defined(CI_ARDUINO_CORE)
+                    if (!s_arduino_wake_word_enabled)
+                    {
+                        sys_manage_data.user_msg_state = USERSTATE_WAIT_MSG;
+                        break;
+                    }
+#endif
+                    if(SYS_STATE_ASR_IDLE == get_asr_state())
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "cancel delayed wake-only transitions in Arduino direct-command mode in $systemMessageSourcePath"
 $systemMessageSourceContent = $systemMessageSourceContent.Replace("`r`n", "`n").Replace("`n", "`r`n")
 [IO.File]::WriteAllText($systemMessageSourcePath, $systemMessageSourceContent, [Text.UTF8Encoding]::new($false))
 
@@ -1186,6 +1700,20 @@ foreach ($systemMessageHeaderPath in @(
         -NewValue 'BaseType_t sys_msg_task_initial(void);' `
         -ExpectedCount 1 `
         -Description "update the system-message initializer declaration in $systemMessageHeaderPath"
+    $wakeControlMessagePattern = '(?m)^(?<wake>\s*MSG_CMD_INFO_STATUS_POST_CHANGE_ASR_WAKEUP_WORD,\s*)\r?\n(?<normal>\s*MSG_CMD_INFO_STATUS_POST_CHANGE_ASR_NORMAL_WORD,\s*)$'
+    if ([regex]::Matches($systemMessageHeaderContent, $wakeControlMessagePattern).Count -ne 1) {
+        throw "Unable to declare Arduino wake-word control messages in: $systemMessageHeaderPath"
+    }
+    $systemMessageHeaderContent = [regex]::Replace(
+        $systemMessageHeaderContent,
+        $wakeControlMessagePattern,
+        @'
+    MSG_CMD_INFO_STATUS_POST_CHANGE_ASR_WAKEUP_WORD,
+    MSG_CMD_INFO_STATUS_POST_CHANGE_ASR_NORMAL_WORD,
+    MSG_CMD_INFO_STATUS_ARDUINO_ENABLE_WAKE_WORD,
+    MSG_CMD_INFO_STATUS_ARDUINO_DISABLE_WAKE_WORD,
+'@.TrimEnd("`r", "`n"),
+        1)
     $systemMessageHeaderContent = $systemMessageHeaderContent.Replace("`r`n", "`n").Replace("`n", "`r`n")
     [IO.File]::WriteAllText($systemMessageHeaderPath, $systemMessageHeaderContent, [Text.UTF8Encoding]::new($false))
 }

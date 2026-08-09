@@ -1,6 +1,12 @@
 ChipIntelliAudio	KEYWORD1
 ChipIntelliAudioClass	KEYWORD1
+NumberVoiceIds	KEYWORD1
 playVoice	KEYWORD2
+playVoiceSequence	KEYWORD2
+buildNumberVoiceSequence	KEYWORD2
+buildFixedPointVoiceSequence	KEYWORD2
+playNumber	KEYWORD2
+playFixedPoint	KEYWORD2
 playBeep	KEYWORD2
 playCommand	KEYWORD2
 playSemantic	KEYWORD2

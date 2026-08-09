@@ -200,6 +200,7 @@ void chipintelli_asr_set_event_callback(chipintelli_asr_event_callback_t callbac
                                         void *arg);
 bool chipintelli_asr_is_awake(void);
 bool chipintelli_asr_keep_awake_for(uint32_t timeout_ms);
+bool chipintelli_asr_set_wake_word_enabled(bool enabled);
 #endif
 
 #ifndef CHIPINTELLI_CWSL_CORE_HOOK_TYPES

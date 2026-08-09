@@ -53,11 +53,15 @@ Arduino package 的对应 profile 补齐。
 链接完成后先生成双核 `user_code.bin`，再由 `citool-cli compose` 合成完整固件并执行
 `inspect`；Arduino 上传阶段使用 `citool-cli flash` 从 Flash 地址 0 烧录该完整固件。
 `citool-cli` 内置 CI130X FW_V2 Bootloader，合成时不再依赖完整固件模板。
-如果主 `.ino` 文件中存在 `COMMAND<n>`、`VOICE<n>` 或 `VOICEMP3<n>` 宏，post-build
+如果主 `.ino` 文件中存在 `WAKEWORD<n>`、`COMMAND<n>`、`VOICE<n>` 或 `VOICEMP3<n>` 宏，post-build
 会先自动运行 `citool-cli generate`，通过默认的 `https://gen.yiyu.pro/ci` 按需生成或复用
-资源：存在 `COMMAND<n>` 时请求 ASR，存在 `VOICE<n>` 时请求 TTS，两类宏互不依赖；仅一条
-`COMMAND<n>` 的纯唤醒词配置也有效。生成文件只写入构建暂存目录，不覆盖 sketch 中的
-`recursos/`；没有这些宏时保持原有 sketch 资源流程。缓存保存在操作系统的用户缓存目录，
+资源：引入 `ChipIntelliASR.h` 后才处理 `WAKEWORD<n>`、`COMMAND<n>` 并请求 ASR；引入
+`ChipIntelliAudio.h` 后才处理 `VOICE<n>`、`VOICEMP3<n>` 并按需请求 TTS，两类宏互不依赖；
+`WAKEWORD<n>` 可显式定义多个唤醒词。没有 `WAKEWORD<n>` 的旧项目仍把第一条
+`COMMAND<n>` 作为唤醒词。生成文件只写入构建暂存目录，不覆盖 sketch 中的
+`recursos/`。如果最终 ELF 使用了 `ChipIntelliAudio.playVoice(String)`，即使源码中没有资源宏，
+post-build 也会自动在 TTS 请求中加入 ID 300～316 的中文数字基础词元；程序无需显示声明这些宏。
+既没有资源宏也没有使用字符串数字播报时，保持原有 sketch 资源流程。缓存保存在操作系统的用户缓存目录，
 因此 Arduino 清理临时构建目录后仍可复用相同请求。
 Arduino CLI 可用 `--build-property build.ci_service_url=https://...` 覆盖服务地址。
 它不是全部 CI13XX 型号、开发板和算法组合的通用实现。

@@ -1,7 +1,33 @@
 #pragma once
 
 #include <Arduino.h>
+#include <stddef.h>
 #include <stdint.h>
+
+#define CHIPINTELLI_LANGUAGE_ZH 0
+#define CHIPINTELLI_LANGUAGE_EN 1
+#define CHIPINTELLI_LANGUAGE_JA 2
+#define CHIPINTELLI_LANGUAGE_KO 3
+#define CHIPINTELLI_LANGUAGE_RU 4
+#define CHIPINTELLI_LANGUAGE_ES 5
+#define CHIPINTELLI_LANGUAGE_TH 6
+#define CHIPINTELLI_LANGUAGE_DE 7
+#define CHIPINTELLI_LANGUAGE_ID 8
+#define CHIPINTELLI_LANGUAGE_VI 9
+#define CHIPINTELLI_LANGUAGE_FR 10
+#define CHIPINTELLI_LANGUAGE_PT 11
+#define CHIPINTELLI_LANGUAGE_FA 12
+#define CHIPINTELLI_LANGUAGE_TR 13
+#define CHIPINTELLI_LANGUAGE_AR 14
+
+#ifndef CHIPINTELLI_LANGUAGE
+#define CHIPINTELLI_LANGUAGE CHIPINTELLI_LANGUAGE_ZH
+#endif
+
+#if CHIPINTELLI_LANGUAGE < CHIPINTELLI_LANGUAGE_ZH || \
+    CHIPINTELLI_LANGUAGE > CHIPINTELLI_LANGUAGE_AR
+#error "Unsupported CHIPINTELLI_LANGUAGE value"
+#endif
 
 extern "C" void chipintelli_sdk_prompt_unlocked(void);
 
@@ -10,6 +36,41 @@ class ChipIntelliAudioFactory;
 class ChipIntelliAudioClass {
 public:
   using FinishedCallback = void (*)(void *context);
+
+  enum class NumberLanguage : uint8_t {
+    Chinese = CHIPINTELLI_LANGUAGE_ZH,
+    English = CHIPINTELLI_LANGUAGE_EN,
+    Japanese = CHIPINTELLI_LANGUAGE_JA,
+    Korean = CHIPINTELLI_LANGUAGE_KO,
+    Russian = CHIPINTELLI_LANGUAGE_RU,
+    Spanish = CHIPINTELLI_LANGUAGE_ES,
+    Thai = CHIPINTELLI_LANGUAGE_TH,
+    German = CHIPINTELLI_LANGUAGE_DE,
+    Indonesian = CHIPINTELLI_LANGUAGE_ID,
+    Vietnamese = CHIPINTELLI_LANGUAGE_VI,
+    French = CHIPINTELLI_LANGUAGE_FR,
+    Portuguese = CHIPINTELLI_LANGUAGE_PT,
+    Persian = CHIPINTELLI_LANGUAGE_FA,
+    Turkish = CHIPINTELLI_LANGUAGE_TR,
+    Arabic = CHIPINTELLI_LANGUAGE_AR,
+  };
+
+  // Voice IDs for the reusable Mandarin number tokens in voice.bin.
+  // digits[0] through digits[9] are 零 through 九.
+  struct NumberVoiceIds {
+    uint16_t digits[10];
+    uint16_t ten;
+    uint16_t hundred;
+    uint16_t thousand;
+    uint16_t tenThousand;
+    uint16_t hundredMillion;
+    uint16_t negative;
+    uint16_t decimalPoint;
+  };
+
+  // The Arduino SDK extension plays these IDs as one logical prompt and
+  // delivers one completion callback for the complete sequence.
+  static constexpr size_t kMaxVoiceSequenceLength = 24U;
 
   ChipIntelliAudioClass(const ChipIntelliAudioClass &) = delete;
   ChipIntelliAudioClass &operator=(const ChipIntelliAudioClass &) = delete;
@@ -28,6 +89,67 @@ public:
    * @note 返回 true 只表示请求已接受，不保证资源存在或最终播放成功。
    */
   bool playVoice(uint16_t voiceId, bool interruptCurrent = true);
+
+  /**
+   * @brief Parse and play a localized decimal number using voice IDs from 300.
+   *
+   * Accepts an optional leading sign, an optional decimal point, and ASCII
+   * whitespace around the value. Examples: "300", "-1.5", and "0.02".
+   * The integer part must fit uint32_t and the composed prompt must not exceed
+   * kMaxVoiceSequenceLength. Scientific notation is not accepted.
+   * @param numberText Decimal number to parse and speak.
+   * @param interruptCurrent Whether to interrupt the prompt that is playing.
+   *        This only affects the start of the composed number; all subsequent
+   *        clips in that number play continuously.
+   * @return true when the SDK accepts the complete number sequence.
+   */
+  bool playVoice(const String &numberText, bool interruptCurrent = true) {
+    return playLocalizedNumber(
+        numberText,
+        static_cast<NumberLanguage>(CHIPINTELLI_LANGUAGE),
+        interruptCurrent);
+  }
+
+  /**
+   * @brief Play a copied sequence of voice IDs as one uninterrupted prompt.
+   * @param voiceIds Voice IDs from the current voice.bin.
+   * @param count Number of IDs; valid range is 1..kMaxVoiceSequenceLength.
+   * @param interruptCurrent Whether to interrupt the prompt that is playing.
+   *        This only controls how the complete sequence starts; clips inside
+   *        the sequence are always played continuously.
+   * @return true when the SDK accepts the complete sequence.
+   * @note Emits one finished callback after the whole sequence is processed.
+   */
+  bool playVoiceSequence(const uint16_t *voiceIds, size_t count,
+                         bool interruptCurrent = true);
+
+  /**
+   * Build the Mandarin reading of a signed 32-bit integer as voice IDs.
+   * Returns the ID count, or zero when output is null or capacity is too small.
+   */
+  size_t buildNumberVoiceSequence(int32_t value,
+                                  const NumberVoiceIds &voiceIds,
+                                  uint16_t *output,
+                                  size_t capacity) const;
+
+  /**
+   * Build a fixed-point Mandarin number. For example, value=235 and
+   * fractionalDigits=1 produces 二十三点五. Trailing fractional zeroes are
+   * preserved. fractionalDigits must be in the range 0..9. Returns zero for
+   * invalid arguments or an undersized output buffer.
+   */
+  size_t buildFixedPointVoiceSequence(int32_t value,
+                                      uint8_t fractionalDigits,
+                                      const NumberVoiceIds &voiceIds,
+                                      uint16_t *output,
+                                      size_t capacity) const;
+
+  /** Build and play a signed integer using the supplied reusable tokens. */
+  bool playNumber(int32_t value, const NumberVoiceIds &voiceIds);
+
+  /** Build and play a deterministic fixed-point value. */
+  bool playFixedPoint(int32_t value, uint8_t fractionalDigits,
+                      const NumberVoiceIds &voiceIds);
 
   /**
    * @brief 连续播放资源包内置的“滴”提示音。
@@ -106,6 +228,9 @@ private:
   static void sdkPlaybackFinished(void *commandHandle);
   void dispatchFinishedCallbacks();
   bool hasFinishedCallback() const;
+  bool playLocalizedNumber(const String &numberText,
+                           NumberLanguage language,
+                           bool interruptCurrent);
 
   FinishedCallback _finishedCallback;
   void *_finishedContext;

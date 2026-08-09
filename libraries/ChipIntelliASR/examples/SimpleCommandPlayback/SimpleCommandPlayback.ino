@@ -45,6 +45,10 @@ void setup() {
     Serial.println("Audio/ASR initialization failed");
     return;
   }
+  if (!ChipIntelliASR.setWakeWordEnabled(true)) {
+    Serial.println("Failed to enable wake-word mode");
+    return;
+  }
 
   ready = true;
   Serial.println("Say \"小智小智\", then \"打开空调\".");

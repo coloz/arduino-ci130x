@@ -6,6 +6,9 @@
 用户在播报过程中说出资源内的唤醒词或命令词，示例打印识别结果，并用该命令关联的
 提示音立即打断测试音。
 
+示例在初始化后调用 `setWakeWordEnabled(true)`，以便从默认免唤醒模式切换到
+唤醒词门控模式。
+
 该示例应选择 **Standard Offline ASR + AEC / Barge-in** 或
 **CWSL Command-Word Learning + AEC / Barge-in** 算法配置。
 没有 AEC 参考回采线路的硬件不能完成真实的播报中识别测试。

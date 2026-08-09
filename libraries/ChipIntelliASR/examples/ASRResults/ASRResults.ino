@@ -60,7 +60,7 @@ void setup() {
   Serial.print(ChipIntelliASR.handlerCount());
   Serial.print('/');
   Serial.println(ChipIntelliASR.handlerCapacity());
-  Serial.println("Say \"小智小智\", then \"打开空调\" or \"关闭空调\".");
+  Serial.println("Say \"打开空调\" or \"关闭空调\" directly.");
 }
 
 void loop() {

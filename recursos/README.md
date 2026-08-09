@@ -25,14 +25,20 @@ Arduino menu still selects different compile flags, linker scripts and
 second-core images. AEC is therefore a build-profile choice and does not need a
 separate ASR/DNN/Voice/UserFile resource set.
 
-When the primary Arduino source contains `COMMAND<n>`, `VOICE<n>` or
-`VOICEMP3<n>` definitions, the post-build hook copies the selected profile into
+When the primary Arduino source contains `WAKEWORD<n>`, `COMMAND<n>`, `VOICE<n>`
+or `VOICEMP3<n>` definitions, the post-build hook copies the selected profile into
 the build staging directory and runs `citool-cli generate`. Generated ASR/TTS
 files replace that staging copy before firmware composition; sketch-local files
-remain untouched. ASR is requested only when `COMMAND<n>` exists, and TTS is
-requested only when `VOICE<n>` exists. A single `COMMAND<n>` is a valid
-wake-word-only configuration. The CLI's verified user cache allows identical
+remain untouched. ASR is requested when `WAKEWORD<n>` or `COMMAND<n>` exists,
+and TTS is requested only when `VOICE<n>` exists. Multiple `WAKEWORD<n>` macros
+define multiple fixed wake words. Without explicit wake-word macros, a single
+`COMMAND<n>` remains a valid legacy wake-word-only configuration. The CLI's verified user cache allows identical
 requests to be reused across Arduino build-directory cleanups.
+
+The post-build hook also detects the linked `ChipIntelliAudio.playVoice(String)`
+overload. In that case it runs generation even without resource macros and asks
+the CLI to add the built-in Mandarin number clips at IDs 300 through 316 to the
+TTS request.
 
 When the package first copies a complete profile set into a sketch, it also
 writes `.chipintelli-package-resources.json`. A later package can upgrade that

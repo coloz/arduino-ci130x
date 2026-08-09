@@ -263,10 +263,11 @@ jobs:
           - CI1306 与 CI-D06GT01D 提供英文 `Microphone Input` 菜单，可选择模拟/PDM 数字单麦或双麦；前者默认模拟单麦，后者默认模拟双麦。
           - 集成 `citool-cli` 1.2.1：读取 Aily `access_token` 完成用户认证，并将生成缓存统一放入 aily-builder 的跨平台缓存目录。
           - 未登录或认证失败时显示明确警告并继续使用现有资源，不再中断或卡住 Arduino 后续构建。
+          - 烧录进度统一输出 `Erasing`、`Programming`、`Verifying` 与 `Finished` 阶段，兼容 aily-builder 的进度解析，更新代理阶段不再提前显示 100%。
 
           ## 验证
 
-          - `citool-cli` 锁定依赖单元测试 45 项、认证集成测试 3 项全部通过，Clippy 无警告。
+          - `citool-cli` 锁定依赖单元测试 46 项、认证集成测试 3 项全部通过，Clippy 无警告。
           - CI-D06GT01D/CI1306 的默认配置、模拟单双麦、PDM 数字单双麦及非法 AEC 组合防护均已完成编译验证。
           - 已使用 Arduino IDE 安装目录内的 `citool-cli` 验证缺少 token 的完整编译与固件合成流程。
           EOF

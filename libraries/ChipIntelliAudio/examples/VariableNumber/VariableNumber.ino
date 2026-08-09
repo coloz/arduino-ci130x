@@ -1,0 +1,58 @@
+#define CHIPINTELLI_LANGUAGE CHIPINTELLI_LANGUAGE_ZH
+#include <ChipIntelliAudio.h>
+
+namespace {
+volatile bool playbackFinished = false;
+uint8_t nextNumber = 0;
+
+void onPlaybackFinished(void *) {
+  // Keep the SDK callback short. Start the next prompt from loop().
+  playbackFinished = true;
+}
+
+void playNextNumber() {
+  bool accepted = false;
+  switch (nextNumber++) {
+    case 0:
+      Serial.println("Playing 300: 三百");
+      accepted = ChipIntelliAudio.playVoice("300");
+      break;
+    case 1:
+      Serial.println("Playing -1.5: 负一点五");
+      accepted = ChipIntelliAudio.playVoice("-1.5");
+      break;
+    case 2:
+      Serial.println("Playing 0.02: 零点零二");
+      accepted = ChipIntelliAudio.playVoice("0.02");
+      break;
+    default:
+      Serial.println("All variable-number prompts finished");
+      return;
+  }
+
+  if (!accepted) {
+    Serial.println("Variable prompt request failed");
+    playbackFinished = true;
+  }
+}
+}  // namespace
+
+void setup() {
+  Serial.begin(115200);
+  if (!ChipIntelliAudio.begin()) {
+    Serial.println("Audio initialization failed");
+    return;
+  }
+
+  ChipIntelliAudio.onFinished(onPlaybackFinished);
+  playNextNumber();
+}
+
+void loop() {
+  if (playbackFinished) {
+    playbackFinished = false;
+    delay(500);  // Make the three spoken values easier to distinguish.
+    playNextNumber();
+  }
+  delay(1);
+}
