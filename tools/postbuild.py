@@ -17,12 +17,10 @@ from pathlib import Path
 
 def run_command(args, description="Command"):
     """Run a command and check for errors."""
-    print(f"Running: {' '.join(args)}")
-    result = subprocess.run(args, capture_output=True, text=True)
-    if result.stdout:
-        print(result.stdout)
-    if result.stderr:
-        print(result.stderr, file=sys.stderr)
+    print(f"Running: {' '.join(args)}", flush=True)
+    # Inherit the post-build streams so long-running tools (notably
+    # citool-cli generate) can report progress to Aily Builder in real time.
+    result = subprocess.run(args)
     if result.returncode != 0:
         raise RuntimeError(f"{description} failed with exit code {result.returncode}")
     return result
