@@ -1,10 +1,14 @@
 # VariableNumber
 
-本示例通过 `CHIPINTELLI_LANGUAGE` 选择中文，使用 ID 300～316 预生成
-17 个中文数字基础词元，再依次调用
-`playVoice("300")`、`playVoice("-1.5")` 和 `playVoice("0.02")`，分别播报
-“三百”“负一点五”和“零点零二”。示例等待一次播放完成后才从 `loop()` 发起下一次播放，
-避免后一条提示音中断前一条。
+本示例通过 `CHIPINTELLI_LANGUAGE` 选择中文，使用从 ID 300 开始的数字基础词元，
+把 `int16_t` 数值 `300`、`double` 数值 `3.1415926` 和 `float` 数值 `-123.5`
+连续转换为字符串，再用 `playVoice(..., false)` 一次性加入有序播放队列。
+`ChipIntelliAudio` 的 FreeRTOS 任务会完整播放一个数值后再播放下一个，`loop()`
+无需等待，仍可继续处理主程序逻辑。
+
+`String(float/double)` 默认只保留两位小数；示例用 `String(piValue, 7)` 和
+`String(negativeValue, 1)` 显式指定需要播报的小数位。若把小数变量错误声明成
+`int16_t`，赋值时小数部分就已经丢失，之后 `String()` 无法恢复。
 
 语言宏必须位于 `#include <ChipIntelliAudio.h>` 之前。可选值为 `_ZH`、`_EN`、`_JA`、
 `_KO`、`_RU`、`_ES`、`_TH`、`_DE`、`_ID`、`_VI`、`_FR`、`_PT`、`_FA`、`_TR`、

@@ -74,11 +74,10 @@ You do not need to call `ChipIntelliASR.begin()` just to play audio.
 
 ### `void end()`
 
-`end()` clears the playback-completion callback, submits a stop request, and
+`end()` clears the playback-completion callback, enqueues a stop request, and
 returns this library to the uninitialized state. It does not shut down the
 underlying SDK shared with other ChipIntelli libraries. Call `begin()` again
-before playing another prompt. As with `stop()`, the SDK does not report whether
-playback reached idle before its bounded wait expired.
+before playing another prompt.
 
 ## Audio Resources and IDs
 
@@ -107,22 +106,24 @@ example and is not guaranteed to exist in every custom resource package.
 | `playCommand(commandId, optionIndex, interruptCurrent)` | Play the prompt associated with a command ID |
 | `playCommand(commandText, optionIndex, interruptCurrent)` | Look up a configured command by text and play its prompt |
 | `playSemantic(semanticId, optionIndex, interruptCurrent)` | Play the prompt associated with a 32-bit semantic ID |
-| `stop()` | Submit a stop request; treated as already stopped if uninitialized |
-| `isPlaying()` | Return `true` while a prompt is playing |
+| `stop()` | Enqueue a stop request; treated as already stopped if uninitialized |
+| `isPlaying()` | Return `true` while playback is active or requests are queued |
 | `isReady()` | Return whether `begin()` completed successfully |
 | `setMuted()`, `mute()`, `unmute()` | Mute or restore the previously requested volume |
 | `isMuted()` | Return the wrapper's current mute state |
 
-A `true` return value from any `play...()` method only means that the SDK's
-outer prompt layer accepted the request; it does not prove that resource
-lookup or playback later succeeded. The method returns `false` for arguments
-that this wrapper can reject, when the library is not initialized, or when the
-SDK rejects the request immediately. `stop()` likewise cannot report whether
-the SDK reached idle before its internal bounded wait expired.
+A `true` return value from any `play...()` method means that the library's
+FreeRTOS playback queue copied the request. Resource lookup and playback happen
+later in the playback task, so `true` does not prove that they will succeed.
+The method returns `false` for invalid arguments, an uninitialized library, or
+a full queue. Playback calls and `stop()` never wait for the SDK player.
 
-`interruptCurrent` defaults to `true`, which interrupts the current prompt
-before playing the new one. Pass `false` to add the request to the SDK prompt
-queue:
+`interruptCurrent` defaults to `true`, which puts the request on the
+high-priority interrupt queue. Pass `false` to add it to the ordered playback
+queue. The dedicated task does not start the next ordered request until the
+complete current request has finished. The ordered queue holds eight pending
+requests and the interrupt queue holds four; enqueueing returns `false` when
+the selected queue is full:
 
 ```cpp
 ChipIntelliAudio.playVoice(1);         // Play immediately
@@ -167,9 +168,10 @@ token inventory for the selected language. No `VOICE300`-style macros are
 needed.
 
 `interruptCurrent` defaults to `true`. Pass `false` to queue the complete
-number after the prompt that is currently playing. The flag only controls how
-the first clip starts; later clips in the composed number always play
-continuously and the complete number emits one completion callback.
+number after the prompt that is currently playing. The playback task submits
+all tokens for one number to the SDK as a single logical sequence, and does not
+dequeue the next number until that whole sequence has finished. The complete
+number emits one completion callback.
 An integer argument retains the original meaning: `playVoice(300)` plays raw
 voice ID 300, while `playVoice("300")` speaks the number three hundred.
 
@@ -275,25 +277,23 @@ void loop() {
 ```
 
 The SDK originally invokes completion while holding its prompt mutex. The
-Arduino integration records that event and invokes the user callback from a
-post-unlock SDK hook, so prompt APIs are never re-entered while that mutex is
-held. The callback has no fixed task context: an immediately rejected request
-can notify from the calling sketch task, while asynchronous completion normally
-notifies from an SDK audio task. Keep it short and avoid `delay()`, playback
-control, waiting for locks, Flash writes, large prints, or other time-consuming
-work. Prefer setting a `volatile` flag or sending a non-blocking queue message,
-then handling it from `loop()`. The notification means that the SDK finished
-processing the prompt request; the SDK does not provide a success/failure
-status, so it may also follow an interrupted request or a late resource lookup
-failure. The `context` passed to `onFinished()` is forwarded unchanged. Call
+Arduino integration records that event, waits for the post-unlock hook, and
+wakes the dedicated playback task. The user callback therefore always runs
+from the `ChipIntelliAudio` playback task, once per logical request rather than
+once per number token. Keep it short and avoid `delay()`, waiting for locks,
+Flash writes, large prints, or other time-consuming work. Prefer setting a
+`volatile` flag or sending a non-blocking queue message, then handling it from
+`loop()`. The notification does not include a success/failure status, so it may
+also follow an interrupted request or a late resource lookup failure. The
+`context` passed to `onFinished()` is forwarded unchanged. Call
 `onFinished(nullptr)` to clear the callback.
 
 ## Examples
 
 - `PlayVoiceId` initializes the player, plays a voice ID, and uses a safe flag
   to handle the playback-completion event.
-- `VariableNumber` composes integer and fixed-point values from reusable audio
-  tokens numbered 300 through 316.
+- `VariableNumber` queues an integer and two floating-point values while
+  `loop()` continues running; playback uses reusable tokens from ID 300.
 - `PromptControl` accepts commands from a serial monitor at `115200` baud and
   demonstrates all four prompt lookup modes, stopping playback, checking
   status, and adjusting volume.

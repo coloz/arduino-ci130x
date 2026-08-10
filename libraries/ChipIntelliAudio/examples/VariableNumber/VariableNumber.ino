@@ -2,38 +2,21 @@
 #include <ChipIntelliAudio.h>
 
 namespace {
-volatile bool playbackFinished = false;
-uint8_t nextNumber = 0;
+int16_t integerValue = 300;
+double piValue = 3.1415926;
+float negativeValue = -123.5f;
+volatile uint8_t finishedCount = 0U;
 
 void onPlaybackFinished(void *) {
-  // Keep the SDK callback short. Start the next prompt from loop().
-  playbackFinished = true;
+  ++finishedCount;
 }
 
-void playNextNumber() {
-  bool accepted = false;
-  switch (nextNumber++) {
-    case 0:
-      Serial.println("Playing 300: 三百");
-      accepted = ChipIntelliAudio.playVoice("300");
-      break;
-    case 1:
-      Serial.println("Playing -1.5: 负一点五");
-      accepted = ChipIntelliAudio.playVoice("-1.5");
-      break;
-    case 2:
-      Serial.println("Playing 0.02: 零点零二");
-      accepted = ChipIntelliAudio.playVoice("0.02");
-      break;
-    default:
-      Serial.println("All variable-number prompts finished");
-      return;
-  }
-
-  if (!accepted) {
-    Serial.println("Variable prompt request failed");
-    playbackFinished = true;
-  }
+bool queueNumbers() {
+  // Floating-point String conversion defaults to two fractional digits.
+  // Pass the required precision explicitly when more digits must be spoken.
+  return ChipIntelliAudio.playVoice(String(integerValue), false) &&
+         ChipIntelliAudio.playVoice(String(piValue, 7), false) &&
+         ChipIntelliAudio.playVoice(String(negativeValue, 1), false);
 }
 }  // namespace
 
@@ -44,15 +27,22 @@ void setup() {
     return;
   }
 
+  ChipIntelliAudio.setVolume(90);
   ChipIntelliAudio.onFinished(onPlaybackFinished);
-  playNextNumber();
+  if (!queueNumbers()) {
+    Serial.println("Playback queue is full");
+  }
 }
 
 void loop() {
-  if (playbackFinished) {
-    playbackFinished = false;
-    delay(500);  // Make the three spoken values easier to distinguish.
-    playNextNumber();
+  static uint8_t reportedCount = 0U;
+  if (reportedCount != finishedCount) {
+    reportedCount = finishedCount;
+    Serial.print("Completed number prompts: ");
+    Serial.println(reportedCount);
   }
+
+  // Playback is owned by ChipIntelliAudio's FreeRTOS task, so loop() remains
+  // available for the application while all three values are spoken in order.
   delay(1);
 }

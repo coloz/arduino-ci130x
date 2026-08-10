@@ -68,7 +68,7 @@ public:
     uint16_t decimalPoint;
   };
 
-  // The Arduino SDK extension plays these IDs as one logical prompt and
+  // The asynchronous playback task plays these IDs as one logical prompt and
   // delivers one completion callback for the complete sequence.
   static constexpr size_t kMaxVoiceSequenceLength = 24U;
 
@@ -85,8 +85,8 @@ public:
    * @brief 直接按语音 ID 播放 voice.bin 中的一条语音资源。
    * @param voiceId voice.bin 中的 16 位语音资源 ID。
    * @param interruptCurrent true：中断当前提示音；false：不打断并排队播放。
-   * @return SDK 接受请求时为 true；未初始化或请求被立即拒绝时为 false。
-   * @note 返回 true 只表示请求已接受，不保证资源存在或最终播放成功。
+   * @return 异步播放队列接受请求时为 true；未初始化或队列已满时为 false。
+   * @note 返回 true 只表示请求已入队，不保证资源存在或最终播放成功。
    */
   bool playVoice(uint16_t voiceId, bool interruptCurrent = true);
 
@@ -101,7 +101,7 @@ public:
    * @param interruptCurrent Whether to interrupt the prompt that is playing.
    *        This only affects the start of the composed number; all subsequent
    *        clips in that number play continuously.
-   * @return true when the SDK accepts the complete number sequence.
+   * @return true when the asynchronous playback queue accepts the sequence.
    */
   bool playVoice(const String &numberText, bool interruptCurrent = true) {
     return playLocalizedNumber(
@@ -117,7 +117,7 @@ public:
    * @param interruptCurrent Whether to interrupt the prompt that is playing.
    *        This only controls how the complete sequence starts; clips inside
    *        the sequence are always played continuously.
-   * @return true when the SDK accepts the complete sequence.
+   * @return true when the asynchronous playback queue accepts the sequence.
    * @note Emits one finished callback after the whole sequence is processed.
    */
   bool playVoiceSequence(const uint16_t *voiceIds, size_t count,
@@ -154,8 +154,7 @@ public:
   /**
    * @brief 连续播放资源包内置的“滴”提示音。
    * @param count 播放次数，取值范围为 1～16。
-   * @return 整组播放请求被接受时为 true；参数无效、未初始化、资源不存在或
-   *         请求被拒绝时为 false。
+   * @return 整组请求成功入队时为 true；参数无效、未初始化或队列已满时为 false。
    * @note 本接口会中断当前提示音；整组播放完成后只触发一次完成回调。
    */
   bool playBeep(unsigned int count = 1);
@@ -181,7 +180,7 @@ public:
    * @param commandId 命令词表中的 16 位命令 ID，不是语音资源 ID。
    * @param optionIndex 从 0 开始的播报选项索引；-1 表示由资源配置选择。
    * @param interruptCurrent true：中断当前提示音；false：不打断并排队播放。
-   * @return SDK 接受请求时为 true；未初始化、命令不存在或请求被拒绝时为 false。
+   * @return 请求成功入队时为 true；未初始化或队列已满时为 false。
    */
   bool playCommand(uint16_t commandId, int optionIndex = -1,
                    bool interruptCurrent = true);
@@ -193,13 +192,12 @@ public:
    * @param commandText 资源包中的命令字符串，不能为 nullptr 或空字符串。
    * @param optionIndex 从 0 开始的播报选项索引；-1 表示由资源配置选择。
    * @param interruptCurrent true：中断当前提示音；false：不打断并排队播放。
-   * @return SDK 接受请求时为 true；参数无效、命令不存在或请求被拒绝时为 false。
+   * @return 请求成功入队时为 true；参数无效、未初始化或队列已满时为 false。
    */
   bool playCommand(const char *commandText, int optionIndex = -1,
                    bool interruptCurrent = true);
 
-  // Requests a stop. The SDK performs a bounded internal wait but does not
-  // expose whether playback reached idle before that wait expired.
+  // Enqueues a stop request without waiting for the SDK player to become idle.
   bool stop();
   bool isPlaying() const;
   bool isReady() const;
@@ -215,19 +213,30 @@ public:
   void unmute();
   bool isMuted() const;
 
-  // Callback runs only after the SDK releases its prompt mutex. Keep it short
-  // and hand longer work back to loop(). Pass nullptr to clear the callback.
+  // Callback runs from the dedicated playback task after the SDK releases its
+  // prompt mutex. Keep it short and hand longer work back to loop(). Pass
+  // nullptr to clear the callback.
   void onFinished(FinishedCallback callback, void *context = nullptr);
 
 private:
+  struct PlaybackRequest;
+
   friend class ChipIntelliAudioFactory;
   friend void chipintelli_sdk_prompt_unlocked(void);
 
   ChipIntelliAudioClass();
 
-  static void sdkPlaybackFinished(void *commandHandle);
+  static void playbackTaskEntry(void *context);
+  static void sdkPlaybackFinished0(void *commandHandle);
+  static void sdkPlaybackFinished1(void *commandHandle);
+  void playbackTaskLoop();
+  bool ensurePlaybackTask();
+  bool enqueuePlaybackRequest(const PlaybackRequest &request);
+  bool startPlaybackRequest(const PlaybackRequest &request,
+                            bool interruptCurrent);
+  void finishLogicalPlayback();
+  void recordSdkPlaybackFinished(uint8_t callbackSlot);
   void dispatchFinishedCallbacks();
-  bool hasFinishedCallback() const;
   bool playLocalizedNumber(const String &numberText,
                            NumberLanguage language,
                            bool interruptCurrent);
@@ -237,8 +246,12 @@ private:
   bool _begun;
   bool _muted;
   uint8_t _unmutedVolume;
-  uint32_t _pendingFinished;
-  bool _dispatchingFinished;
+  void *_playbackQueue;
+  void *_interruptQueue;
+  void *_playbackTask;
+  uint32_t _sdkFinished[2];
+  uint8_t _activeCallbackSlot;
+  bool _playbackActive;
 };
 
 extern ChipIntelliAudioClass &ChipIntelliAudio;

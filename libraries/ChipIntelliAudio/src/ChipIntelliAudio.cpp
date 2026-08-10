@@ -5,6 +5,7 @@ extern "C" {
 #include "audio_play_api.h"
 #include "ci_flash_data_info.h"
 #include "prompt_player.h"
+#include "queue.h"
 #include "system_msg_deal.h"
 #include "task.h"
 
@@ -14,9 +15,34 @@ uint32_t ci_arduino_prompt_play_voice_sequence(
     play_done_callback_t playDoneCallback, bool preemptive);
 }
 
+struct ChipIntelliAudioClass::PlaybackRequest {
+  enum class Kind : uint8_t {
+    VoiceSequence,
+    Beep,
+    CommandId,
+    SemanticId,
+    CommandText,
+    Stop,
+  };
+
+  static constexpr size_t kCommandTextCapacity = 96U;
+
+  Kind kind;
+  bool interruptCurrent;
+  int optionIndex;
+  uint32_t value;
+  uint8_t count;
+  uint16_t voiceIds[kMaxVoiceSequenceLength];
+  char commandText[kCommandTextCapacity];
+};
+
 namespace {
 constexpr uint32_t kInitTimeoutMs = 10000;
 constexpr uint32_t kIdleStabilityMs = 500;
+constexpr UBaseType_t kPlaybackTaskPriority = 3U;
+constexpr uint16_t kPlaybackTaskStackDepth = 768U;
+constexpr UBaseType_t kPlaybackQueueLength = 8U;
+constexpr UBaseType_t kInterruptQueueLength = 4U;
 constexpr uint32_t kPowersOfTen[] = {
     1U,          10U,        100U,       1000U,      10000U,
     100000U,     1000000U,   10000000U,  100000000U, 1000000000U,
@@ -1374,12 +1400,202 @@ ChipIntelliAudioClass::ChipIntelliAudioClass()
       _begun(false),
       _muted(false),
       _unmutedVolume(70),
-      _pendingFinished(0),
-      _dispatchingFinished(false) {}
+      _playbackQueue(nullptr),
+      _interruptQueue(nullptr),
+      _playbackTask(nullptr),
+      _sdkFinished{0U, 0U},
+      _activeCallbackSlot(0U),
+      _playbackActive(false) {}
+
+bool ChipIntelliAudioClass::ensurePlaybackTask() {
+  if (_playbackQueue == nullptr) {
+    _playbackQueue = xQueueCreate(kPlaybackQueueLength,
+                                  sizeof(PlaybackRequest));
+  }
+  if (_interruptQueue == nullptr) {
+    _interruptQueue = xQueueCreate(kInterruptQueueLength,
+                                   sizeof(PlaybackRequest));
+  }
+  if (_playbackQueue == nullptr || _interruptQueue == nullptr) {
+    return false;
+  }
+  if (_playbackTask != nullptr) {
+    return true;
+  }
+
+  TaskHandle_t task = nullptr;
+  if (xTaskCreate(playbackTaskEntry, "ciaudio", kPlaybackTaskStackDepth,
+                  this, kPlaybackTaskPriority, &task) != pdPASS) {
+    return false;
+  }
+  _playbackTask = task;
+  return true;
+}
+
+void ChipIntelliAudioClass::playbackTaskEntry(void *context) {
+  static_cast<ChipIntelliAudioClass *>(context)->playbackTaskLoop();
+}
+
+bool ChipIntelliAudioClass::enqueuePlaybackRequest(
+    const PlaybackRequest &request) {
+  if (!_begun || _playbackTask == nullptr) {
+    return false;
+  }
+
+  QueueHandle_t queue = static_cast<QueueHandle_t>(
+      request.interruptCurrent ? _interruptQueue : _playbackQueue);
+  if (queue == nullptr || xQueueSend(queue, &request, 0) != pdPASS) {
+    return false;
+  }
+  xTaskNotifyGive(static_cast<TaskHandle_t>(_playbackTask));
+  return true;
+}
+
+bool ChipIntelliAudioClass::startPlaybackRequest(
+    const PlaybackRequest &request, bool interruptCurrent) {
+  play_done_callback_t callback = _activeCallbackSlot == 0U
+                                      ? sdkPlaybackFinished0
+                                      : sdkPlaybackFinished1;
+  switch (request.kind) {
+    case PlaybackRequest::Kind::VoiceSequence:
+      return ci_arduino_prompt_play_voice_sequence(
+                 request.voiceIds, request.count, callback,
+                 interruptCurrent) == 0U;
+
+    case PlaybackRequest::Kind::Beep: {
+      cmd_handle_t beepHandle = cmd_info_find_command_by_string("<beep>");
+      const uint16_t beepCommandId = cmd_info_get_command_id(beepHandle);
+      if (beepCommandId == INVALID_SHORT_ID) {
+        return false;
+      }
+
+      prompt_play_info_t prompts[MAX_COMBINATION_COUNT];
+      for (uint8_t index = 0U; index < request.count; ++index) {
+        prompts[index].cmd_id = beepCommandId;
+        prompts[index].select_index = 0;
+      }
+      return prompt_play_by_multi_cmd_id(prompts, request.count, callback) ==
+             0U;
+    }
+
+    case PlaybackRequest::Kind::CommandId:
+      return prompt_play_by_cmd_id(static_cast<uint16_t>(request.value),
+                                   request.optionIndex, callback,
+                                   interruptCurrent) == 0U;
+
+    case PlaybackRequest::Kind::SemanticId:
+      return prompt_play_by_semantic_id(request.value, request.optionIndex,
+                                        callback, interruptCurrent) == 0U;
+
+    case PlaybackRequest::Kind::CommandText:
+      return prompt_play_by_cmd_string(
+                 const_cast<char *>(request.commandText), request.optionIndex,
+                 callback, interruptCurrent) == 0U;
+
+    case PlaybackRequest::Kind::Stop:
+      return false;
+  }
+  return false;
+}
+
+void ChipIntelliAudioClass::finishLogicalPlayback() {
+  taskENTER_CRITICAL();
+  _playbackActive = false;
+  FinishedCallback callback = _finishedCallback;
+  void *context = _finishedContext;
+  taskEXIT_CRITICAL();
+
+  if (callback != nullptr) {
+    callback(context);
+  }
+}
+
+void ChipIntelliAudioClass::playbackTaskLoop() {
+  while (true) {
+    bool progressed = false;
+
+    taskENTER_CRITICAL();
+    const uint8_t callbackSlot = _activeCallbackSlot;
+    const bool active = _playbackActive;
+    bool sdkFinished = active && _sdkFinished[callbackSlot] != 0U;
+    if (sdkFinished) {
+      --_sdkFinished[callbackSlot];
+    }
+    taskEXIT_CRITICAL();
+
+    if (sdkFinished) {
+      finishLogicalPlayback();
+      progressed = true;
+    }
+
+    PlaybackRequest request = {};
+    QueueHandle_t interruptQueue =
+        static_cast<QueueHandle_t>(_interruptQueue);
+    if (interruptQueue != nullptr &&
+        xQueueReceive(interruptQueue, &request, 0) == pdPASS) {
+      taskENTER_CRITICAL();
+      const bool interruptedPlayback = _playbackActive;
+      taskEXIT_CRITICAL();
+      if (interruptedPlayback) {
+        finishLogicalPlayback();
+      }
+
+      if (request.kind == PlaybackRequest::Kind::Stop) {
+        prompt_stop_play();
+        taskENTER_CRITICAL();
+        _sdkFinished[0] = 0U;
+        _sdkFinished[1] = 0U;
+        _playbackActive = false;
+        taskEXIT_CRITICAL();
+      } else {
+        taskENTER_CRITICAL();
+        _activeCallbackSlot ^= 1U;
+        _sdkFinished[_activeCallbackSlot] = 0U;
+        taskEXIT_CRITICAL();
+
+        const bool accepted = startPlaybackRequest(request, true);
+        if (accepted) {
+          taskENTER_CRITICAL();
+          _playbackActive = true;
+          taskEXIT_CRITICAL();
+        } else {
+          finishLogicalPlayback();
+        }
+      }
+      continue;
+    }
+
+    taskENTER_CRITICAL();
+    const bool playbackActive = _playbackActive;
+    taskEXIT_CRITICAL();
+    QueueHandle_t playbackQueue = static_cast<QueueHandle_t>(_playbackQueue);
+    if (!playbackActive && playbackQueue != nullptr &&
+        xQueueReceive(playbackQueue, &request, 0) == pdPASS) {
+      taskENTER_CRITICAL();
+      _activeCallbackSlot ^= 1U;
+      _sdkFinished[_activeCallbackSlot] = 0U;
+      taskEXIT_CRITICAL();
+
+      const bool accepted = startPlaybackRequest(request, false);
+      if (accepted) {
+        taskENTER_CRITICAL();
+        _playbackActive = true;
+        taskEXIT_CRITICAL();
+      } else {
+        finishLogicalPlayback();
+      }
+      continue;
+    }
+
+    if (!progressed) {
+      ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    }
+  }
+}
 
 bool ChipIntelliAudioClass::begin() {
   if (_begun) {
-    return true;
+    return ensurePlaybackTask();
   }
   if (!chipintelli_sdk_begin()) {
     return false;
@@ -1409,6 +1625,9 @@ bool ChipIntelliAudioClass::begin() {
                          : static_cast<uint8_t>(currentGain >= 100
                                                     ? 100
                                                     : currentGain);
+  if (!ensurePlaybackTask()) {
+    return false;
+  }
   _muted = false;
   _begun = true;
   return true;
@@ -1431,20 +1650,13 @@ void ChipIntelliAudioClass::end() {
  *
  * @param voiceId 语音资源 ID，取值范围为 0～65535，必须与当前工程烧录的
  *                voice.bin 中的 ID 一致。
- * @param interruptCurrent true 表示中断当前提示音并立即播放；false 表示不
- *                         中断，当前有提示音时将本次请求加入 SDK 播放队列。
- * @return true 表示 SDK 已接受播放请求；false 表示尚未调用 begin()，或 SDK
- *         立即拒绝了请求。返回 true 不保证资源一定存在或最终播放成功。
+ * @param interruptCurrent true 表示加入抢占队列；false 表示加入有序播放队列。
+ * @return true 表示异步队列已复制请求；false 表示尚未调用 begin() 或队列已满。
+ *         返回 true 不保证资源一定存在或最终播放成功。
  */
 bool ChipIntelliAudioClass::playVoice(uint16_t voiceId,
                                      bool interruptCurrent) {
-  if (!_begun) {
-    return false;
-  }
-  return prompt_play_by_voice_id(
-             voiceId,
-             hasFinishedCallback() ? sdkPlaybackFinished : nullptr,
-             interruptCurrent) == 0U;
+  return playVoiceSequence(&voiceId, 1U, interruptCurrent);
 }
 
 bool ChipIntelliAudioClass::playLocalizedNumber(
@@ -1537,10 +1749,15 @@ bool ChipIntelliAudioClass::playVoiceSequence(const uint16_t *voiceIds,
       count > kMaxVoiceSequenceLength) {
     return false;
   }
-  return ci_arduino_prompt_play_voice_sequence(
-             voiceIds, static_cast<uint8_t>(count),
-             hasFinishedCallback() ? sdkPlaybackFinished : nullptr,
-             interruptCurrent) == 0U;
+
+  PlaybackRequest request = {};
+  request.kind = PlaybackRequest::Kind::VoiceSequence;
+  request.interruptCurrent = interruptCurrent;
+  request.count = static_cast<uint8_t>(count);
+  for (size_t index = 0U; index < count; ++index) {
+    request.voiceIds[index] = voiceIds[index];
+  }
+  return enqueuePlaybackRequest(request);
 }
 
 size_t ChipIntelliAudioClass::buildNumberVoiceSequence(
@@ -1608,21 +1825,11 @@ bool ChipIntelliAudioClass::playBeep(unsigned int count) {
     return false;
   }
 
-  cmd_handle_t beepHandle = cmd_info_find_command_by_string("<beep>");
-  const uint16_t beepCommandId = cmd_info_get_command_id(beepHandle);
-  if (beepCommandId == INVALID_SHORT_ID) {
-    return false;
-  }
-
-  prompt_play_info_t prompts[MAX_COMBINATION_COUNT];
-  for (unsigned int index = 0; index < count; ++index) {
-    prompts[index].cmd_id = beepCommandId;
-    prompts[index].select_index = 0;
-  }
-
-  return prompt_play_by_multi_cmd_id(
-             prompts, static_cast<int>(count),
-             hasFinishedCallback() ? sdkPlaybackFinished : nullptr) == 0U;
+  PlaybackRequest request = {};
+  request.kind = PlaybackRequest::Kind::Beep;
+  request.interruptCurrent = true;
+  request.count = static_cast<uint8_t>(count);
+  return enqueuePlaybackRequest(request);
 }
 
 /**
@@ -1705,20 +1912,22 @@ bool ChipIntelliAudioClass::playCommand(int commandId, int optionIndex,
  * @param optionIndex 从 0 开始的播报选项索引。-1 表示由 SDK 按资源配置
  *                    选择：随机类型随机选择，否则使用第 0 项。超出已配置
  *                    选项范围的非负值也会回退到上述 SDK 选择规则。
- * @param interruptCurrent true 表示中断当前提示音并播放本命令提示音；false
- *                         表示不打断，当前有提示音时加入 SDK 播放队列。
- * @return true 表示 SDK 已接受播放请求；false 表示尚未调用 begin()、找不到
- *         commandId，或 SDK 立即拒绝了请求。true 不代表播放已经完成。
+ * @param interruptCurrent true 表示加入抢占队列；false 表示加入有序播放队列。
+ * @return true 表示异步队列已复制请求；false 表示尚未调用 begin() 或队列已满。
+ *         命令查找稍后在播放任务中执行，true 不代表资源存在或播放已经完成。
  */
 bool ChipIntelliAudioClass::playCommand(uint16_t commandId, int optionIndex,
                                        bool interruptCurrent) {
   if (!_begun) {
     return false;
   }
-  return prompt_play_by_cmd_id(
-             commandId, optionIndex,
-             hasFinishedCallback() ? sdkPlaybackFinished : nullptr,
-             interruptCurrent) == 0U;
+
+  PlaybackRequest request = {};
+  request.kind = PlaybackRequest::Kind::CommandId;
+  request.interruptCurrent = interruptCurrent;
+  request.optionIndex = optionIndex;
+  request.value = commandId;
+  return enqueuePlaybackRequest(request);
 }
 
 bool ChipIntelliAudioClass::playSemantic(uint32_t semanticId, int optionIndex,
@@ -1726,10 +1935,13 @@ bool ChipIntelliAudioClass::playSemantic(uint32_t semanticId, int optionIndex,
   if (!_begun) {
     return false;
   }
-  return prompt_play_by_semantic_id(
-             semanticId, optionIndex,
-             hasFinishedCallback() ? sdkPlaybackFinished : nullptr,
-             interruptCurrent) == 0U;
+
+  PlaybackRequest request = {};
+  request.kind = PlaybackRequest::Kind::SemanticId;
+  request.interruptCurrent = interruptCurrent;
+  request.optionIndex = optionIndex;
+  request.value = semanticId;
+  return enqueuePlaybackRequest(request);
 }
 
 /**
@@ -1743,10 +1955,9 @@ bool ChipIntelliAudioClass::playSemantic(uint32_t semanticId, int optionIndex,
  * @param optionIndex 从 0 开始的播报选项索引。-1 表示由 SDK 按资源配置
  *                    选择：随机类型随机选择，否则使用第 0 项。超出已配置
  *                    选项范围的非负值也会回退到上述 SDK 选择规则。
- * @param interruptCurrent true 表示中断当前提示音并播放本命令提示音；false
- *                         表示不打断，当前有提示音时加入 SDK 播放队列。
- * @return true 表示 SDK 已接受播放请求；false 表示尚未调用 begin()、文本
- *         无效、找不到对应命令，或 SDK 立即拒绝了请求。true 不代表播放完成。
+ * @param interruptCurrent true 表示加入抢占队列；false 表示加入有序播放队列。
+ * @return true 表示异步队列已复制请求；false 表示尚未调用 begin()、文本无效
+ *         或队列已满。命令查找稍后在播放任务中执行，true 不代表播放完成。
  */
 bool ChipIntelliAudioClass::playCommand(const char *commandText,
                                        int optionIndex,
@@ -1755,20 +1966,59 @@ bool ChipIntelliAudioClass::playCommand(const char *commandText,
     return false;
   }
 
-  // The SDK lookup function does not modify this string, but its V2.7.14 C
-  // declaration is missing const.
-  return prompt_play_by_cmd_string(
-             const_cast<char *>(commandText), optionIndex,
-             hasFinishedCallback() ? sdkPlaybackFinished : nullptr,
-             interruptCurrent) == 0U;
+  size_t length = 0U;
+  while (commandText[length] != '\0' &&
+         length < PlaybackRequest::kCommandTextCapacity) {
+    ++length;
+  }
+  if (length == PlaybackRequest::kCommandTextCapacity) {
+    return false;
+  }
+
+  PlaybackRequest request = {};
+  request.kind = PlaybackRequest::Kind::CommandText;
+  request.interruptCurrent = interruptCurrent;
+  request.optionIndex = optionIndex;
+  for (size_t index = 0U; index <= length; ++index) {
+    request.commandText[index] = commandText[index];
+  }
+  return enqueuePlaybackRequest(request);
 }
 
 bool ChipIntelliAudioClass::stop() {
-  return !_begun || prompt_stop_play() == 0U;
+  if (!_begun) {
+    return true;
+  }
+
+  QueueHandle_t playbackQueue = static_cast<QueueHandle_t>(_playbackQueue);
+  QueueHandle_t interruptQueue = static_cast<QueueHandle_t>(_interruptQueue);
+  if (playbackQueue == nullptr || interruptQueue == nullptr) {
+    return false;
+  }
+  xQueueReset(playbackQueue);
+  xQueueReset(interruptQueue);
+
+  PlaybackRequest request = {};
+  request.kind = PlaybackRequest::Kind::Stop;
+  request.interruptCurrent = true;
+  return enqueuePlaybackRequest(request);
 }
 
 bool ChipIntelliAudioClass::isPlaying() const {
-  return _begun && prompt_is_playing() != 0U;
+  if (!_begun) {
+    return false;
+  }
+
+  taskENTER_CRITICAL();
+  const bool active = _playbackActive;
+  taskEXIT_CRITICAL();
+  QueueHandle_t playbackQueue = static_cast<QueueHandle_t>(_playbackQueue);
+  QueueHandle_t interruptQueue = static_cast<QueueHandle_t>(_interruptQueue);
+  return active || prompt_is_playing() != 0U ||
+         (playbackQueue != nullptr &&
+          uxQueueMessagesWaiting(playbackQueue) != 0U) ||
+         (interruptQueue != nullptr &&
+          uxQueueMessagesWaiting(interruptQueue) != 0U);
 }
 
 bool ChipIntelliAudioClass::isReady() const {
@@ -1845,46 +2095,30 @@ void ChipIntelliAudioClass::onFinished(FinishedCallback callback,
   taskEXIT_CRITICAL();
 }
 
-bool ChipIntelliAudioClass::hasFinishedCallback() const {
-  taskENTER_CRITICAL();
-  bool hasCallback = _finishedCallback != nullptr;
-  taskEXIT_CRITICAL();
-  return hasCallback;
+void ChipIntelliAudioClass::sdkPlaybackFinished0(void *commandHandle) {
+  (void)commandHandle;
+  ChipIntelliAudio.recordSdkPlaybackFinished(0U);
 }
 
-void ChipIntelliAudioClass::sdkPlaybackFinished(void *commandHandle) {
+void ChipIntelliAudioClass::sdkPlaybackFinished1(void *commandHandle) {
   (void)commandHandle;
+  ChipIntelliAudio.recordSdkPlaybackFinished(1U);
+}
+
+void ChipIntelliAudioClass::recordSdkPlaybackFinished(
+    uint8_t callbackSlot) {
   taskENTER_CRITICAL();
-  if (ChipIntelliAudio._pendingFinished != UINT32_MAX) {
-    ++ChipIntelliAudio._pendingFinished;
+  if (_sdkFinished[callbackSlot] != UINT32_MAX) {
+    ++_sdkFinished[callbackSlot];
   }
   taskEXIT_CRITICAL();
 }
 
 void ChipIntelliAudioClass::dispatchFinishedCallbacks() {
   taskENTER_CRITICAL();
-  if (_dispatchingFinished) {
-    taskEXIT_CRITICAL();
-    return;
-  }
-  _dispatchingFinished = true;
+  TaskHandle_t task = static_cast<TaskHandle_t>(_playbackTask);
   taskEXIT_CRITICAL();
-
-  while (true) {
-    taskENTER_CRITICAL();
-    if (_pendingFinished == 0U) {
-      _dispatchingFinished = false;
-      taskEXIT_CRITICAL();
-      return;
-    }
-
-    --_pendingFinished;
-    FinishedCallback callback = _finishedCallback;
-    void *context = _finishedContext;
-    taskEXIT_CRITICAL();
-
-    if (callback != nullptr) {
-      callback(context);
-    }
+  if (task != nullptr) {
+    xTaskNotifyGive(task);
   }
 }
