@@ -12,10 +12,10 @@
         {
           "name": "ChipIntelli CI130X Arduino",
           "architecture": "ci13xx",
-          "version": "1.0.9",
+          "version": "1.0.10",
           "category": "Contributed",
           "url": "__PLATFORM_ARCHIVE_URL__",
-          "archiveFileName": "arduino-ci130x-1.0.9.zip",
+          "archiveFileName": "arduino-ci130x-1.0.10.zip",
           "checksum": "SHA-256:__PLATFORM_SHA256__",
           "size": "__PLATFORM_SIZE_BYTES__",
           "boards": [

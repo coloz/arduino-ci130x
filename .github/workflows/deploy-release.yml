@@ -9,7 +9,7 @@ on:
       release_tag:
         description: Existing release tag to update
         required: true
-        default: v1.0.9
+        default: v1.0.10
 
 permissions:
   contents: write
@@ -259,16 +259,16 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## 主要更新
 
-          - 新增运行时唤醒词切换、直接命令识别、命令/语义/启动/唤醒/超时事件和显式提示音播放接口。
-          - 新增中文、英文等 15 种语言的字符串数字播报，支持整数、定点小数和按语言自动生成基础数字语音资源。
-          - 资源生成支持多个显式唤醒词、可选 ASR/TTS 请求以及实时云端任务进度，未使用相应宏时不发起无关请求。
-          - 集成公共 `citool-cli` 1.2.2 三平台工具包，并继续复用跨平台生成缓存和 Aily 用户认证。
-          - 改进提示音回调与互斥锁释放顺序，避免在回调中继续播放时发生重入死锁。
+          - 将 `ChipIntelliAudio` 播放改为专用 FreeRTOS 任务执行，调用方无需等待 SDK 播放流程。
+          - 语音序列、数字、提示音、命令和语义播放统一支持普通队列与抢占队列，连续请求可按顺序异步播放。
+          - `stop()` 会清空待播放请求并异步停止当前播放，`isPlaying()` 同时反映当前播放和队列状态。
+          - 完成回调改由播放任务在 SDK 释放互斥锁后调用，可安全地在回调中继续提交播放请求。
+          - 更新 `VariableNumber` 示例与中英文文档，演示非阻塞队列播放和完成计数。
 
           ## 验证
 
-          - `citool-cli` 锁定依赖单元测试 56 项、认证集成测试 3 项全部通过，Clippy 无警告。
-          - Windows x86_64、macOS Universal（Intel + Apple Silicon）和 Linux x86_64 工具包均通过版本、结构和 SHA-256 校验。
+          - Arduino 示例完成编译、链接和固件后处理验证。
+          - Windows x86_64、macOS Universal（Intel + Apple Silicon）和 Linux x86_64 公共工具包由发布工作流校验版本、结构和 SHA-256。
           - Arduino 平台归档、公共工具依赖和 Boards Manager 索引由发布工作流统一校验后生成。
           EOF
 
