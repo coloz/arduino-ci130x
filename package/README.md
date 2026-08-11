@@ -18,15 +18,20 @@ https://github.com/coloz/arduino-ci130x/releases/download/v1.0.10/package_chipin
 
 The package index uses the public `citool-cli@1.2.2` assets mirrored in this
 repository's `citool-cli-v1.2.2` release for Windows x64, macOS Universal (Intel
-and Apple Silicon), and Linux x86_64. It also
-reuses Nuclei GCC 9.2.0 from the dedicated toolchain release for Windows x64,
-Linux x86_64, and macOS Apple Silicon. There is currently no matching Intel
-macOS compiler archive.
+and Apple Silicon), and Linux x86_64. The GCC tool dependency remains
+`riscv-gcc@9.2.0` on all hosts. There is currently no matching Intel macOS
+compiler archive.
+
+The public `v1.0.10` index references the repaired Windows, Linux and macOS GCC
+archives hosted by the same release. The historical
+`nuclei-gcc-v9.2.0-host1` Windows archive is incomplete and must not be reused.
+The repaired archives retain the Arduino tool identity `riscv-gcc@9.2.0` and
+were rebuilt and cross-host tested before publication.
 
 For version 1.0.10, `.github/workflows/deploy-release.yml` downloads
 and verifies the public `citool-cli@1.2.2` archives from this repository's
 `citool-cli-v1.2.2` release and the three compiler archives from the
-dedicated toolchain release. It publishes
+historical dedicated toolchain release. It publishes
 only the new Arduino platform archive, Boards Manager index and checksum file;
 the index points its tool records at those immutable shared releases instead
 of uploading duplicate tool archives for every platform version. The Windows
@@ -36,23 +41,24 @@ macOS compiler is built on a physical Apple Silicon Mac with
 `nuclei_9.2_fixjalr_forhw` source. The script pins the top-level and submodule
 commits, then verifies the target,
 version, required `rv32imafc/ilp32f` multilib and a linked ELF before the
-immutable `nuclei-gcc-v9.2.0-host1` release is published. GitHub Actions is not
-used to compile the toolchain.
+immutable `nuclei-gcc-v9.2.0-host1` release was published. GitHub Actions is not
+used to compile the toolchain. The repaired tool archives published with
+`v1.0.10` supersede those historical compiler assets.
 
 The compiler/linker side is packaged for all three desktop OS families.
 Windows uses the SDK PowerShell hooks and proprietary `ci-tool-kit.exe`;
 Linux/macOS use equivalent Python hooks and a byte-compatible implementation
 of the vendor dual-core container. The complete compile, compose, CH343 upload
 and three-prompt runtime path is validated on macOS Apple Silicon. Linux has
-compile/link coverage but still needs complete post-build and hardware
-regression.
+compile, link, dual-core merge, compose and image-inspection coverage; Linux
+hardware upload and runtime regression are still outstanding.
 
 ## Local Arduino IDE installation
 
 The generated package is a self-contained local Boards Manager repository.
-Build or download the three `citool-cli` archives and download the Linux/macOS
-Nuclei GCC archives from `nuclei-gcc-v9.2.0-host1`, then build it on Windows
-with the validated Windows toolchain root:
+Build or download the three `citool-cli` archives and use the repaired
+Linux/macOS GCC archives from `package/dist-toolchain-fix/`, then build it on
+Windows with the validated complete Windows toolchain root:
 
 ```powershell
 ..\citool-cli\package\build_release.ps1
@@ -60,14 +66,23 @@ with the validated Windows toolchain root:
 .\package\build_package.ps1 `
   -ToolchainRoot C:\path\to\riscv-nuclei-elf-gcc-9.2.0 `
   -ToolchainArchives @(
-    'C:\downloads\riscv-nuclei-elf-gcc-9.2.0-linux-x86_64.tar.gz',
-    'C:\downloads\riscv-nuclei-elf-gcc-9.2.0-macos-arm64.tar.gz'
+    '.\package\dist-toolchain-fix\riscv-nuclei-elf-gcc-9.2.0-linux-x86_64.tar.gz',
+    '.\package\dist-toolchain-fix\riscv-nuclei-elf-gcc-9.2.0-macos-arm64.tar.gz'
   ) `
   -RequireAllHostTools
 ```
 
 The script validates the official GCC 9.2.0 executable against the SDK build
-manifest, consumes these prebuilt sibling artifacts:
+manifest. It also rejects incomplete Windows extractions by checking the
+standard C/C++ headers, the `rv32imafc/ilp32f` libraries, the full-distribution
+file/byte floor and real C/C++ compile probes. Repacked tools retain the
+published Arduino package version `9.2.0`. Since Boards Manager identifies
+tools by package name and version, validation and upgrades must use a fresh
+Arduino data directory or remove the previously installed
+`chipintelli:riscv-gcc@9.2.0` directory before installation. The script
+also checks the Linux/macOS archive layouts, standard headers, target
+libraries, entry counts, metadata cleanliness and pinned repack hashes. It
+consumes these prebuilt sibling artifacts:
 
 ```text
 ..\citool-cli\dist\citool-cli-1.2.2-windows-x86_64.zip
@@ -127,14 +142,15 @@ than a `dist/` subdirectory, add `-FlatAssetUrls`:
   -RequireAllHostTools `
   -Version 1.0.10 `
   -BaseUrl https://github.com/OWNER/arduino-ci130x/releases/download/v1.0.10 `
-  -ToolchainBaseUrl https://github.com/coloz/arduino-ci130x/releases/download/nuclei-gcc-v9.2.0-host1 `
+  -ToolchainBaseUrl https://github.com/coloz/arduino-ci130x/releases/download/v1.0.10 `
   -CitoolCliBaseUrl https://github.com/coloz/arduino-ci130x/releases/download/citool-cli-v1.2.2 `
   -FlatAssetUrls
 ```
 
 Upload the generated platform archive and `package_chipintelli_index.json` to
-the new public Arduino GitHub Release. Reuse the immutable GCC archives from
-`nuclei-gcc-v9.2.0-host1`. Version 1.0.10 requires public
+the new public Arduino GitHub Release. Reuse the three repaired GCC archives
+from `v1.0.10`; do not reuse `nuclei-gcc-v9.2.0-host1`. The Arduino tool version
+remains `9.2.0`. Version 1.0.10 requires public
 `citool-cli@1.2.2` archives at `-CitoolCliBaseUrl`; publish those three host
 archives once and let the Boards Manager index reference them rather than
 uploading duplicates with later platform releases.
@@ -175,16 +191,20 @@ the generated `user_code.bin` and effective four resource partitions into a
 complete firmware image; normal Arduino upload uses `citool-cli flash` to write
 that verified image from Flash address 0.
 
-After permission has been obtained, the Windows ZIP must contain the single
+After permission has been obtained, the Windows ZIP must be named
+`riscv-nuclei-elf-gcc-9.2.0-windows.zip` and contain the single
 top-level directory `gcc_fix_raissrc/`, with the compiler at
 `gcc_fix_raissrc/bin/riscv-nuclei-elf-gcc.exe`. The Linux and macOS tarballs
-contain `riscv-gcc/bin/riscv-nuclei-elf-gcc`. Linux is the ChipIntelli archive
-published as `riscv-gcc-9.2.0.tar.gz` (pinned SHA-256
-`0ee91c983f2cf3eaa26b444eb553847a7dda34f3fb5d97c34b977ca43e593ca5`).
-macOS arm64 is built on a physical Apple Silicon Mac from the official Nuclei
-`nuclei_9.2_fixjalr_forhw` source because neither ChipIntelli nor Nuclei
-publishes a matching macOS binary. Run `package/build_macos_toolchain.sh` on
-that Mac; the packaged compiler currently targets macOS 15 or later.
+contain `riscv-gcc/bin/riscv-nuclei-elf-gcc`. The repaired archive SHA-256
+values are `f5e11a1fb9fe806ed68cf0c5e3db9356d61314137f1ef3bc430a447fc832ba4b`
+for Windows, `2e24642906cd0c11ff1cc85ebd1b058d18ea75893f9c62f7077c7a65374ca268`
+for Linux x86_64, and
+`29b22c8db6a555e86e64d79d61c4275b0451f97ccb652eda55fee86a6a694221`
+for macOS arm64. macOS arm64 is built on a physical Apple Silicon Mac from the
+official Nuclei `nuclei_9.2_fixjalr_forhw` source because neither ChipIntelli
+nor Nuclei publishes a matching macOS binary. Run
+`package/build_macos_toolchain.sh` on that Mac; the packaged compiler currently
+targets macOS 15 or later.
 
 The binary-only SDK archives contain pure GCC LTO generated by a 32-bit Windows
 host compiler. GCC 9.2.0 Linux/macOS processes cannot deserialize that stream,

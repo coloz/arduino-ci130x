@@ -53,24 +53,24 @@
           "systems": [
             {
               "host": "x86_64-mingw32",
-              "url": "https://github.com/coloz/arduino-ci130x/releases/download/nuclei-gcc-v9.2.0-host1/riscv-nuclei-elf-gcc-9.2.0-windows.zip",
+              "url": "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.10/riscv-nuclei-elf-gcc-9.2.0-windows.zip",
               "archiveFileName": "riscv-nuclei-elf-gcc-9.2.0-windows.zip",
-              "checksum": "SHA-256:044381414264899a701d20bbd75e2add76bd86112b02d33b6d5354d5c7fbb0e7",
-              "size": "49248150"
+              "checksum": "SHA-256:f5e11a1fb9fe806ed68cf0c5e3db9356d61314137f1ef3bc430a447fc832ba4b",
+              "size": "139798725"
             },
             {
               "host": "x86_64-pc-linux-gnu",
-              "url": "https://github.com/coloz/arduino-ci130x/releases/download/nuclei-gcc-v9.2.0-host1/riscv-nuclei-elf-gcc-9.2.0-linux-x86_64.tar.gz",
+              "url": "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.10/riscv-nuclei-elf-gcc-9.2.0-linux-x86_64.tar.gz",
               "archiveFileName": "riscv-nuclei-elf-gcc-9.2.0-linux-x86_64.tar.gz",
-              "checksum": "SHA-256:0ee91c983f2cf3eaa26b444eb553847a7dda34f3fb5d97c34b977ca43e593ca5",
-              "size": "147399697"
+              "checksum": "SHA-256:2e24642906cd0c11ff1cc85ebd1b058d18ea75893f9c62f7077c7a65374ca268",
+              "size": "147292270"
             },
             {
               "host": "arm64-apple-darwin",
-              "url": "https://github.com/coloz/arduino-ci130x/releases/download/nuclei-gcc-v9.2.0-host1/riscv-nuclei-elf-gcc-9.2.0-macos-arm64.tar.gz",
+              "url": "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.10/riscv-nuclei-elf-gcc-9.2.0-macos-arm64.tar.gz",
               "archiveFileName": "riscv-nuclei-elf-gcc-9.2.0-macos-arm64.tar.gz",
-              "checksum": "SHA-256:30e8bb5fcb17066cfc3308774ebb880091de015fa7027ca4c74701d8e4daf4a5",
-              "size": "133255027"
+              "checksum": "SHA-256:29b22c8db6a555e86e64d79d61c4275b0451f97ccb652eda55fee86a6a694221",
+              "size": "133199187"
             }
           ]
         },

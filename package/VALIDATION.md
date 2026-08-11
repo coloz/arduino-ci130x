@@ -541,3 +541,82 @@ ZIP from the tagged Git tree, so its compression-level-dependent size and hash
 are expected to differ from this local deterministic package-builder result.
 The workflow calculates the final metadata from the uploaded asset and writes
 those exact values back to the stable Boards Manager index on `main`.
+
+## Three-host GCC completeness and U8g2 regression validation
+
+On 2026-08-11, clean Windows builds of `U8g2TextTest` and `U8g2DHT20`
+failed in U8g2 2.36.19 because the published `riscv-gcc@9.2.0` package did
+not contain `riscv-nuclei-elf/include/assert.h`. The same U8g2 installation
+had built and run on a physical CI1303 on 2026-07-22, ruling out an U8g2
+upgrade. Release-history comparison found that the original v1.0.1 Windows
+archive was 139,799,059 bytes, while v1.0.2 and later replaced it with a
+49,248,150-byte archive under the unchanged tool package version `9.2.0`.
+The original extraction contained 2,025 files and 524,014,261 bytes; the
+incomplete extraction contained only 225 files and 126,122,351 bytes. It was
+also missing most GCC multilib objects and libraries.
+
+The package builder had accepted the incomplete extraction because it checked
+only the SHA-256 of `riscv-nuclei-elf-gcc.exe`. It now requires the standard
+C/C++ headers, the CI130X `rv32imafc/ilp32f` GCC/newlib/libstdc++ libraries,
+at least 2,000 files and 500,000,000 extracted bytes, the target multilib
+record, and successful C and C++ compile probes. The known 225-file tree is
+rejected before archive generation with the missing `assert.h` path.
+
+The complete v1.0.1 asset was recovered with its recorded SHA-256
+`0218dc33f35a23dcc2bb484fe5fbd778401061d77d9e3fea81188b8b8e9b5593`
+and repackaged while retaining the published tool identity
+`riscv-gcc@9.2.0`. Because the package identity is unchanged, all validation
+uses a fresh Arduino data directory; existing installations must remove the
+old tool directory before reinstalling. The resulting 139,798,725-byte
+Windows ZIP has SHA-256
+`f5e11a1fb9fe806ed68cf0c5e3db9356d61314137f1ef3bc430a447fc832ba4b`
+and contains all 2,025 files, including `assert.h`, target `libgcc.a` and
+target `libc_nano.a`.
+
+Arduino CLI 1.5.1 then installed the locally served platform and the rebuilt
+`riscv-gcc@9.2.0` into a new data directory. U8g2 2.36.19 and DHT20
+0.3.3 were installed independently through Library Manager. Warning-enabled
+clean CI1303 builds passed as follows:
+
+| Sketch | Host program / limit | RAM / limit | `user_code.bin` | Complete firmware |
+| --- | ---: | ---: | ---: | ---: |
+| `U8g2DHT20` | 91,519 / 382,121 | 110,996 / 532,480 | 168,152 | 2,015,265 |
+| `U8g2TextTest` | 81,281 / 382,121 | 110,900 / 532,480 | 157,912 | 2,002,977 |
+
+Both builds completed SDK compilation, external-library compilation, final
+link, dual-core merge and firmware composition without diagnostics. Separate
+`citool-cli inspect` calls accepted both complete images and their V2 partition
+tables.
+
+The Linux x86_64 and macOS arm64 compilers were then repackaged on their native
+hosts. Each extracted distribution passed the GCC 9.2.0 version check, the
+`rv32imafc/ilp32f` multilib check, required C/C++ header and target-library
+checks, and real C and C++ compile probes. The Linux archive contains 2,448
+files; the macOS archive contains 2,377 files and its compiler is a valid
+signed arm64 Mach-O. Packaging suppressed AppleDouble and `.DS_Store`
+metadata. The final native archives are:
+
+| Host | Archive bytes | SHA-256 |
+| --- | ---: | --- |
+| Windows x64 | 139,798,725 | `f5e11a1fb9fe806ed68cf0c5e3db9356d61314137f1ef3bc430a447fc832ba4b` |
+| Linux x86_64 | 147,292,270 | `2e24642906cd0c11ff1cc85ebd1b058d18ea75893f9c62f7077c7a65374ca268` |
+| macOS arm64 | 133,199,187 | `29b22c8db6a555e86e64d79d61c4275b0451f97ccb652eda55fee86a6a694221` |
+
+Each OS then used a completely fresh Arduino data directory to install the
+same locally served three-host index, `chipintelli:riscv-gcc@9.2.0`, platform
+1.0.10, U8g2 2.36.19 and DHT20 0.3.3. The two CI1303 examples passed the
+complete compile/link/merge/compose path and `citool-cli inspect` on every
+host:
+
+| Host | Sketch | Host program / limit | RAM / limit | `user_code.bin` | Complete firmware |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Windows x64 | `U8g2DHT20` | 91,519 / 382,121 | 110,996 / 532,480 | 168,152 | 2,015,265 |
+| Windows x64 | `U8g2TextTest` | 81,281 / 382,121 | 110,900 / 532,480 | 157,912 | 2,002,977 |
+| Linux x86_64 | `U8g2DHT20` | 92,135 / 382,121 | 111,004 / 532,480 | 168,776 | 2,015,265 |
+| Linux x86_64 | `U8g2TextTest` | 81,961 / 382,121 | 110,908 / 532,480 | 158,600 | 2,002,977 |
+| macOS arm64 | `U8g2DHT20` | 92,019 / 382,121 | 111,004 / 532,480 | 168,664 | 2,015,265 |
+| macOS arm64 | `U8g2TextTest` | 81,913 / 382,121 | 110,908 / 532,480 | 158,552 | 2,002,977 |
+
+The small host-program differences are expected from the native host GCC
+binaries; all complete firmware images have the same partitioned size. These
+are package and build-path checks; no new physical-board runtime claim is made.

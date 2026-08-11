@@ -29,8 +29,11 @@ jobs:
       CITOOL_CLI_REPOSITORY: coloz/arduino-ci130x
       CITOOL_CLI_RELEASE_TAG: citool-cli-v1.2.2
       CITOOL_CLI_VERSION: 1.2.2
-      NUCLEI_GCC_RELEASE_TAG: nuclei-gcc-v9.2.0-host1
+      NUCLEI_GCC_RELEASE_TAG: v1.0.10
       NUCLEI_GCC_VERSION: 9.2.0
+      NUCLEI_GCC_WINDOWS_SHA256: f5e11a1fb9fe806ed68cf0c5e3db9356d61314137f1ef3bc430a447fc832ba4b
+      NUCLEI_GCC_LINUX_SHA256: 2e24642906cd0c11ff1cc85ebd1b058d18ea75893f9c62f7077c7a65374ca268
+      NUCLEI_GCC_MACOS_SHA256: 29b22c8db6a555e86e64d79d61c4275b0451f97ccb652eda55fee86a6a694221
 
     steps:
       - name: Check out release tag
@@ -173,6 +176,9 @@ jobs:
 
           cd dist
           sha256sum --check ./*.sha256
+          echo "${NUCLEI_GCC_WINDOWS_SHA256}  riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-windows.zip" | sha256sum --check -
+          echo "${NUCLEI_GCC_LINUX_SHA256}  riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-linux-x86_64.tar.gz" | sha256sum --check -
+          echo "${NUCLEI_GCC_MACOS_SHA256}  riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-arm64.tar.gz" | sha256sum --check -
           unzip -Z1 "citool-cli-${CITOOL_CLI_VERSION}-windows-x86_64.zip" \
             | tr '\\' '/' \
             | grep -Fx 'citool-cli/citool-cli.exe' >/dev/null
@@ -183,10 +189,40 @@ jobs:
           unzip -Z1 "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-windows.zip" \
             | tr '\\' '/' \
             | grep -Fx 'gcc_fix_raissrc/bin/riscv-nuclei-elf-gcc.exe' >/dev/null
+          unzip -Z1 "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-windows.zip" \
+            | tr '\\' '/' \
+            | grep -Fx 'gcc_fix_raissrc/riscv-nuclei-elf/include/assert.h' >/dev/null
+          unzip -Z1 "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-windows.zip" \
+            | tr '\\' '/' \
+            | grep -Fx 'gcc_fix_raissrc/riscv-nuclei-elf/lib/rv32imafc/ilp32f/libc_nano.a' >/dev/null
+          test "$(unzip -Z1 "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-windows.zip" | wc -l)" -ge 2000
           tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-linux-x86_64.tar.gz" \
             | sed 's#^\./##' | grep -Fx 'riscv-gcc/bin/riscv-nuclei-elf-gcc' >/dev/null
+          tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-linux-x86_64.tar.gz" \
+            | sed 's#^\./##' | grep -Fx 'riscv-gcc/riscv-nuclei-elf/include/assert.h' >/dev/null
+          tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-linux-x86_64.tar.gz" \
+            | sed 's#^\./##' | grep -Fx 'riscv-gcc/riscv-nuclei-elf/lib/rv32imafc/ilp32f/libc_nano.a' >/dev/null
+          test "$(tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-linux-x86_64.tar.gz" | wc -l)" -ge 2000
           tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-arm64.tar.gz" \
             | sed 's#^\./##' | grep -Fx 'riscv-gcc/bin/riscv-nuclei-elf-gcc' >/dev/null
+          tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-arm64.tar.gz" \
+            | sed 's#^\./##' | grep -Fx 'riscv-gcc/riscv-nuclei-elf/include/assert.h' >/dev/null
+          tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-arm64.tar.gz" \
+            | sed 's#^\./##' | grep -Fx 'riscv-gcc/riscv-nuclei-elf/lib/rv32imafc/ilp32f/libc_nano.a' >/dev/null
+          test "$(tar -tzf "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-arm64.tar.gz" | wc -l)" -ge 2000
+          if unzip -Z1 "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-windows.zip" \
+              | grep -E '(^|/)\._|(^|/)\.DS_Store$' >/dev/null; then
+            echo 'Windows GCC archive contains macOS metadata.' >&2
+            exit 1
+          fi
+          for archive in \
+            "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-linux-x86_64.tar.gz" \
+            "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-arm64.tar.gz"; do
+            if tar -tzf "$archive" | grep -E '(^|/)\._|(^|/)\.DS_Store$' >/dev/null; then
+              echo "$archive contains macOS metadata." >&2
+              exit 1
+            fi
+          done
 
           sha256sum '${{ steps.release.outputs.asset }}' > SHA256SUMS.txt
 
@@ -250,6 +286,13 @@ jobs:
 
           cd dist
           sha256sum package_chipintelli_index.json >> SHA256SUMS.txt
+          if [[ "$RELEASE_TAG" == "$NUCLEI_GCC_RELEASE_TAG" ]]; then
+            sha256sum \
+              "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-windows.zip" \
+              "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-linux-x86_64.tar.gz" \
+              "riscv-nuclei-elf-gcc-${NUCLEI_GCC_VERSION}-macos-arm64.tar.gz" \
+              >> SHA256SUMS.txt
+          fi
 
       - name: Publish GitHub Release
         shell: bash

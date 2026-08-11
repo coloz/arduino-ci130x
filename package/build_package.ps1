@@ -6,6 +6,7 @@ param(
     [string]$CitoolCliArchive,
     [string[]]$CitoolCliArchives,
     [string]$CitoolCliVersion = '1.2.2',
+    [string]$ToolchainPackageVersion = '9.2.0',
     [string]$BaseUrl = 'http://127.0.0.1:8765',
     [string]$ToolchainBaseUrl,
     [string]$CitoolCliBaseUrl,
@@ -57,6 +58,95 @@ function Resolve-ToolchainRoot {
     }
 
     throw 'GCC 9.2.0 was not found. Extract the official riscv-nuclei-elf-gcc-9.2.0 archive and pass -ToolchainRoot.'
+}
+
+function Assert-CompleteWindowsToolchain {
+    param([string]$Root)
+
+    $requiredFiles = @(
+        'bin\riscv-nuclei-elf-gcc.exe',
+        'bin\riscv-nuclei-elf-g++.exe',
+        'riscv-nuclei-elf\include\assert.h',
+        'riscv-nuclei-elf\include\stdio.h',
+        'riscv-nuclei-elf\include\stdlib.h',
+        'riscv-nuclei-elf\include\string.h',
+        'riscv-nuclei-elf\include\c++\9.2.0\cassert',
+        'riscv-nuclei-elf\include\c++\9.2.0\vector',
+        'lib\gcc\riscv-nuclei-elf\9.2.0\rv32imafc\ilp32f\libgcc.a',
+        'riscv-nuclei-elf\lib\rv32imafc\ilp32f\libc.a',
+        'riscv-nuclei-elf\lib\rv32imafc\ilp32f\libc_nano.a',
+        'riscv-nuclei-elf\lib\rv32imafc\ilp32f\libm.a',
+        'riscv-nuclei-elf\lib\rv32imafc\ilp32f\libstdc++.a'
+    )
+    foreach ($relativePath in $requiredFiles) {
+        $requiredPath = Join-Path $Root $relativePath
+        if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
+            throw "Incomplete Windows GCC toolchain; missing required file: $requiredPath"
+        }
+    }
+
+    $files = @(Get-ChildItem -LiteralPath $Root -Recurse -File)
+    $totalBytes = ($files | Measure-Object -Property Length -Sum).Sum
+    if ($files.Count -lt 2000 -or $totalBytes -lt 500000000) {
+        throw "Incomplete Windows GCC toolchain; expected the full vendor distribution (at least 2000 files and 500000000 bytes), found $($files.Count) files and $totalBytes bytes in $Root"
+    }
+
+    $compiler = Join-Path $Root 'bin\riscv-nuclei-elf-gcc.exe'
+    $cppCompiler = Join-Path $Root 'bin\riscv-nuclei-elf-g++.exe'
+    $expectedCompilerHashes = [ordered]@{
+        $compiler = '84B0FFB1FB194CC41FCFA96FB01D65B3A6289147041CF8BC76DB60BD05FBCB6D'
+        $cppCompiler = 'C2BDAC1D16C47BAB480881C4BB393975AA49728C44D2DFD6043EC9A3A9A0A0C1'
+    }
+    foreach ($compilerPath in $expectedCompilerHashes.Keys) {
+        $compilerHash = (Get-FileHash -LiteralPath $compilerPath -Algorithm SHA256).Hash
+        if ($compilerHash -ne $expectedCompilerHashes[$compilerPath]) {
+            throw "Unexpected GCC executable SHA-256 for $compilerPath`: $compilerHash"
+        }
+    }
+
+    $multilibOutput = @(& $compiler -print-multi-lib 2>&1)
+    if ($LASTEXITCODE -ne 0 -or -not ($multilibOutput -match 'rv32imafc[/\\]ilp32f')) {
+        throw "Windows GCC toolchain does not provide the required rv32imafc/ilp32f multilib: $($multilibOutput -join [Environment]::NewLine)"
+    }
+
+    $probeRoot = Join-Path $env:TEMP ("ci13xx-windows-toolchain-probe-{0}-{1}" -f $PID, [guid]::NewGuid().ToString('N'))
+    $tempRoot = [System.IO.Path]::GetFullPath($env:TEMP).TrimEnd('\') + '\'
+    $fullProbeRoot = [System.IO.Path]::GetFullPath($probeRoot)
+    if (-not $fullProbeRoot.StartsWith($tempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to create a toolchain probe outside TEMP: $fullProbeRoot"
+    }
+
+    try {
+        New-Item -ItemType Directory -Path $fullProbeRoot -Force | Out-Null
+        $cProbe = Join-Path $fullProbeRoot 'standard_headers.c'
+        $cppProbe = Join-Path $fullProbeRoot 'standard_headers.cpp'
+        $utf8WithoutBom = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText(
+            $cProbe,
+            "#include <assert.h>`n#include <stdint.h>`n#include <stdlib.h>`nint ci13xx_c_probe(int value) { assert(value > 0); return abs(value); }`n",
+            $utf8WithoutBom
+        )
+        [System.IO.File]::WriteAllText(
+            $cppProbe,
+            "#include <cassert>`n#include <vector>`nint ci13xx_cpp_probe() { std::vector<int> values{1}; assert(values.size() == 1); return values[0]; }`n",
+            $utf8WithoutBom
+        )
+
+        $targetFlags = @('-march=rv32imafc', '-mabi=ilp32f', '-mcmodel=medlow', '-Os')
+        $cOutput = @(& $compiler @targetFlags -std=gnu11 -c $cProbe -o (Join-Path $fullProbeRoot 'standard_headers.c.o') 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw "Windows GCC failed the standard C header probe: $($cOutput -join [Environment]::NewLine)"
+        }
+        $cppOutput = @(& $cppCompiler @targetFlags -std=gnu++17 -fno-exceptions -fno-rtti -c $cppProbe -o (Join-Path $fullProbeRoot 'standard_headers.cpp.o') 2>&1)
+        if ($LASTEXITCODE -ne 0) {
+            throw "Windows GCC failed the standard C++ header probe: $($cppOutput -join [Environment]::NewLine)"
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $fullProbeRoot) {
+            Remove-Item -LiteralPath $fullProbeRoot -Recurse -Force
+        }
+    }
 }
 
 function Resolve-CitoolCliArchives {
@@ -246,6 +336,10 @@ function New-PortableZipArchive {
 
 $PlatformRoot = (Resolve-Path -LiteralPath $PlatformRoot).Path
 $ToolchainRoot = Resolve-ToolchainRoot -RequestedRoot $ToolchainRoot
+Assert-CompleteWindowsToolchain -Root $ToolchainRoot
+if ($ToolchainPackageVersion -ne '9.2.0') {
+    throw "ToolchainPackageVersion must match the published GCC version 9.2.0: $ToolchainPackageVersion"
+}
 $ToolchainArchives = @(
     Resolve-ToolchainArchives `
         -PlatformPath $PlatformRoot `
@@ -387,7 +481,8 @@ $citoolReleaseTargets = @(
     }
 )
 
-$toolchainVersion = '9.2.0'
+$compilerVersion = '9.2.0'
+$toolchainVersion = $ToolchainPackageVersion
 $windowsToolchainArchiveName = "riscv-nuclei-elf-gcc-$toolchainVersion-windows.zip"
 $toolchainReleaseTargets = @(
     [pscustomobject]@{
@@ -397,13 +492,13 @@ $toolchainReleaseTargets = @(
         Source = 'generated'
     },
     [pscustomobject]@{
-        ArchiveName = "riscv-nuclei-elf-gcc-$toolchainVersion-linux-x86_64.tar.gz"
+        ArchiveName = "riscv-nuclei-elf-gcc-$compilerVersion-linux-x86_64.tar.gz"
         Executable = 'riscv-gcc/bin/riscv-nuclei-elf-gcc'
         Hosts = @('x86_64-pc-linux-gnu')
         Source = 'external'
     },
     [pscustomobject]@{
-        ArchiveName = "riscv-nuclei-elf-gcc-$toolchainVersion-macos-arm64.tar.gz"
+        ArchiveName = "riscv-nuclei-elf-gcc-$compilerVersion-macos-arm64.tar.gz"
         Executable = 'riscv-gcc/bin/riscv-nuclei-elf-gcc'
         Hosts = @('arm64-apple-darwin')
         Source = 'external'
@@ -431,16 +526,36 @@ foreach ($target in @($toolchainReleaseTargets | Where-Object Source -eq 'extern
         throw "Unable to inspect Nuclei GCC host archive: $archivePath"
     }
     $entries = @($entries | ForEach-Object { $_.Replace('\', '/').TrimStart([char[]]'./') })
-    if ($entries -notcontains $target.Executable) {
-        throw "Nuclei GCC host archive must contain $($target.Executable): $archivePath"
+    $requiredEntries = @(
+        $target.Executable,
+        'riscv-gcc/bin/riscv-nuclei-elf-g++',
+        'riscv-gcc/riscv-nuclei-elf/include/assert.h',
+        'riscv-gcc/lib/gcc/riscv-nuclei-elf/9.2.0/rv32imafc/ilp32f/libgcc.a',
+        'riscv-gcc/riscv-nuclei-elf/lib/rv32imafc/ilp32f/libc_nano.a',
+        'riscv-gcc/riscv-nuclei-elf/lib/rv32imafc/ilp32f/libstdc++.a'
+    )
+    foreach ($requiredEntry in $requiredEntries) {
+        if ($entries -notcontains $requiredEntry) {
+            throw "Incomplete Nuclei GCC host archive; missing $requiredEntry`: $archivePath"
+        }
+    }
+    if ($entries.Count -lt 2000) {
+        throw "Incomplete Nuclei GCC host archive; expected at least 2000 entries, found $($entries.Count): $archivePath"
+    }
+    if ($entries -match '(^|/)\._|(^|/)\.DS_Store$') {
+        throw "Nuclei GCC host archive contains macOS metadata entries: $archivePath"
     }
 }
-$linuxToolchainName = "riscv-nuclei-elf-gcc-$toolchainVersion-linux-x86_64.tar.gz"
-if ($toolchainArchiveByName.ContainsKey($linuxToolchainName)) {
-    $expectedLinuxToolchainHash = '0EE91C983F2CF3EAA26B444EB553847A7DDA34F3FB5D97C34B977CA43E593CA5'
-    $linuxToolchainHash = (Get-FileHash -LiteralPath $toolchainArchiveByName[$linuxToolchainName] -Algorithm SHA256).Hash
-    if ($linuxToolchainHash -ne $expectedLinuxToolchainHash) {
-        throw "Unexpected ChipIntelli Linux GCC archive SHA-256: $linuxToolchainHash"
+$expectedExternalToolchainHashes = @{
+    "riscv-nuclei-elf-gcc-$compilerVersion-linux-x86_64.tar.gz" = '2E24642906CD0C11FF1CC85EBD1B058D18EA75893F9C62F7077C7A65374CA268'
+    "riscv-nuclei-elf-gcc-$compilerVersion-macos-arm64.tar.gz" = '29B22C8DB6A555E86E64D79D61C4275B0451F97CCB652EDA55FEE86A6A694221'
+}
+foreach ($archiveName in $expectedExternalToolchainHashes.Keys) {
+    if ($toolchainArchiveByName.ContainsKey($archiveName)) {
+        $archiveHash = (Get-FileHash -LiteralPath $toolchainArchiveByName[$archiveName] -Algorithm SHA256).Hash
+        if ($archiveHash -ne $expectedExternalToolchainHashes[$archiveName]) {
+            throw "Unexpected Nuclei GCC archive SHA-256 for $archiveName`: $archiveHash"
+        }
     }
 }
 
@@ -480,13 +595,6 @@ foreach ($target in $citoolReleaseTargets) {
     if ($entries -notcontains $target.Executable) {
         throw "citool-cli archive must contain $($target.Executable): $archivePath"
     }
-}
-
-$compiler = Join-Path $ToolchainRoot 'bin\riscv-nuclei-elf-gcc.exe'
-$expectedCompilerHash = '84B0FFB1FB194CC41FCFA96FB01D65B3A6289147041CF8BC76DB60BD05FBCB6D'
-$compilerHash = (Get-FileHash -LiteralPath $compiler -Algorithm SHA256).Hash
-if ($compilerHash -ne $expectedCompilerHash) {
-    throw "Unexpected GCC executable SHA-256: $compilerHash"
 }
 
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
@@ -625,7 +733,7 @@ try {
                             [ordered]@{
                                 packager = 'chipintelli'
                                 name = 'riscv-gcc'
-                                version = '9.2.0'
+                                version = $toolchainVersion
                             },
                             [ordered]@{
                                 packager = 'chipintelli'
