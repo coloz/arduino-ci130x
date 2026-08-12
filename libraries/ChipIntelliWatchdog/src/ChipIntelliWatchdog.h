@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Arduino.h>
 #include <stdint.h>
 
 class ChipIntelliWatchdogFactory;
@@ -17,6 +18,7 @@ public:
     TimeoutTooLong,
     NotRunning,
     InterruptContext,
+    InvalidLivenessMask,
   };
 
   ChipIntelliWatchdogClass(const ChipIntelliWatchdogClass &) = delete;
@@ -26,10 +28,17 @@ public:
   // Enables the official IWDG with interrupt and whole-system reset enabled.
   // timeoutMs is the duration of one watchdog countdown stage.
   bool begin(uint32_t timeoutMs = DefaultTimeoutMs);
+  bool beginSupervised(
+      uint32_t timeoutMs = DefaultTimeoutMs,
+      uint32_t requiredLiveness =
+          CHIPINTELLI_LIVENESS_ARDUINO_LOOP |
+          CHIPINTELLI_LIVENESS_SDK_AUDIO);
 
   // Clears a pending first-stage warning and reloads the counter.
   bool feed();
   bool reset() { return feed(); }
+  bool heartbeat(uint32_t sources = CHIPINTELLI_LIVENESS_APPLICATION);
+  uint32_t requiredLiveness() const;
 
   // Stops the watchdog through the official SDK driver. Calling end() more
   // than once is safe.

@@ -448,6 +448,33 @@ if (-not (Test-Path -LiteralPath $packagedCwslSource -PathType Leaf)) {
 $stagedCwslSource = Join-Path $sourceOutput 'projects\offline_asr_alg_pro_sample\app\app_cwsl\cwsl_app_handle.c'
 Copy-Item -LiteralPath $packagedCwslSource -Destination $stagedCwslSource -Force
 
+# Preserve the audited bounded-wait ADC adaptation. V2.7.14's original
+# adc_poweron(), adc_reset(), and adc_wait_int() spin forever on a missing
+# ready/IRQ condition; the packaged replacement adds timeout-returning entry
+# points while retaining the vendor ABI for existing callers.
+$packagedAdcSource = Join-Path $sdkOutput 'src\driver\ci130x_chip_driver\src\ci130x_adc.c'
+if (-not (Test-Path -LiteralPath $packagedAdcSource -PathType Leaf)) {
+    throw "The current bounded-wait ADC source is missing: $packagedAdcSource"
+}
+$stagedAdcSource = Join-Path $sourceOutput 'driver\ci130x_chip_driver\src\ci130x_adc.c'
+Copy-Item -LiteralPath $packagedAdcSource -Destination $stagedAdcSource -Force
+
+# Preserve the bounded NVDM mutex/error-path adaptation. The upstream port
+# waits forever for its mutex and halts on malformed flash records; Arduino
+# callers instead receive a normal operation failure after a finite timeout.
+$boundedNvdataSources = @(
+    'components\ci_nvdm\ci_nvdata_port.c',
+    'components\ci_nvdm\ci_nvdata_manage.c'
+)
+foreach ($relativePath in $boundedNvdataSources) {
+    $packagedNvdataSource = Join-Path (Join-Path $sdkOutput 'src') $relativePath
+    if (-not (Test-Path -LiteralPath $packagedNvdataSource -PathType Leaf)) {
+        throw "The current bounded-wait NVDM source is missing: $packagedNvdataSource"
+    }
+    Copy-Item -LiteralPath $packagedNvdataSource `
+        -Destination (Join-Path $sourceOutput $relativePath) -Force
+}
+
 # The closed IR database archive looks up user-file ID 0 during ir_init().
 # Arduino keeps ID 0 available for the default TTS dictionary, so add a
 # task-scoped compatibility alias that can map only that initialization lookup
@@ -1009,6 +1036,19 @@ $audioInputSourceContent = Replace-RequiredLiteral `
 '@.TrimEnd("`r", "`n") `
     -ExpectedCount 1 `
     -Description "publish Arduino capture readiness in $audioInputSourcePath"
+$audioInputSourceContent = Replace-RequiredLiteral `
+    -Content $audioInputSourceContent `
+    -OldValue '        iwdg_feed(IWDG);' `
+    -NewValue @'
+        #if defined(CI_ARDUINO_CORE)
+        extern void chipintelli_watchdog_sdk_audio_heartbeat(void);
+        chipintelli_watchdog_sdk_audio_heartbeat();
+        #else
+        iwdg_feed(IWDG);
+        #endif
+'@.TrimEnd("`r", "`n") `
+    -ExpectedCount 1 `
+    -Description "route the SDK audio watchdog heartbeat through Arduino liveness supervision in $audioInputSourcePath"
 $audioInputSourceContent = $audioInputSourceContent.Replace("`r`n", "`n").Replace("`n", "`r`n")
 [IO.File]::WriteAllText($audioInputSourcePath, $audioInputSourceContent, [Text.UTF8Encoding]::new($false))
 
@@ -1555,6 +1595,36 @@ $arduinoMainContent = Replace-RequiredLiteral `
     -ExpectedCount 1 `
     -Description "start the SDK system-message consumer before producers in $arduinoMainPath"
 
+# task_init is a one-shot initializer in Arduino Release builds. The vendor
+# sample's ten-second TaskStatus_t/heap monitor is retained only when an
+# explicit diagnostics profile defines CI_ARDUINO_DIAGNOSTICS=1.
+$initMonitorPattern = '(?ms)^    #if \(!COMMAND_LINE_CONSOLE_EN\)\r?\n(?<body>.*?)^    #else\r?\n    vTaskDelete\(NULL\);\r?\n    #endif'
+$initMonitorMatches = [regex]::Matches($arduinoMainContent, $initMonitorPattern)
+if ($initMonitorMatches.Count -ne 1) {
+    throw "Unable to profile-gate the SDK init task monitor in: $arduinoMainPath"
+}
+$arduinoMainContent = [regex]::Replace(
+    $arduinoMainContent,
+    $initMonitorPattern,
+    [System.Text.RegularExpressions.MatchEvaluator]{
+        param($match)
+        return @'
+    #if defined(CI_ARDUINO_CORE) && \
+        (!defined(CI_ARDUINO_DIAGNOSTICS) || !(CI_ARDUINO_DIAGNOSTICS))
+    /* Arduino Release builds do not keep the one-shot initializer alive as a
+     * periodic task/heap monitor. SDK readiness is published independently by
+     * the real audio-input/system-message ready paths. */
+    vTaskDelete(NULL);
+    return;
+    #elif (!COMMAND_LINE_CONSOLE_EN)
+'@ + $match.Groups['body'].Value + @'
+    #else
+    vTaskDelete(NULL);
+    #endif
+'@.TrimEnd("`r", "`n")
+    },
+    1)
+
 # The upstream sample main automatically starts its ASR/audio application and
 # configures board peripherals before an Arduino sketch runs. Arduino must have
 # neutral GPIO ownership by default, so use a minimal platform/FreeRTOS entry
@@ -1680,6 +1750,24 @@ foreach ($header in $headers) {
     Copy-Item -LiteralPath $header.FullName -Destination $preservedDestination -Force
     Copy-Item -LiteralPath $header.FullName -Destination (Join-Path $includeOutput $header.Name) -Force
 }
+
+$packagedAdcHeader = Join-Path $sdkOutput 'include\ci130x_adc.h'
+if (-not (Test-Path -LiteralPath $packagedAdcHeader -PathType Leaf)) {
+    throw "The current bounded-wait ADC header is missing: $packagedAdcHeader"
+}
+Copy-Item -LiteralPath $packagedAdcHeader `
+    -Destination (Join-Path $includeOutput 'ci130x_adc.h') -Force
+Copy-Item -LiteralPath $packagedAdcHeader `
+    -Destination (Join-Path $preservedIncludeOutput 'driver\ci130x_chip_driver\inc\ci130x_adc.h') -Force
+
+$packagedNvdataPortHeader = Join-Path $sdkOutput 'include\sdk\components\ci_nvdm\ci_nvdata_port.h'
+if (-not (Test-Path -LiteralPath $packagedNvdataPortHeader -PathType Leaf)) {
+    throw "The current bounded-wait NVDM port header is missing: $packagedNvdataPortHeader"
+}
+Copy-Item -LiteralPath $packagedNvdataPortHeader `
+    -Destination (Join-Path $includeOutput 'ci_nvdata_port.h') -Force
+Copy-Item -LiteralPath $packagedNvdataPortHeader `
+    -Destination (Join-Path $preservedIncludeOutput 'components\ci_nvdm\ci_nvdata_port.h') -Force
 
 $packagedCwslBridgeHeader = Join-Path $sdkOutput 'include\sdk\chipintelli_cwsl_bridge.h'
 if (-not (Test-Path -LiteralPath $packagedCwslBridgeHeader -PathType Leaf)) {

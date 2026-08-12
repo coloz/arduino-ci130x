@@ -579,7 +579,12 @@ void audio_in_manage_inner_task(void *p)
         }
 
         
+        #if defined(CI_ARDUINO_CORE)
+        extern void chipintelli_watchdog_sdk_audio_heartbeat(void);
+        chipintelli_watchdog_sdk_audio_heartbeat();
+        #else
         iwdg_feed(IWDG);
+        #endif
     }
 }
 

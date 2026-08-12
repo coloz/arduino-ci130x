@@ -473,7 +473,14 @@ static void task_init(void *p_arg)
     #if USER_CODE_SWITCH_ENABLE
     CI_ARDUINO_REQUIRE_PASS(xTaskCreate(uart_data_handle_task,"uart_data_handle_task", 480, NULL, 4, NULL));
     #endif
-    #if (!COMMAND_LINE_CONSOLE_EN)
+    #if defined(CI_ARDUINO_CORE) && \
+        (!defined(CI_ARDUINO_DIAGNOSTICS) || !(CI_ARDUINO_DIAGNOSTICS))
+    /* Arduino Release builds do not keep the one-shot initializer alive as a
+     * periodic task/heap monitor. SDK readiness is published independently by
+     * the real audio-input/system-message ready paths. */
+    vTaskDelete(NULL);
+    return;
+    #elif (!COMMAND_LINE_CONSOLE_EN)
     while(1) 
     {
         UBaseType_t ArraySize = 15;

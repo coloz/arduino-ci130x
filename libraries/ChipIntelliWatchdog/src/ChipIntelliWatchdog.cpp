@@ -10,6 +10,8 @@ extern "C" {
 #include "ci130x_scu.h"
 #include "platform_config.h"
 #include "task.h"
+
+void chipintelli_watchdog_set_feed_enabled(bool enabled);
 }
 
 namespace {
@@ -99,6 +101,19 @@ bool ChipIntelliWatchdogClass::begin(uint32_t timeoutMs) {
   _running = true;
   _lastError = Error::None;
   taskEXIT_CRITICAL();
+  chipintelli_watchdog_set_feed_enabled(true);
+  chipintelli_watchdog_set_liveness_mask(0U);
+  return true;
+}
+
+bool ChipIntelliWatchdogClass::beginSupervised(
+    uint32_t timeoutMs, uint32_t requiredLiveness) {
+  if (requiredLiveness == 0U) {
+    setError(Error::InvalidLivenessMask);
+    return false;
+  }
+  if (!begin(timeoutMs)) return false;
+  chipintelli_watchdog_set_liveness_mask(requiredLiveness);
   return true;
 }
 
@@ -114,11 +129,32 @@ bool ChipIntelliWatchdogClass::feed() {
     taskEXIT_CRITICAL();
     return false;
   }
-
-  iwdg_feed(IWDG);
   _lastError = Error::None;
   taskEXIT_CRITICAL();
+  chipintelli_watchdog_heartbeat(CHIPINTELLI_LIVENESS_APPLICATION);
   return true;
+}
+
+bool ChipIntelliWatchdogClass::heartbeat(uint32_t sources) {
+  if (check_curr_trap() != 0) {
+    setError(Error::InterruptContext);
+    return false;
+  }
+  if (!_running) {
+    setError(Error::NotRunning);
+    return false;
+  }
+  if (sources == 0U) {
+    setError(Error::InvalidLivenessMask);
+    return false;
+  }
+  chipintelli_watchdog_heartbeat(sources);
+  setError(Error::None);
+  return true;
+}
+
+uint32_t ChipIntelliWatchdogClass::requiredLiveness() const {
+  return chipintelli_watchdog_liveness_mask();
 }
 
 void ChipIntelliWatchdogClass::end() {
@@ -127,6 +163,8 @@ void ChipIntelliWatchdogClass::end() {
     return;
   }
 
+  chipintelli_watchdog_set_liveness_mask(0U);
+  chipintelli_watchdog_set_feed_enabled(false);
   taskENTER_CRITICAL();
   if (_running) {
     // Clear a possible first-stage warning before disabling reset/interrupt,
@@ -183,6 +221,7 @@ const char *ChipIntelliWatchdogClass::errorString(Error error) {
     case Error::TimeoutTooLong: return "timeout exceeds the IWDG counter";
     case Error::NotRunning: return "watchdog is not running";
     case Error::InterruptContext: return "watchdog control is not allowed in an ISR";
+    case Error::InvalidLivenessMask: return "liveness mask must not be zero";
   }
   return "unknown error";
 }

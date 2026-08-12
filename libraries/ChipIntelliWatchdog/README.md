@@ -24,6 +24,12 @@ void loop() {
 - `begin(timeoutMs)` configures and starts IWDG. It returns `false` for zero,
   unavailable-clock, or out-of-range timeouts. Calling it again safely
   reconfigures the same hardware watchdog.
+- `beginSupervised(timeoutMs, requiredLiveness)` enables multi-source
+  supervision. The default mask requires both Arduino `loop()` and the SDK
+  audio-input task to report progress before the hardware is fed.
+- `heartbeat(mask)` reports application/user liveness; `requiredLiveness()`
+  returns the active mask. Use `CHIPINTELLI_LIVENESS_APPLICATION` or
+  `CHIPINTELLI_LIVENESS_USER0` through `USER3` for additional critical tasks.
 - `feed()` (alias `reset()`) clears a pending warning and reloads the counter.
   It returns `false` if this wrapper has not started IWDG.
 - `end()` (alias `disable()`) clears a pending stage, stops IWDG, restores the
@@ -57,7 +63,9 @@ it is not registered with `PeripheralManager`. Do not mix this wrapper with
 direct calls to `iwdg_init()`, `iwdg_open()`, or `iwdg_close()`; direct calls
 can make the wrapper's reported state stale.
 
-When the official audio-input pipeline is running, its SDK task also feeds the
-same IWDG. In that configuration the watchdog detects a stalled system/audio
-pipeline, but it cannot be used as a strict monitor of only the Arduino
-`loop()` task.
+When the official audio-input pipeline is running, its SDK task reports an
+audio heartbeat. In compatible `begin()` mode this still feeds the singleton
+IWDG normally. In `beginSupervised()` mode, the core feeds only after every bit
+in the required mask has been observed, so a healthy audio task can no longer
+hide a stalled Arduino loop (or vice versa). Each successful feed clears the
+observed set and starts a new supervision window.
