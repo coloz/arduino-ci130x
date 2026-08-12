@@ -50,7 +50,9 @@ void loop() {}
 
 支持 `SD.begin()`、`open()`、`exists()`、`mkdir()`、`remove()`、`rmdir()`，以及
 `File` 的读写、定位、目录遍历和 `Print` API。`SD.begin(clock, cs)` 可请求运行
-时钟，但 CI13XX software SPI 会把高于 500 kHz 的值限制为 500 kHz。
+时钟，但 CI13XX software SPI 会把高于 4 MHz 的值限制为 4 MHz。块数据使用
+SPI 整缓冲区热路径，并默认每 64 字节协作式让出一次 CPU，使 ASR/音频任务可在
+长块读写期间继续调度。
 
 ## 限制
 

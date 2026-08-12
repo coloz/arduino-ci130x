@@ -220,13 +220,13 @@ OLED 接口的 `CS` 在原理图中未连接，`PIN_OLED_CS` 因而定义为 `25
 | 定时任务 | [`ChipIntelliTimer`](libraries/ChipIntelliTimer/README.md)、`Ticker` | TIMER0–2 微秒级中断；TIMER3 保留给 BLE；软件定时器为 2 ms 分辨率 |
 | 看门狗 | [`ChipIntelliWatchdog`](libraries/ChipIntelliWatchdog/README.md) | 官方 IWDG、毫秒配置、喂狗和全系统复位路由 |
 | GPIO | `pinMode()`、`digitalRead()`、`digitalWrite()`、`digitalToggle()` | 使用外部晶振时 PA0/PA1 不可用 |
-| 中断 | `attachInterrupt()`、`attachInterruptArg()`、`detachInterrupt()` | PA/PB/PC 支持；PD 不支持 GPIO IRQ |
-| ADC | `analogRead()`、读取分辨率 | 12 位；CI1302/1303 为 AIN2，CI1306 为 AIN2–AIN5 |
+| 中断 | `attachInterrupt()`、`attachInterruptEvent()`、`gpioInterruptStats()` | PA/PB/PC 支持；延迟事件可携带 pin/边沿/时间戳；PD 不支持 GPIO IRQ |
+| ADC | `analogRead()`、`analogReadAsync()`、`analogReadContinuous()` | 12 位、通知等待、转换超时和空闲掉电；CI1302/1303 为 AIN2，CI1306 为 AIN2–AIN5 |
 | PWM / Tone | `analogWrite()`、写分辨率/频率、`tone()`、`noTone()` | 6 个硬件通道 |
 | 舵机 | [`Servo`](libraries/Servo/README.md) | 50 Hz 硬件 PWM、角度/微秒接口；CI1302/CI1303 最多 5 个通道，CI1306 最多 6 个通道 |
-| 串口 | `Serial`、`Serial1`、`Serial2` | 中断收发、128 B RX/TX 环形缓冲、5–8 数据位、奇偶校验和 1/1.5/2 停止位 |
-| I2C | [`Wire`](libraries/Wire/README.md) | IIC0 controller/peripheral、64 B、10–400 kHz、repeated start、从机回调和 25 ms 可恢复超时 |
-| SPI | [`SPI`](libraries/SPI/README.md)、`SPISettings` | GPIO software master、模式 0–3、MSB/LSB，最高 500 kHz |
+| 串口 | `Serial`、`Serial1`、`Serial2` | 中断收发、每端口可配置缓冲、可选 GDMA1 TX、5–8 数据位、奇偶校验和 1/1.5/2 停止位 |
+| I2C | [`Wire`](libraries/Wire/README.md) | IIC0 中断状态机、同步通知/异步 API、64 B、10–400 kHz、repeated start、9 脉冲恢复 |
+| SPI | [`SPI`](libraries/SPI/README.md)、`SPISettings` | GPIO 寄存器热路径、模式 0–3、MSB/LSB，请求时钟最高 4 MHz |
 | SD 卡 | [`SD`](libraries/SD/README.md)、`File` | software SPI、SD/SDHC、FAT16/FAT32、8.3 短文件名 |
 | 持久化 | [`EEPROM`](libraries/EEPROM/README.md)、[`Preferences`](libraries/Preferences/README.md) | 基于 NVDM；EEPROM 缓冲提交，Preferences 提供 namespace/typed key-value |
 | 语音识别 | [`ChipIntelliASR`](libraries/ChipIntelliASR/README.md) | OneButton 风格的启动/唤醒/超时/命令/语义事件、512 项处理表及 `tick()`；提示音由 sketch 决定，AEC/语音打断由所选板卡与算法 profile 决定 |
@@ -268,7 +268,8 @@ Arduino task 默认优先级为 2，低于原厂 ASR/音频实时任务的优先
 忙等，适合必要的短脉冲，长时间调用会占用 CPU。`Stream` 的等待钩子允许串口
 解析函数睡眠；`HardwareSerial` 的 RX/TX ISR 会通知等待 task，并提供
 `tryWrite()`、`write(..., timeoutMs)` 和 `flush(timeoutMs)`。默认 `write()` 最长
-等待 1000 ms，超时可通过 `lastError()` 查询。
+等待 1000 ms，超时可通过 `lastError()` 查询。大块发送可显式调用
+`Serial.enableTxDMA(true, threshold)` 占用 GDMA1；默认仍使用 IRQ ring buffer。
 
 普通 `attachInterrupt()`/`attachInterruptArg()`、硬件 Timer、`Ticker`、音频完成、
 CWSL 以及 Wire 接收回调统一在 Arduino event dispatcher 中执行，可以安全使用
@@ -282,7 +283,8 @@ CWSL 以及 Wire 接收回调统一在 Arduino event dispatcher 中执行，可�
 Arduino Release profile 在 SDK 初始化完成后删除 init task；周期 task/heap 监控只在
 `CI_ARDUINO_DIAGNOSTICS` 中保留。`chipintelli_arduino_fault()`、各驱动
 `lastError()` 和 `analogReadLastError()` 用于区分内存不足、忙、超时、硬件故障及
-事件队列满等失败。
+事件队列满等失败。ADC 异步回调同样由 Arduino dispatcher 执行；连续采样用
+`analogReadContinuousStop()` 停止，`analogReadDropped()` 可查询丢失结果。
 
 ## 示例
 
@@ -376,6 +378,10 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
   5–8 数据位、无/奇/偶校验及 1/1.5/2 停止位；CI130X 不支持 mark/space
   校验。波特率必须是原厂驱动列出的固定值；不支持的参数会保留原端口状态并
   通过 `lastError()` 报错，不再静默回退。
+  `SERIAL0_RX_BUFFER_SIZE`/`SERIAL0_TX_BUFFER_SIZE`、`SERIAL1_*` 和 `SERIAL2_*`
+  可分别覆盖各端口大小（必须为 2 的幂）。可选 TX DMA 只申请 GDMA1；GDMA0
+  始终为 Flash 系统保留，启用原厂 UART 音频输出时 GDMA1 也标记为系统占用，
+  `enableTxDMA()` 会以 `ResourceBusy` 拒绝冲突。
 - `Wire` 与 `Serial1` 共用 PAD：CI1302/CI1303 为 PA2/PA3，CI1306 为 PB7/PC0。
   CI1306 选择 PDM 输入时，PB7/PC0 同时作为 DATA/CLK 并被标记为系统占用，
   `Wire.begin()`、`Serial1.begin()`、`pinMode()` 和 `attachInterrupt()` 不会改写其复用；
@@ -390,6 +396,9 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 - software SPI 默认使用 `SCK=PA5`、`MISO=PA2`、`MOSI=PA4`、`SS=PA3`，
   `SPI.begin()` 会原子申请四个引脚和 software-SPI 资源；冲突时返回 `false`。
   PA4 同时是复位阶段的 `PG_EN` 检测脚，外设在复位期间不得主动驱动它。
+  软件 SPI 在 transaction 开始时缓存寄存器，使用核心 timer 控制亚微秒边沿；
+  缓冲区/SD 块传输每 64 字节协作式让出。没有验证到安全的通用硬件 SPI 路由，
+  因此 QSPI0 仍只服务片内 Flash，不提供硬件 SPI 后端。
 - `SD` 使用上述 software SPI 接线，仅支持 FAT16/FAT32 和 8.3 短文件名；不支持
   exFAT、长文件名、DMA 或 SDIO。CI1302/CI1303 上 PA2/PA3 与 `Wire`/`Serial1`
   冲突，SD 文件系统和 SPI 总线也需要由应用保证跨 task 互斥。

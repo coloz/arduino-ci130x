@@ -32,8 +32,20 @@ another peripheral owns any of them. `end()` returns all acquired resources.
 
 Implemented APIs include `SPISettings`, modes 0–3, MSB/LSB order,
 `beginTransaction()` / `endTransaction()`, byte/16-bit/32-bit transfers,
-in-place buffers, separate TX/RX buffers, and write helpers. Requested clocks
-above 500 kHz are capped. GPIO call overhead makes the real clock lower than
-the requested value, and FreeRTOS/interrupt activity can add jitter. There is
-no DMA, hardware chip select, slave mode, or transaction-level multi-task
-arbitration.
+in-place buffers, separate TX/RX buffers, and write helpers. Each transaction
+caches the PL061 masked-data register addresses and masks; the bit loop uses
+direct register access and the core timer instead of `digitalWrite()`,
+`digitalRead()` and integer-microsecond delays. Requested clocks above 4 MHz
+are capped. Instruction and interrupt overhead can still make the measured
+clock lower than requested and add jitter.
+
+Buffer transfers stay in the register hot path and cooperatively yield every
+64 bytes by default. Define `SPI_COOPERATIVE_CHUNK_BYTES` to another positive
+value at build time to tune that interval. SD block transfers use this bulk
+path. There is no DMA, hardware chip select, slave mode, or transaction-level
+multi-task arbitration.
+
+The packaged CI1302/CI1303/CI1306 routes were audited before this optimization:
+no general-purpose hardware SPI controller has both a safe pin route and a
+conflict-free resource assignment. QSPI0 remains reserved for boot/model/user
+Flash, so no speculative hardware backend is exposed.
