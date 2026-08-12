@@ -9,7 +9,7 @@ on:
       release_tag:
         description: Existing release tag to update
         required: true
-        default: v1.0.10
+        default: v1.0.11
 
 permissions:
   contents: write
@@ -302,15 +302,14 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## 主要更新
 
-          - 将 `ChipIntelliAudio` 播放改为专用 FreeRTOS 任务执行，调用方无需等待 SDK 播放流程。
-          - 语音序列、数字、提示音、命令和语义播放统一支持普通队列与抢占队列，连续请求可按顺序异步播放。
-          - `stop()` 会清空待播放请求并异步停止当前播放，`isPlaying()` 同时反映当前播放和队列状态。
-          - 完成回调改由播放任务在 SDK 释放互斥锁后调用，可安全地在回调中继续提交播放请求。
-          - 更新 `VariableNumber` 示例与中英文文档，演示非阻塞队列播放和完成计数。
+          - 修复 `Wire` 在重复 `begin()` 时无条件重新初始化 I2C 的问题，避免相同配置下重复触碰外设状态。
+          - 新增 FastLED WS2812 灯带示例和 Servo 舵机扫描示例。
+          - 新增 CI1306 + U8g2 显示测试示例，便于验证 OLED 显示链路。
+          - 继续复用 `v1.0.10` 发布的完整 Nuclei GCC 9.2.0 三平台工具包。
 
           ## 验证
 
-          - Arduino 示例完成编译、链接和固件后处理验证。
+          - Arduino 平台版本、归档结构与运行时脚本由发布工作流校验。
           - Windows x86_64、macOS Universal（Intel + Apple Silicon）和 Linux x86_64 公共工具包由发布工作流校验版本、结构和 SHA-256。
           - Arduino 平台归档、公共工具依赖和 Boards Manager 索引由发布工作流统一校验后生成。
           EOF

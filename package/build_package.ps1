@@ -11,7 +11,7 @@ param(
     [string]$ToolchainBaseUrl,
     [string]$CitoolCliBaseUrl,
     [switch]$FlatAssetUrls,
-    [string]$Version = '1.0.10',
+    [string]$Version = '1.0.11',
     [string]$OutputDirectory,
     [string]$IndexOutputPath,
     [switch]$RequireAllHostTools

@@ -31,14 +31,14 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前开发版本 | `1.0.10` |
+| 当前开发版本 | `1.0.11` |
 | Arduino IDE | Arduino IDE 2.x |
 | Arduino CLI | 已使用 1.5.0 验证 |
 | 主机系统 | 完整固件流程：Windows 10/11 x64、macOS 15+ Apple Silicon；Linux x86_64 已通过编译/链接验证，完整回归待补充 |
 | 编译器 | Nuclei RISC-V GCC 9.2.0（`rv32imafc / ilp32f`）；macOS 由官方 `nuclei_9.2_fixjalr_forhw` 源码构建 |
 | Algorithm Profile（算法） | CI1306 芯片默认标准 ASR + AEC；CI-D06GT01D 默认标准 ASR（无 AEC）；均可选择四种 profile |
 | Microphone Input（麦克风） | 支持模拟单/双麦和 PDM 数字单/双麦；CI1306 默认模拟单麦，CI-D06GT01D 默认模拟双麦 |
-| 公共 Boards Manager 发布 | `v1.0.10`（Windows x64、Linux x86_64、macOS Apple Silicon） |
+| 公共 Boards Manager 发布 | `v1.0.11`（Windows x64、Linux x86_64、macOS Apple Silicon） |
 | 硬件运行验证 | CI1303：Windows/macOS Standard 启动和音频、CWSL 启动、核心外设、I2C/SSD1306 已通过；其余待验证 |
 
 当前版本在编译前检查 sketch 根目录的 profile 资源；标准 ASR/AEC 使用
@@ -109,7 +109,7 @@ CI1306 编译和链接，完整后处理与实体板回归仍待补充。
 固定版本的索引也随 GitHub Release 发布：
 
 ```text
-https://github.com/coloz/arduino-ci130x/releases/download/v1.0.10/package_chipintelli_index.json
+https://github.com/coloz/arduino-ci130x/releases/download/v1.0.11/package_chipintelli_index.json
 ```
 
 ## 快速开始
