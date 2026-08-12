@@ -23,6 +23,8 @@ enum class HardwareSerialStartError : uint8_t {
     UnsupportedBaud,
     UnsupportedConfig,
     ResourceBusy,
+    Timeout,
+    Busy,
 };
 
 struct HardwareSerialErrorCounts {
@@ -43,8 +45,13 @@ public:
     int peek() override;
     int read() override;
     void flush() override;
+    bool flush(uint32_t timeoutMs);
     size_t write(uint8_t value) override;
     size_t write(const uint8_t *buffer, size_t size) override;
+    size_t write(uint8_t value, uint32_t timeoutMs);
+    size_t write(const uint8_t *buffer, size_t size, uint32_t timeoutMs);
+    size_t tryWrite(uint8_t value);
+    size_t tryWrite(const uint8_t *buffer, size_t size);
     inline size_t write(unsigned long value) { return write(static_cast<uint8_t>(value)); }
     inline size_t write(long value) { return write(static_cast<uint8_t>(value)); }
     inline size_t write(unsigned int value) { return write(static_cast<uint8_t>(value)); }
@@ -60,6 +67,9 @@ public:
     void handleInterrupt();
 
 private:
+    bool waitForData(unsigned long timeout) override;
+    bool waitForTxSpace(uint32_t timeoutMs);
+    void pumpTxLocked();
     uint16_t rxCount() const;
     uint16_t txCount() const;
 
@@ -71,6 +81,8 @@ private:
     uint8_t _rxBuffer[SERIAL_RX_BUFFER_SIZE];
     uint8_t _txBuffer[SERIAL_TX_BUFFER_SIZE];
     volatile HardwareSerialErrorCounts _errorCounts;
+    void *_rxWaiter;
+    void *_txWaiter;
     HardwareSerialStartError _lastError;
     volatile bool _started;
 };

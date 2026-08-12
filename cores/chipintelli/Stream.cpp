@@ -27,6 +27,16 @@
 
 #define PARSE_TIMEOUT 1000  // default number of milli-seconds to wait
 
+bool Stream::waitForData(unsigned long timeout) {
+  if (available() > 0) return true;
+  if (timeout == 0U) return false;
+  // Generic streams have no readiness interrupt. Poll no faster than one
+  // scheduler quantum while still allowing subclasses to block for the full
+  // remaining timeout on a device notification.
+  delay(timeout > 1U ? 1U : timeout);
+  return available() > 0;
+}
+
 // private method to read stream with timeout
 int Stream::timedRead() {
   int c;
@@ -36,6 +46,9 @@ int Stream::timedRead() {
     if (c >= 0) {
       return c;
     }
+    const unsigned long elapsed = millis() - _startMillis;
+    if (elapsed >= _timeout) break;
+    waitForData(_timeout - elapsed);
   } while (millis() - _startMillis < _timeout);
   return -1;  // -1 indicates timeout
 }
@@ -49,6 +62,9 @@ int Stream::timedPeek() {
     if (c >= 0) {
       return c;
     }
+    const unsigned long elapsed = millis() - _startMillis;
+    if (elapsed >= _timeout) break;
+    waitForData(_timeout - elapsed);
   } while (millis() - _startMillis < _timeout);
   return -1;  // -1 indicates timeout
 }

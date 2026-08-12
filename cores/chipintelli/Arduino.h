@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "pgmspace.h"
+#include "ArduinoEvent.h"
 
 // Keep every Arduino and packaged SDK translation unit on the same board and
 // algorithm profile. The platform adds the SDK include directory.
@@ -156,7 +157,53 @@ uint8_t shiftIn(uint8_t dataPin, uint8_t clockPin, uint8_t bitOrder);
 
 void attachInterrupt(uint8_t pin, voidFuncPtr callback, int mode);
 void attachInterruptArg(uint8_t pin, voidFuncPtrArg callback, void *arg, int mode);
+void attachInterruptISR(uint8_t pin, voidFuncPtr callback, int mode);
+void attachInterruptArgISR(uint8_t pin, voidFuncPtrArg callback, void *arg,
+                           int mode);
 void detachInterrupt(uint8_t pin);
+
+typedef uint8_t chipintelli_loop_mode_t;
+enum {
+    CHIPINTELLI_LOOP_COMPATIBLE = 0,
+    CHIPINTELLI_LOOP_EVENT_DRIVEN,
+    CHIPINTELLI_LOOP_LOW_POWER
+};
+
+typedef uint8_t chipintelli_arduino_fault_t;
+enum {
+    CHIPINTELLI_ARDUINO_FAULT_NONE = 0,
+    CHIPINTELLI_ARDUINO_FAULT_NO_MEMORY,
+    CHIPINTELLI_ARDUINO_FAULT_HARDWARE
+};
+
+bool chipintelli_arduino_set_loop_mode(chipintelli_loop_mode_t mode);
+chipintelli_loop_mode_t chipintelli_arduino_loop_mode(void);
+bool chipintelli_arduino_set_interactive(bool enabled);
+chipintelli_arduino_fault_t chipintelli_arduino_fault(void);
+
+typedef uint8_t chipintelli_error_t;
+enum {
+    CHIPINTELLI_ERROR_NONE = 0,
+    CHIPINTELLI_ERROR_TIMEOUT,
+    CHIPINTELLI_ERROR_BUSY,
+    CHIPINTELLI_ERROR_NO_MEMORY,
+    CHIPINTELLI_ERROR_HARDWARE_FAULT,
+    CHIPINTELLI_ERROR_QUEUE_FULL
+};
+chipintelli_error_t analogReadLastError(void);
+
+enum {
+    CHIPINTELLI_LIVENESS_ARDUINO_LOOP = 1UL << 0,
+    CHIPINTELLI_LIVENESS_SDK_AUDIO = 1UL << 1,
+    CHIPINTELLI_LIVENESS_APPLICATION = 1UL << 2,
+    CHIPINTELLI_LIVENESS_USER0 = 1UL << 8,
+    CHIPINTELLI_LIVENESS_USER1 = 1UL << 9,
+    CHIPINTELLI_LIVENESS_USER2 = 1UL << 10,
+    CHIPINTELLI_LIVENESS_USER3 = 1UL << 11
+};
+void chipintelli_watchdog_set_liveness_mask(uint32_t mask);
+uint32_t chipintelli_watchdog_liveness_mask(void);
+void chipintelli_watchdog_heartbeat(uint32_t sources);
 
 void tone(uint8_t pin, unsigned int frequency, unsigned long duration);
 void noTone(uint8_t pin);

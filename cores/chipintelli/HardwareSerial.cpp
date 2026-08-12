@@ -1,5 +1,8 @@
 #include "Arduino.h"
+#include "ArduinoEvent.h"
 #include "PeripheralManager.h"
+
+#include <string.h>
 
 extern "C" {
 #include "FreeRTOS.h"
@@ -11,6 +14,20 @@ extern "C" {
 namespace {
 constexpr uint16_t kRxMask = SERIAL_RX_BUFFER_SIZE - 1U;
 constexpr uint16_t kTxMask = SERIAL_TX_BUFFER_SIZE - 1U;
+#ifndef SERIAL_WRITE_TIMEOUT_MS
+constexpr uint32_t kDefaultWriteTimeoutMs = 1000U;
+#else
+constexpr uint32_t kDefaultWriteTimeoutMs = SERIAL_WRITE_TIMEOUT_MS;
+#endif
+
+TickType_t timeoutTicks(uint32_t timeoutMs) {
+    if (timeoutMs == 0U) return 0U;
+    const uint64_t ticks =
+        (static_cast<uint64_t>(timeoutMs) + portTICK_PERIOD_MS - 1U) /
+        portTICK_PERIOD_MS;
+    return static_cast<TickType_t>(ticks > portMAX_DELAY ? portMAX_DELAY
+                                                         : (ticks ? ticks : 1U));
+}
 
 UART_TypeDef *uartForNumber(uint8_t number) {
     switch (number) {
@@ -111,6 +128,8 @@ HardwareSerial::HardwareSerial(uint8_t uartNumber)
       _rxBuffer{},
       _txBuffer{},
       _errorCounts{},
+      _rxWaiter(nullptr),
+      _txWaiter(nullptr),
       _lastError(HardwareSerialStartError::None),
       _started(false) {}
 
@@ -163,6 +182,8 @@ void HardwareSerial::begin(unsigned long baud, uint32_t config) {
 
     _rxHead = _rxTail = 0;
     _txHead = _txTail = 0;
+    _rxWaiter = nullptr;
+    _txWaiter = nullptr;
     clearErrorCounts();
     _lastError = HardwareSerialStartError::None;
     _started = true;
@@ -180,7 +201,7 @@ void HardwareSerial::begin(unsigned long baud, uint32_t config) {
 
 void HardwareSerial::end() {
     if (!_started) return;
-    flush();
+    (void)flush(kDefaultWriteTimeoutMs);
 
     UART_TypeDef *uart = uartForNumber(_uartNumber);
     eclic_irq_disable(irqForNumber(_uartNumber));
@@ -193,6 +214,12 @@ void HardwareSerial::end() {
     _started = false;
     _rxHead = _rxTail = 0;
     _txHead = _txTail = 0;
+    TaskHandle_t rxWaiter = static_cast<TaskHandle_t>(_rxWaiter);
+    TaskHandle_t txWaiter = static_cast<TaskHandle_t>(_txWaiter);
+    _rxWaiter = nullptr;
+    _txWaiter = nullptr;
+    if (rxWaiter != nullptr) xTaskNotifyGive(rxWaiter);
+    if (txWaiter != nullptr && txWaiter != rxWaiter) xTaskNotifyGive(txWaiter);
 
     uint8_t pins[2];
     pinsForNumber(_uartNumber, pins);
@@ -237,66 +264,176 @@ int HardwareSerial::read() {
     return value;
 }
 
-void HardwareSerial::flush() {
-    if (!_started) return;
-    UART_TypeDef *uart = uartForNumber(_uartNumber);
+void HardwareSerial::pumpTxLocked() {
+    UART_TypeDef *const uart = uartForNumber(_uartNumber);
+    while (_txTail != _txHead && !UART_FLAGSTAT(uart, UART_TXFF)) {
+        UART_TXDATAConfig(uart, _txBuffer[_txTail]);
+        _txTail = static_cast<uint16_t>((_txTail + 1U) & kTxMask);
+    }
+    UART_IntMaskConfig(uart, UART_TXInt,
+                       _txHead == _txTail ? ENABLE : DISABLE);
+}
+
+bool HardwareSerial::waitForData(unsigned long timeoutMs) {
+    if (!_started || available() > 0) return available() > 0;
+    if (timeoutMs == 0U ||
+        xTaskGetSchedulerState() != taskSCHEDULER_RUNNING) {
+        return false;
+    }
+
+    TaskHandle_t current = xTaskGetCurrentTaskHandle();
+    taskENTER_CRITICAL();
+    if (_rxHead != _rxTail) {
+        taskEXIT_CRITICAL();
+        return true;
+    }
+    if (_rxWaiter != nullptr && _rxWaiter != current) {
+        taskEXIT_CRITICAL();
+        _lastError = HardwareSerialStartError::Busy;
+        delay(timeoutMs > portTICK_PERIOD_MS ? portTICK_PERIOD_MS : timeoutMs);
+        return available() > 0;
+    }
+    _rxWaiter = current;
+    taskEXIT_CRITICAL();
+
+    (void)ulTaskNotifyTake(pdTRUE, timeoutTicks(timeoutMs));
+    taskENTER_CRITICAL();
+    if (_rxWaiter == current) _rxWaiter = nullptr;
+    const bool ready = _rxHead != _rxTail;
+    taskEXIT_CRITICAL();
+    return ready;
+}
+
+bool HardwareSerial::waitForTxSpace(uint32_t timeoutMs) {
+    if (!_started || availableForWrite() > 0) return availableForWrite() > 0;
+    if (timeoutMs == 0U ||
+        xTaskGetSchedulerState() != taskSCHEDULER_RUNNING) {
+        return false;
+    }
+
+    TaskHandle_t current = xTaskGetCurrentTaskHandle();
+    taskENTER_CRITICAL();
+    pumpTxLocked();
+    if (static_cast<uint16_t>((_txHead + 1U) & kTxMask) != _txTail) {
+        taskEXIT_CRITICAL();
+        return true;
+    }
+    if (_txWaiter != nullptr && _txWaiter != current) {
+        taskEXIT_CRITICAL();
+        _lastError = HardwareSerialStartError::Busy;
+        return false;
+    }
+    _txWaiter = current;
+    taskEXIT_CRITICAL();
+
+    (void)ulTaskNotifyTake(pdTRUE, timeoutTicks(timeoutMs));
+    taskENTER_CRITICAL();
+    if (_txWaiter == current) _txWaiter = nullptr;
+    pumpTxLocked();
+    const bool ready = static_cast<uint16_t>((_txHead + 1U) & kTxMask) !=
+                       _txTail;
+    taskEXIT_CRITICAL();
+    return ready;
+}
+
+void HardwareSerial::flush() { (void)flush(kDefaultWriteTimeoutMs); }
+
+bool HardwareSerial::flush(uint32_t timeoutMs) {
+    if (!_started) return true;
+    const uint32_t started = millis();
     for (;;) {
         taskENTER_CRITICAL();
-        while (_txTail != _txHead && !UART_FLAGSTAT(uart, UART_TXFF)) {
-            UART_TXDATAConfig(uart, _txBuffer[_txTail]);
-            _txTail = static_cast<uint16_t>((_txTail + 1U) & kTxMask);
-        }
-        if (_txHead == _txTail) {
-            UART_IntMaskConfig(uart, UART_TXInt, ENABLE);
-        }
+        pumpTxLocked();
         const bool complete = _txHead == _txTail &&
-                              UART_FLAGSTAT(uart, UART_TXFE);
+                              UART_FLAGSTAT(uartForNumber(_uartNumber),
+                                            UART_TXFE);
         taskEXIT_CRITICAL();
-        if (!_started || complete) break;
-        yield();
+        if (!_started || complete) {
+            _lastError = HardwareSerialStartError::None;
+            return true;
+        }
+        const uint32_t elapsed = millis() - started;
+        if (elapsed >= timeoutMs) {
+            _lastError = HardwareSerialStartError::Timeout;
+            return false;
+        }
+        (void)waitForTxSpace(timeoutMs - elapsed);
+        // Once the software ring is empty, no further TX-space interrupt is
+        // guaranteed. Sleep cooperatively while the final FIFO bytes drain.
+        delay(1U);
     }
+}
+
+size_t HardwareSerial::tryWrite(uint8_t value) {
+    return tryWrite(&value, 1U);
+}
+
+size_t HardwareSerial::tryWrite(const uint8_t *buffer, size_t size) {
+    if (buffer == nullptr || size == 0U || !_started) return 0U;
+
+    taskENTER_CRITICAL();
+    UART_TypeDef *const uart = uartForNumber(_uartNumber);
+    pumpTxLocked();
+    size_t written = 0U;
+
+    // Feed an idle hardware FIFO directly before filling the software ring.
+    while (_txHead == _txTail && written < size &&
+           !UART_FLAGSTAT(uart, UART_TXFF)) {
+        UART_TXDATAConfig(uart, buffer[written++]);
+    }
+
+    while (written < size) {
+        const uint16_t next = static_cast<uint16_t>((_txHead + 1U) & kTxMask);
+        if (next == _txTail) break;
+        const uint16_t contiguous = _txHead < _txTail
+                                        ? static_cast<uint16_t>(_txTail - _txHead - 1U)
+                                        : static_cast<uint16_t>(SERIAL_TX_BUFFER_SIZE - _txHead -
+                                                                (_txTail == 0U ? 1U : 0U));
+        size_t chunk = size - written;
+        if (chunk > contiguous) chunk = contiguous;
+        if (chunk == 0U) break;
+        memcpy(&_txBuffer[_txHead], &buffer[written], chunk);
+        _txHead = static_cast<uint16_t>((_txHead + chunk) & kTxMask);
+        written += chunk;
+    }
+    if (_txHead != _txTail) UART_IntMaskConfig(uart, UART_TXInt, DISABLE);
+    taskEXIT_CRITICAL();
+    return written;
 }
 
 size_t HardwareSerial::write(uint8_t value) {
-    if (!_started) return 0;
+    return write(value, kDefaultWriteTimeoutMs);
+}
 
-    for (;;) {
-        taskENTER_CRITICAL();
-        UART_TypeDef *const uart = uartForNumber(_uartNumber);
-        while (_txTail != _txHead && !UART_FLAGSTAT(uart, UART_TXFF)) {
-            UART_TXDATAConfig(uart, _txBuffer[_txTail]);
-            _txTail = static_cast<uint16_t>((_txTail + 1U) & kTxMask);
-        }
-        if (_txHead == _txTail) {
-            UART_IntMaskConfig(uart, UART_TXInt, ENABLE);
-        }
-        if (_txHead == _txTail && !UART_FLAGSTAT(uart, UART_TXFF)) {
-            // Bypass the software queue when the hardware FIFO has room. This
-            // also guarantees progress for the first byte before a TX IRQ has
-            // had an opportunity to fire.
-            UART_TXDATAConfig(uart, value);
-            taskEXIT_CRITICAL();
-            return 1;
-        }
-        const uint16_t next = static_cast<uint16_t>((_txHead + 1U) & kTxMask);
-        if (next != _txTail) {
-            _txBuffer[_txHead] = value;
-            _txHead = next;
-            UART_IntMaskConfig(uart, UART_TXInt, DISABLE);
-            taskEXIT_CRITICAL();
-            return 1;
-        }
-        taskEXIT_CRITICAL();
-        if (!_started) return 0;
-        yield();
-    }
+size_t HardwareSerial::write(uint8_t value, uint32_t timeoutMs) {
+    return write(&value, 1U, timeoutMs);
 }
 
 size_t HardwareSerial::write(const uint8_t *buffer, size_t size) {
-    if (buffer == nullptr || !_started) return 0;
-    size_t written = 0;
-    while (written < size && write(buffer[written]) == 1) {
-        ++written;
+    return write(buffer, size, kDefaultWriteTimeoutMs);
+}
+
+size_t HardwareSerial::write(const uint8_t *buffer, size_t size,
+                             uint32_t timeoutMs) {
+    if (buffer == nullptr || !_started) return 0U;
+    _lastError = HardwareSerialStartError::None;
+    const uint32_t started = millis();
+    size_t written = 0U;
+    while (written < size) {
+        written += tryWrite(buffer + written, size - written);
+        if (written == size) {
+            _lastError = HardwareSerialStartError::None;
+            break;
+        }
+        const uint32_t elapsed = millis() - started;
+        if (elapsed >= timeoutMs) {
+            _lastError = HardwareSerialStartError::Timeout;
+            break;
+        }
+        if (!waitForTxSpace(timeoutMs - elapsed) &&
+            _lastError == HardwareSerialStartError::Busy) {
+            break;
+        }
     }
     return written;
 }
@@ -328,6 +465,7 @@ void HardwareSerial::handleInterrupt() {
         return;
     }
 
+    const bool rxWasEmpty = _rxHead == _rxTail;
     bool overrunReportedByData = false;
     while (!UART_FLAGSTAT(uart, UART_RXFE)) {
         const uint32_t raw = uart->UARTRdDR;
@@ -353,7 +491,9 @@ void HardwareSerial::handleInterrupt() {
         ++_errorCounts.hardwareOverrun;
     }
 
+    bool txSpaceCreated = false;
     if (UART_MaskIntState(uart, UART_TXInt)) {
+        const uint16_t oldTail = _txTail;
         while (_txTail != _txHead && !UART_FLAGSTAT(uart, UART_TXFF)) {
             UART_TXDATAConfig(uart, _txBuffer[_txTail]);
             _txTail = static_cast<uint16_t>((_txTail + 1U) & kTxMask);
@@ -361,8 +501,25 @@ void HardwareSerial::handleInterrupt() {
         if (_txTail == _txHead) {
             UART_IntMaskConfig(uart, UART_TXInt, ENABLE);
         }
+        txSpaceCreated = oldTail != _txTail;
     }
     UART_IntClear(uart, UART_AllInt);
+
+    BaseType_t higherPriorityTaskWoken = pdFALSE;
+    if (rxWasEmpty && _rxHead != _rxTail) {
+        TaskHandle_t waiter = static_cast<TaskHandle_t>(_rxWaiter);
+        if (waiter != nullptr) {
+            vTaskNotifyGiveFromISR(waiter, &higherPriorityTaskWoken);
+        }
+        chipintelli_arduino_wake_from_isr();
+    }
+    if (txSpaceCreated) {
+        TaskHandle_t waiter = static_cast<TaskHandle_t>(_txWaiter);
+        if (waiter != nullptr) {
+            vTaskNotifyGiveFromISR(waiter, &higherPriorityTaskWoken);
+        }
+    }
+    portYIELD_FROM_ISR(higherPriorityTaskWoken);
 }
 
 extern "C" void UART0_IRQHandler(void) { Serial.handleInterrupt(); }

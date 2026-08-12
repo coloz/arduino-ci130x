@@ -51,6 +51,7 @@ protected:
   unsigned long _startMillis;                                      // used for timeout measurement
   int timedRead();                                                 // private method to read stream with timeout
   int timedPeek();                                                 // private method to peek stream with timeout
+  virtual bool waitForData(unsigned long timeout);                 // cooperative wait hook for derived streams
   int peekNextDigit(LookaheadMode lookahead, bool detectDecimal);  // returns the next numeric digit in the stream or -1 if timeout
 
 public:

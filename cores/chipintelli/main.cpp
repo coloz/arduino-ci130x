@@ -1,4 +1,5 @@
 #include "Arduino.h"
+#include "ArduinoEvent.h"
 #include "chipintelli_cwsl_bridge.h"
 
 extern "C" {
@@ -14,6 +15,10 @@ void set_state_enter_wakeup(uint32_t exit_wakeup_ms);
 
 static TaskHandle_t s_arduinoTask;
 static volatile chipintelli_sdk_state_t s_sdkState = CHIPINTELLI_SDK_NOT_STARTED;
+static volatile chipintelli_loop_mode_t s_loopMode =
+    CHIPINTELLI_LOOP_EVENT_DRIVEN;
+static volatile chipintelli_arduino_fault_t s_arduinoFault =
+    CHIPINTELLI_ARDUINO_FAULT_NONE;
 static chipintelli_asr_callback_t s_asrCallback;
 static void *s_asrCallbackArg;
 static chipintelli_asr_event_callback_t s_asrEventCallback;
@@ -24,6 +29,28 @@ static cmd_handle_t s_pendingAsrHandle;
 static uint16_t s_pendingAsrFrames;
 static int16_t s_pendingAsrScore;
 static bool s_pendingAsrValid;
+
+#ifndef ARDUINO_TASK_PRIORITY
+#define ARDUINO_TASK_PRIORITY 2U
+#endif
+#ifndef ARDUINO_INTERACTIVE_TASK_PRIORITY
+#define ARDUINO_INTERACTIVE_TASK_PRIORITY 3U
+#endif
+#ifndef ARDUINO_LOOP_EXECUTION_BUDGET_US
+#define ARDUINO_LOOP_EXECUTION_BUDGET_US 2000U
+#endif
+#ifndef ARDUINO_LOOP_MAX_ITERATIONS
+#define ARDUINO_LOOP_MAX_ITERATIONS 32U
+#endif
+#ifndef ARDUINO_EVENT_BUDGET
+#define ARDUINO_EVENT_BUDGET 8U
+#endif
+#ifndef ARDUINO_FORCED_IDLE_WINDOWS
+#define ARDUINO_FORCED_IDLE_WINDOWS 8U
+#endif
+#ifndef ARDUINO_LOW_POWER_POLL_MS
+#define ARDUINO_LOW_POWER_POLL_MS 20U
+#endif
 
 static void initializeDefaultPins() {
     // Arduino owns only pins exposed by the selected variant. Leave flash,
@@ -45,13 +72,75 @@ static void initializeDefaultPins() {
 static void arduinoTask(void *) {
     initializeDefaultPins();
     setup();
+    uint8_t windowsUntilForcedIdle = ARDUINO_FORCED_IDLE_WINDOWS;
     for (;;) {
-        loop();
-        serialEventRun();
-        // taskYIELD() only rotates among equal-priority tasks. Block for one
-        // tick so the lower-priority FreeRTOS idle task can run housekeeping.
-        vTaskDelay(1);
+        const chipintelli_loop_mode_t mode = s_loopMode;
+        const uint32_t budgetStarted = micros();
+        uint32_t iterations = 0U;
+        do {
+            chipintelli_arduino_dispatch_events(ARDUINO_EVENT_BUDGET,
+                                                ARDUINO_LOOP_EXECUTION_BUDGET_US);
+            loop();
+            serialEventRun();
+            if (chipintelli_watchdog_liveness_mask() != 0U) {
+                chipintelli_watchdog_heartbeat(
+                    CHIPINTELLI_LIVENESS_ARDUINO_LOOP);
+            }
+            ++iterations;
+        } while (mode == CHIPINTELLI_LOOP_EVENT_DRIVEN &&
+                 iterations < ARDUINO_LOOP_MAX_ITERATIONS &&
+                 static_cast<uint32_t>(micros() - budgetStarted) <
+                     ARDUINO_LOOP_EXECUTION_BUDGET_US);
+
+        if (mode == CHIPINTELLI_LOOP_COMPATIBLE) {
+            vTaskDelay(1);
+            continue;
+        }
+
+        if (mode == CHIPINTELLI_LOOP_LOW_POWER) {
+            TickType_t wait = pdMS_TO_TICKS(ARDUINO_LOW_POWER_POLL_MS);
+            ulTaskNotifyTake(pdTRUE, wait > 0U ? wait : 1U);
+            continue;
+        }
+
+        // Notifications end most windows early, while a forced one-tick sleep
+        // periodically guarantees idle housekeeping even during an event flood.
+        if (windowsUntilForcedIdle > 1U) {
+            --windowsUntilForcedIdle;
+            ulTaskNotifyTake(pdTRUE, 1U);
+        } else {
+            windowsUntilForcedIdle = ARDUINO_FORCED_IDLE_WINDOWS;
+            vTaskDelay(1U);
+        }
     }
+}
+
+extern "C" bool chipintelli_arduino_set_loop_mode(
+    chipintelli_loop_mode_t mode) {
+    if (mode > CHIPINTELLI_LOOP_LOW_POWER) return false;
+    taskENTER_CRITICAL();
+    s_loopMode = mode;
+    taskEXIT_CRITICAL();
+    chipintelli_arduino_wake();
+    return true;
+}
+
+extern "C" chipintelli_loop_mode_t chipintelli_arduino_loop_mode(void) {
+    return s_loopMode;
+}
+
+extern "C" bool chipintelli_arduino_set_interactive(bool enabled) {
+    TaskHandle_t task = s_arduinoTask;
+    if (task == nullptr || xTaskGetSchedulerState() != taskSCHEDULER_RUNNING) {
+        return false;
+    }
+    vTaskPrioritySet(task, enabled ? ARDUINO_INTERACTIVE_TASK_PRIORITY
+                                   : ARDUINO_TASK_PRIORITY);
+    return true;
+}
+
+extern "C" chipintelli_arduino_fault_t chipintelli_arduino_fault(void) {
+    return s_arduinoFault;
 }
 
 extern "C" int ci_arduino_sdk_start(void);
@@ -118,14 +207,14 @@ extern "C" void chipintelli_sdk_notify_failed(void) {
 extern "C" void __real_vTaskStartScheduler(void);
 extern "C" void __wrap_vTaskStartScheduler(void) {
     if (!s_arduinoTask) {
-        // Match the SDK init-task priority. FreeRTOS time slicing then lets
-        // setup()/loop() run even if a vendor initialization wait spins, while
-        // arduinoTask still blocks for one tick after every loop iteration.
-        BaseType_t result = xTaskCreate(arduinoTask, "arduino", 2048, nullptr, 4, &s_arduinoTask);
+        BaseType_t result = xTaskCreate(arduinoTask, "arduino", 2048, nullptr,
+                                        ARDUINO_TASK_PRIORITY, &s_arduinoTask);
         if (result != pdPASS) {
-            // This SDK builds configASSERT() as a no-op. Do not start a system
-            // that appears alive but can never execute setup()/loop().
-            for (;;) {}
+            // Keep a debugger-visible fault instead of silently spinning before
+            // the scheduler can run the SDK's real-time and diagnostic tasks.
+            s_arduinoFault = CHIPINTELLI_ARDUINO_FAULT_NO_MEMORY;
+        } else {
+            chipintelli_arduino_event_set_task(s_arduinoTask);
         }
     }
     __real_vTaskStartScheduler();

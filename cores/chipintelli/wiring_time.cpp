@@ -34,7 +34,7 @@ extern "C" void delay(unsigned long ms) {
         yield();
         return;
     }
-    if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING && ms >= portTICK_PERIOD_MS) {
+    if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
         TickType_t ticks = static_cast<TickType_t>(
             (static_cast<uint64_t>(ms) + portTICK_PERIOD_MS - 1U) / portTICK_PERIOD_MS);
         vTaskDelay(ticks ? ticks : 1);
@@ -45,9 +45,7 @@ extern "C" void delay(unsigned long ms) {
 
 extern "C" void yield(void) {
     if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
-        // Blocking for one tick also gives the lower-priority idle task a
-        // chance to reclaim deleted FreeRTOS tasks and perform housekeeping.
-        vTaskDelay(1);
+        taskYIELD();
     }
 }
 
