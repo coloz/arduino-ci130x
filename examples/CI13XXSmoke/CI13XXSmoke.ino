@@ -7,7 +7,7 @@
 // PC4/A0 becomes the audio power-amplifier control after ASR starts.
 static constexpr uint8_t kLedPin = PA5;  // Connect an external LED.
 #else
-static constexpr uint8_t kLedPin = 11;  // PB3; connect an external LED.
+static constexpr uint8_t kLedPin = PB3;  // Connect an external LED.
 #endif
 static const char kBanner[] PROGMEM = "CI13XX Arduino smoke test";
 

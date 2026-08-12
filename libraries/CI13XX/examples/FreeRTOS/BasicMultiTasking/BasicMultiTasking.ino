@@ -30,7 +30,8 @@ void setup() {
   Serial.begin(115200);
   Serial.println("FreeRTOS basic multitasking example");
 
-  // HardwareSerial uses polling, so serialize complete messages from tasks.
+  // HardwareSerial uses interrupt-driven buffering. Keep this mutex so the
+  // separate print calls that form one message cannot interleave across tasks.
   serialMutex = xSemaphoreCreateMutex();
   if (serialMutex == nullptr) {
     Serial.println("Serial mutex creation failed");

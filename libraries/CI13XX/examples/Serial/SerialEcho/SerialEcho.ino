@@ -1,6 +1,6 @@
 #include <Arduino.h>
 
-// Serial is UART0 on PB5/TX (pin 13) and PB6/RX (pin 14). It is also the SDK
+// Serial is UART0 on PB5/TX and PB6/RX. It is also the SDK
 // log port; Serial.begin() reinitializes it at the requested supported baud.
 void setup() {
   Serial.begin(115200);

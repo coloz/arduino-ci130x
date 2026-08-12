@@ -1,11 +1,11 @@
 #include <Arduino.h>
 
 #if defined(CI_CHIP_CI1302) || defined(CI_CHIP_CI1303)
-// Connect a push button between Arduino pin 20 (PC4) and GND.
-constexpr uint8_t kButtonPin = 20;
+// Connect a push button between PC4 and GND.
+constexpr uint8_t kButtonPin = PC4;
 #else
-// Connect a push button between Arduino pin 12 (PB4) and GND.
-constexpr uint8_t kButtonPin = 12;
+// Connect a push button between PB4 and GND.
+constexpr uint8_t kButtonPin = PB4;
 #endif
 
 void setup() {

@@ -1,11 +1,11 @@
 #include <Servo.h>
 
 #if defined(CI_CHIP_CI1302) || defined(CI_CHIP_CI1303)
-// PC4 / Arduino pin 20 / PWM0 on the SSOP24 profiles.
-constexpr uint8_t kServoPin = 20;
+// PC4 / PWM0 on the SSOP24 profiles.
+constexpr uint8_t kServoPin = PC4;
 #else
-// PB3 / Arduino pin 11 / PWM4 on CI1306.
-constexpr uint8_t kServoPin = 11;
+// PB3 / PWM4 on CI1306.
+constexpr uint8_t kServoPin = PB3;
 #endif
 
 Servo servo;

@@ -1,18 +1,19 @@
 #include <Arduino.h>
 
 #if defined(CI_CHIP_CI1302) || defined(CI_CHIP_CI1303)
-// Connect a push button between Arduino pin 20 (PC4) and GND.
-constexpr uint8_t kButtonPin = 20;
+// Connect a push button between PC4 and GND.
+constexpr uint8_t kButtonPin = PC4;
 #else
-// Connect a push button between Arduino pin 12 (PB4) and GND. PA/PB/PC GPIOs
+// Connect a push button between PB4 and GND. PA/PB/PC GPIOs
 // support interrupts; PD0-PD5 do not.
-constexpr uint8_t kButtonPin = 12;
+constexpr uint8_t kButtonPin = PB4;
 #endif
 volatile bool gButtonPressed = false;
 volatile uint32_t gPressCount = 0;
 
 void onButtonPressed() {
-  // Keep the ISR short. Printing is done by loop(), not from interrupt context.
+  // attachInterrupt() defers this callback to the Arduino task. Keep it short
+  // so other deferred events are not delayed; printing remains in loop().
   gButtonPressed = true;
   ++gPressCount;
 }

@@ -4,13 +4,13 @@
   This example shows how use the utility libraries on which the
   SD library is based in order to get info about your SD card.
   Very useful for testing a card when you're not sure whether its working or not.
-  Pin numbers reflect the default CI13XX GPIO software SPI pins.
+  Pin names reflect the default CI13XX GPIO software SPI pins.
   The circuit:
     SD card attached to SPI bus as follows:
- ** SDO / MISO - MISO (PA2, pin 2)
- ** SDI / MOSI - MOSI (PA4, pin 4)
- ** CLK / SCK  - SCK  (PA5, pin 5)
- ** CS         - SS   (PA3, pin 3)
+ ** SDO / MISO - MISO (PA2)
+ ** SDI / MOSI - MOSI (PA4)
+ ** CLK / SCK  - SCK  (PA5)
+ ** CS         - SS   (PA3)
 
   created  28 Mar 2011
   by Limor Fried

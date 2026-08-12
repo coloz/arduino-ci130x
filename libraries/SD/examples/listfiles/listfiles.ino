@@ -7,10 +7,10 @@
 
   The circuit:
    SD card attached to SPI bus as follows:
- ** SDO / MISO - MISO (PA2, pin 2)
- ** SDI / MOSI - MOSI (PA4, pin 4)
- ** CLK / SCK  - SCK  (PA5, pin 5)
- ** CS         - SS   (PA3, pin 3)
+ ** SDO / MISO - MISO (PA2)
+ ** SDI / MOSI - MOSI (PA4)
+ ** CLK / SCK  - SCK  (PA5)
+ ** CS         - SS   (PA3)
 
   created   Nov 2010
   by David A. Mellis

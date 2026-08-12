@@ -6,13 +6,13 @@
 // 的正常编译和上传会把 recursos 中的音频资源一起打包到完整固件中。
 constexpr uint16_t kReadyVoiceId = 15;
 
-// 完成通知只会在 SDK 释放提示音锁后执行；任务上下文并不固定。
+// 完成通知只会在 SDK 释放提示音锁后，由 Arduino 事件分发器执行。
 // volatile 标志用于把事件交给 loop()。
 volatile bool playbackFinished = false;
 
 void onPlaybackFinished(void *context) {
   (void)context;
-  // 回调中不要 delay、控制播放、大量打印或执行耗时操作。
+  // 避免 delay、大量打印或耗时操作，以免阻塞其他延迟事件。
   playbackFinished = true;
 }
 

@@ -1,8 +1,8 @@
 #include <Wire.h>
 
 // Replace these values with the 7-bit address, writable register, and value
-// for your I2C device. Connect external pull-ups to SDA pin 15/PB7 and
-// SCL pin 16/PC0. Wire cannot be used together with Serial1.
+// for your I2C device. Connect external pull-ups to SDA/PB7 and SCL/PC0.
+// Wire cannot be used together with Serial1.
 constexpr uint8_t kDeviceAddress = 0x40;
 constexpr uint8_t kRegister = 0x01;
 

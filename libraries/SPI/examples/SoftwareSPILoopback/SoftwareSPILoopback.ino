@@ -1,8 +1,8 @@
 #include <SPI.h>
 
 // Default CI1302/CI1303/CI1306 wiring for this self-test:
-//   PA4 / Arduino 4 / MOSI ---- PA2 / Arduino 2 / MISO
-// SCK (PA5 / 5) and SS (PA3 / 3) may be observed with a logic analyzer.
+//   PA4 / MOSI ---- PA2 / MISO
+// SCK/PA5 and SS/PA3 may be observed with a logic analyzer.
 // PA4 is a boot strap input during reset, so only make this connection to a
 // high-impedance input (as in this loopback) while the board is resetting.
 
@@ -17,7 +17,7 @@ void setup() {
       delay(1000);
     }
   }
-  Serial.println("Software SPI loopback: connect MOSI pin 4 to MISO pin 2");
+  Serial.println("Software SPI loopback: connect MOSI/PA4 to MISO/PA2");
 }
 
 void loop() {

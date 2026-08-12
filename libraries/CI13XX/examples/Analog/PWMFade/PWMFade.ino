@@ -1,11 +1,11 @@
 #include <Arduino.h>
 
 #if defined(CI_CHIP_CI1302) || defined(CI_CHIP_CI1303)
-// Connect an external LED and series resistor from pin 20 (PC4/PWM0) to GND.
-constexpr uint8_t kLedPin = 20;
+// Connect an external LED and series resistor from PC4 (PWM0) to GND.
+constexpr uint8_t kLedPin = PC4;
 #else
-// Connect an external LED and series resistor from pin 11 (PB3/PWM4) to GND.
-constexpr uint8_t kLedPin = 11;
+// Connect an external LED and series resistor from PB3 (PWM4) to GND.
+constexpr uint8_t kLedPin = PB3;
 #endif
 
 void setup() {

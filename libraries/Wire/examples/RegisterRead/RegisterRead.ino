@@ -14,7 +14,8 @@ void loop() {
   Wire.beginTransmission(kDeviceAddress);
   Wire.write(kRegister);
 
-  // false defers this write so requestFrom() can perform a repeated START.
+  // false sends the write now without STOP, so requestFrom() uses a
+  // repeated START while this controller still owns the bus.
   if (Wire.endTransmission(false) != 0) {
     Serial.println("I2C write setup failed");
     delay(1000);

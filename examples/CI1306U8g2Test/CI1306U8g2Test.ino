@@ -1,8 +1,8 @@
 // CI1306 + SSD1306 128x64 hardware-I2C OLED test.
 //
 // Wiring:
-//   OLED SDA -> PB7 (Arduino pin 15)
-//   OLED SCL -> PC0 (Arduino pin 16)
+//   OLED SDA -> PB7
+//   OLED SCL -> PC0
 //   OLED VCC -> the voltage required by the OLED module
 //   OLED GND -> GND
 //
