@@ -191,6 +191,17 @@ enum {
     CHIPINTELLI_ERROR_QUEUE_FULL
 };
 chipintelli_error_t analogReadLastError(void);
+typedef void (*analog_read_callback_t)(uint8_t pin, int value,
+                                       chipintelli_error_t error,
+                                       void *context);
+bool analogReadAsync(uint8_t pin, analog_read_callback_t callback,
+                     void *context);
+bool analogReadContinuous(uint8_t pin, uint32_t sampleIntervalMs,
+                          analog_read_callback_t callback, void *context);
+void analogReadContinuousStop(void);
+bool analogReadBusy(void);
+bool analogReadPowerDown(void);
+uint32_t analogReadDropped(void);
 
 enum {
     CHIPINTELLI_LIVENESS_ARDUINO_LOOP = 1UL << 0,
