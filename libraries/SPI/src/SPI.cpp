@@ -1,9 +1,32 @@
 #include "SPI.h"
 #include "PeripheralManager.h"
 
+extern "C" {
+#include "FreeRTOS.h"
+#include "task.h"
+#include "ci130x_core_timer.h"
+#include "ci130x_gpio.h"
+}
+
 namespace {
 constexpr uint32_t kDefaultClock = 100000;
-constexpr uint32_t kMaximumClock = 500000;
+constexpr uint32_t kMaximumClock = 4000000;
+#ifndef SPI_COOPERATIVE_CHUNK_BYTES
+constexpr uint32_t kCooperativeChunkBytes = 64U;
+#else
+constexpr uint32_t kCooperativeChunkBytes = SPI_COOPERATIVE_CHUNK_BYTES;
+#endif
+static_assert(kCooperativeChunkBytes > 0U,
+              "SPI_COOPERATIVE_CHUNK_BYTES must be greater than zero");
+
+struct GpioRegisters {
+  volatile uint32_t data[256];
+};
+
+gpio_base_t portBase(uint8_t port) {
+  static const gpio_base_t bases[] = {PA, PB, PC, PD};
+  return bases[port < 4U ? port : 0U];
+}
 }  // namespace
 
 SPISettings::SPISettings()
@@ -22,7 +45,13 @@ SPIClass::SPIClass(uint8_t bus)
       _mosi(-1),
       _ss(-1),
       _clock(kDefaultClock),
-      _halfPeriodUs(5),
+      _halfPeriodTicks(1U),
+      _sckMask(0U),
+      _mosiMask(0U),
+      _misoMask(0U),
+      _sckData(nullptr),
+      _mosiData(nullptr),
+      _misoData(nullptr),
       _bitOrder(MSBFIRST),
       _dataMode(SPI_MODE0),
       _begun(false),
@@ -108,6 +137,9 @@ bool SPIClass::begin(int8_t sck, int8_t miso, int8_t mosi, int8_t ss) {
     digitalWrite(_ss, HIGH);
   }
 
+  cacheGpioRegisters();
+  updateTiming(_clock);
+
   _begun = true;
   _inTransaction = false;
   return true;
@@ -145,6 +177,8 @@ void SPIClass::end() {
   _miso = -1;
   _mosi = -1;
   _ss = -1;
+  _sckData = _mosiData = _misoData = nullptr;
+  _sckMask = _mosiMask = _misoMask = 0U;
   _begun = false;
   _inTransaction = false;
 }
@@ -157,14 +191,37 @@ void SPIClass::updateTiming(uint32_t frequency) {
     frequency = kMaximumClock;
   }
   _clock = frequency;
-  _halfPeriodUs = (500000U + frequency - 1U) / frequency;
-  if (_halfPeriodUs == 0) {
-    _halfPeriodUs = 1;
+  const uint32_t timerClock = get_systick_clk();
+  _halfPeriodTicks = static_cast<uint32_t>(
+      (static_cast<uint64_t>(timerClock) + 2ULL * frequency - 1ULL) /
+      (2ULL * frequency));
+  if (_halfPeriodTicks == 0U) _halfPeriodTicks = 1U;
+}
+
+void SPIClass::cacheGpioRegisters() {
+  const PinDescription &sck = g_APinDescription[_sck];
+  _sckMask = 1U << sck.bit;
+  _sckData = &reinterpret_cast<GpioRegisters *>(
+                  static_cast<uintptr_t>(portBase(sck.port)))
+                  ->data[_sckMask];
+  if (_mosi >= 0) {
+    const PinDescription &mosi = g_APinDescription[_mosi];
+    _mosiMask = 1U << mosi.bit;
+    _mosiData = &reinterpret_cast<GpioRegisters *>(
+                     static_cast<uintptr_t>(portBase(mosi.port)))
+                     ->data[_mosiMask];
+  }
+  if (_miso >= 0) {
+    const PinDescription &miso = g_APinDescription[_miso];
+    _misoMask = 1U << miso.bit;
+    _misoData = &reinterpret_cast<GpioRegisters *>(
+                     static_cast<uintptr_t>(portBase(miso.port)))
+                     ->data[_misoMask];
   }
 }
 
-void SPIClass::waitHalfPeriod() const {
-  delayMicroseconds(_halfPeriodUs);
+void SPIClass::waitUntil(uint64_t deadline) const {
+  while (static_cast<int64_t>(get_timer_value() - deadline) < 0) {}
 }
 
 uint8_t SPIClass::clockIdleLevel() const {
@@ -178,6 +235,7 @@ void SPIClass::beginTransaction(const SPISettings &settings) {
   setBitOrder(settings._bitOrder);
   setDataMode(settings._dataMode);
   setFrequency(settings._clock);
+  cacheGpioRegisters();
   _inTransaction = true;
 }
 
@@ -208,38 +266,45 @@ uint8_t SPIClass::transfer(uint8_t data) {
     return 0;
   }
 
-  const uint8_t idle = clockIdleLevel();
-  const uint8_t active = idle == LOW ? HIGH : LOW;
+  return transferByteHot(data);
+}
+
+uint8_t SPIClass::transferByteHot(uint8_t data) const {
+  const uint32_t idle = clockIdleLevel() == HIGH ? _sckMask : 0U;
+  const uint32_t active = idle == 0U ? _sckMask : 0U;
   const bool sampleOnTrailingEdge = (_dataMode & 0x01U) != 0;
   uint8_t received = 0;
+  uint64_t deadline = get_timer_value();
 
   for (uint8_t i = 0; i < 8; ++i) {
     const uint8_t bitIndex =
         _bitOrder == LSBFIRST ? i : static_cast<uint8_t>(7U - i);
-    const uint8_t outputLevel = (data & (1U << bitIndex)) != 0 ? HIGH : LOW;
+    const uint32_t output = (data & (1U << bitIndex)) != 0U
+                                ? _mosiMask
+                                : 0U;
 
     if (!sampleOnTrailingEdge) {
-      if (_mosi >= 0) {
-        digitalWrite(_mosi, outputLevel);
-      }
-      waitHalfPeriod();
-      digitalWrite(_sck, active);
-      if (_miso >= 0 && digitalRead(_miso) == HIGH) {
+      if (_mosiData != nullptr) *_mosiData = output;
+      deadline += _halfPeriodTicks;
+      waitUntil(deadline);
+      *_sckData = active;
+      if (_misoData != nullptr && (*_misoData & _misoMask) != 0U) {
         received |= static_cast<uint8_t>(1U << bitIndex);
       }
-      waitHalfPeriod();
-      digitalWrite(_sck, idle);
+      deadline += _halfPeriodTicks;
+      waitUntil(deadline);
+      *_sckData = idle;
     } else {
-      digitalWrite(_sck, active);
-      if (_mosi >= 0) {
-        digitalWrite(_mosi, outputLevel);
-      }
-      waitHalfPeriod();
-      digitalWrite(_sck, idle);
-      if (_miso >= 0 && digitalRead(_miso) == HIGH) {
+      *_sckData = active;
+      if (_mosiData != nullptr) *_mosiData = output;
+      deadline += _halfPeriodTicks;
+      waitUntil(deadline);
+      *_sckData = idle;
+      if (_misoData != nullptr && (*_misoData & _misoMask) != 0U) {
         received |= static_cast<uint8_t>(1U << bitIndex);
       }
-      waitHalfPeriod();
+      deadline += _halfPeriodTicks;
+      waitUntil(deadline);
     }
   }
   return received;
@@ -282,10 +347,17 @@ void SPIClass::transfer(void *data, uint32_t size) {
 
 void SPIClass::transferBytes(const uint8_t *data, uint8_t *out,
                              uint32_t size) {
+  if (!_begun && !begin()) return;
   for (uint32_t i = 0; i < size; ++i) {
-    const uint8_t received = transfer(data == nullptr ? 0xffU : data[i]);
+    const uint8_t received =
+        transferByteHot(data == nullptr ? 0xffU : data[i]);
     if (out != nullptr) {
       out[i] = received;
+    }
+    if (kCooperativeChunkBytes != 0U &&
+        (i + 1U) % kCooperativeChunkBytes == 0U &&
+        xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
+      taskYIELD();
     }
   }
 }

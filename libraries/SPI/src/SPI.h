@@ -75,7 +75,9 @@ private:
   static bool validPin(int8_t pin);
   static bool distinctPins(int8_t sck, int8_t miso, int8_t mosi, int8_t ss);
   void updateTiming(uint32_t frequency);
-  void waitHalfPeriod() const;
+  void cacheGpioRegisters();
+  void waitUntil(uint64_t deadline) const;
+  uint8_t transferByteHot(uint8_t data) const;
   uint8_t clockIdleLevel() const;
 
   int8_t _sck;
@@ -83,7 +85,13 @@ private:
   int8_t _mosi;
   int8_t _ss;
   uint32_t _clock;
-  uint32_t _halfPeriodUs;
+  uint32_t _halfPeriodTicks;
+  uint32_t _sckMask;
+  uint32_t _mosiMask;
+  uint32_t _misoMask;
+  volatile uint32_t *_sckData;
+  volatile uint32_t *_mosiData;
+  volatile uint32_t *_misoData;
   uint8_t _bitOrder;
   uint8_t _dataMode;
   bool _begun;

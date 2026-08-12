@@ -449,6 +449,13 @@ uint8_t Sd2Card::readData(uint32_t block,
 
   #else  // OPTIMIZE_HARDWARE_SPI
 
+#if defined(USE_SPI_LIB) && !defined(SOFTWARE_SPI)
+  if (offset_ < offset) {
+    SDCARD_SPI.transferBytes(nullptr, nullptr, offset - offset_);
+    offset_ = offset;
+  }
+  SDCARD_SPI.transferBytes(nullptr, dst, count);
+#else
   // skip data before offset
   for (; offset_ < offset; offset_++) {
     spiRec();
@@ -457,6 +464,7 @@ uint8_t Sd2Card::readData(uint32_t block,
   for (uint16_t i = 0; i < count; i++) {
     dst[i] = spiRec();
   }
+#endif
   #endif  // OPTIMIZE_HARDWARE_SPI
 
   offset_ += count;
@@ -487,9 +495,16 @@ void Sd2Card::readEnd(void) {
     while (!(SPSR & (1 << SPIF)))
       ;
     #else  // OPTIMIZE_HARDWARE_SPI
+#if defined(USE_SPI_LIB) && !defined(SOFTWARE_SPI)
+    if (offset_ < 514U) {
+      SDCARD_SPI.transferBytes(nullptr, nullptr, 514U - offset_);
+      offset_ = 514U;
+    }
+#else
     while (offset_++ < 514) {
       spiRec();
     }
+#endif
     #endif  // OPTIMIZE_HARDWARE_SPI
     chipSelectHigh();
     inBlock_ = 0;
@@ -686,9 +701,13 @@ uint8_t Sd2Card::writeData(uint8_t token, const uint8_t* src) {
 
   #else  // OPTIMIZE_HARDWARE_SPI
   spiSend(token);
+#if defined(USE_SPI_LIB) && !defined(SOFTWARE_SPI)
+  SDCARD_SPI.writeBytes(src, 512U);
+#else
   for (uint16_t i = 0; i < 512; i++) {
     spiSend(src[i]);
   }
+#endif
   #endif  // OPTIMIZE_HARDWARE_SPI
   spiSend(0xff);  // dummy crc
   spiSend(0xff);  // dummy crc
