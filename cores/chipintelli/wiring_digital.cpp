@@ -8,77 +8,161 @@ extern "C" {
 #include "ci130x_gpio.h"
 #include "ci130x_dpmu.h"
 #include "ci130x_core_eclic.h"
+#include "ci130x_core_timer.h"
 }
 
 struct InterruptHandler {
     voidFuncPtrArg callback;
+    chipintelli_gpio_event_callback_t eventCallback;
     void *arg;
     uint32_t generation;
+    int mode;
     bool runInIsr;
 };
 
+struct GpioRegisters {
+    volatile uint32_t data[256];
+    volatile uint32_t direction;
+    volatile uint32_t sense;
+    volatile uint32_t bothEdges;
+    volatile uint32_t event;
+    volatile uint32_t interruptEnable;
+    volatile uint32_t rawInterruptStatus;
+    volatile uint32_t maskedInterruptStatus;
+    volatile uint32_t interruptClear;
+    volatile uint32_t alternateFunction;
+};
+
+struct DeferredGpioEvent {
+    chipintelli_gpio_event_t event;
+    uint32_t generation;
+    volatile bool used;
+};
+
+static_assert(offsetof(GpioRegisters, maskedInterruptStatus) == 0x418,
+              "CI130X GPIO MIS offset mismatch");
+static_assert(offsetof(GpioRegisters, interruptClear) == 0x41c,
+              "CI130X GPIO IC offset mismatch");
+
+constexpr uint8_t kDeferredGpioEventCount = 24U;
+
 static InterruptHandler s_handlers[NUM_DIGITAL_PINS];
 static voidFuncPtr s_simpleHandlers[NUM_DIGITAL_PINS];
-static bool s_registered[3];
-static gpio_irq_callback_list_t s_nodes[3];
+static bool s_portEnabled[3];
 static uint8_t s_registeredBits[3];
 static uint8_t s_pinForPortBit[3][8];
 static uint32_t s_nextGeneration;
+static DeferredGpioEvent s_deferredEvents[kDeferredGpioEventCount];
+static volatile uint32_t s_gpioDispatched;
+static volatile uint32_t s_gpioDropped;
+static volatile uint64_t s_gpioMaxIsrTicks;
 
 static gpio_base_t portBase(uint8_t port) {
     static const gpio_base_t bases[] = {PA, PB, PC, PD};
     return bases[port < 4 ? port : 0];
 }
 
-static void dispatchPort(uint8_t port) {
-    if (port >= 3U) return;
-    gpio_base_t base = portBase(port);
-    uint8_t pending = s_registeredBits[port];
-    while (pending != 0U) {
-        const uint8_t bit = static_cast<uint8_t>(__builtin_ctz(pending));
-        pending = static_cast<uint8_t>(pending & ~(1U << bit));
-        const gpio_pin_t mask = static_cast<gpio_pin_t>(1U << bit);
-        if (!gpio_get_irq_mask_status_single(base, mask)) continue;
-
-        const uint8_t pin = s_pinForPortBit[port][bit];
-        if (pin >= NUM_DIGITAL_PINS) continue;
-        const InterruptHandler handler = s_handlers[pin];
-        if (handler.callback == nullptr) continue;
-        if (handler.runInIsr) {
-            handler.callback(handler.arg);
-        } else {
-            chipintelli_arduino_post_event_from_isr(
-                [](void *context, uint32_t generation) {
-                    const uint8_t deferredPin = static_cast<uint8_t>(
-                        reinterpret_cast<uintptr_t>(context));
-                    if (deferredPin >= NUM_DIGITAL_PINS) return;
-                    taskENTER_CRITICAL();
-                    const InterruptHandler deferred = s_handlers[deferredPin];
-                    taskEXIT_CRITICAL();
-                    if (!deferred.runInIsr && deferred.callback != nullptr &&
-                        deferred.generation == generation) {
-                        deferred.callback(deferred.arg);
-                    }
-                },
-                reinterpret_cast<void *>(static_cast<uintptr_t>(pin)),
-                handler.generation);
-        }
+static chipintelli_gpio_edge_t edgeForHandler(const InterruptHandler &handler,
+                                               bool levelHigh) {
+    switch (handler.mode) {
+        case RISING: return CHIPINTELLI_GPIO_EDGE_RISING;
+        case FALLING: return CHIPINTELLI_GPIO_EDGE_FALLING;
+        case ONHIGH: return CHIPINTELLI_GPIO_LEVEL_HIGH;
+        case ONLOW: return CHIPINTELLI_GPIO_LEVEL_LOW;
+        case CHANGE:
+        default:
+            return levelHigh ? CHIPINTELLI_GPIO_EDGE_RISING
+                             : CHIPINTELLI_GPIO_EDGE_FALLING;
     }
 }
 
-static void dispatchA() { dispatchPort(0); }
-static void dispatchB() { dispatchPort(1); }
-static void dispatchC() { dispatchPort(2); }
+static void deferredGpioEvent(void *context, uint32_t) {
+    const uint8_t slot = static_cast<uint8_t>(
+        reinterpret_cast<uintptr_t>(context));
+    if (slot >= kDeferredGpioEventCount) return;
+    taskENTER_CRITICAL();
+    const DeferredGpioEvent record = s_deferredEvents[slot];
+    s_deferredEvents[slot].used = false;
+    InterruptHandler handler = {};
+    if (record.event.pin < NUM_DIGITAL_PINS) {
+        handler = s_handlers[record.event.pin];
+    }
+    taskEXIT_CRITICAL();
+    if (handler.runInIsr || handler.generation != record.generation) return;
+    if (handler.eventCallback != nullptr) {
+        handler.eventCallback(&record.event, handler.arg);
+    } else if (handler.callback != nullptr) {
+        handler.callback(handler.arg);
+    }
+}
+
+extern "C" uint8_t chipintelli_gpio_irq_dispatch(uint32_t base,
+                                                   int portIndex,
+                                                   uint8_t pending) {
+    if (portIndex < 0 || portIndex >= 3) return 0U;
+    const uint64_t entered = get_timer_value();
+    GpioRegisters *const registers =
+        reinterpret_cast<GpioRegisters *>(static_cast<uintptr_t>(base));
+    uint8_t handled = static_cast<uint8_t>(
+        pending & s_registeredBits[portIndex]);
+    if (handled == 0U) return 0U;
+
+    // The SDK captured MIS once and passed it here. Clear the whole Arduino
+    // subset in one register write before callbacks can retrigger the port.
+    registers->interruptClear = handled;
+    const uint8_t levels = static_cast<uint8_t>(registers->data[0xffU]);
+    const uint32_t timestamp = micros();
+    uint8_t bits = handled;
+    while (bits != 0U) {
+        const uint8_t bit = static_cast<uint8_t>(__builtin_ctz(bits));
+        bits = static_cast<uint8_t>(bits & ~(1U << bit));
+        const uint8_t pin = s_pinForPortBit[portIndex][bit];
+        if (pin >= NUM_DIGITAL_PINS) continue;
+        const InterruptHandler handler = s_handlers[pin];
+        if (handler.callback == nullptr && handler.eventCallback == nullptr) {
+            continue;
+        }
+        ++s_gpioDispatched;
+        if (handler.runInIsr) {
+            handler.callback(handler.arg);
+            continue;
+        }
+
+        uint8_t slot = kDeferredGpioEventCount;
+        const UBaseType_t saved = taskENTER_CRITICAL_FROM_ISR();
+        for (uint8_t i = 0U; i < kDeferredGpioEventCount; ++i) {
+            if (!s_deferredEvents[i].used) {
+                s_deferredEvents[i].used = true;
+                slot = i;
+                break;
+            }
+        }
+        taskEXIT_CRITICAL_FROM_ISR(saved);
+        if (slot == kDeferredGpioEventCount) {
+            ++s_gpioDropped;
+            continue;
+        }
+        s_deferredEvents[slot].event = {
+            pin, edgeForHandler(handler, (levels & (1U << bit)) != 0U),
+            timestamp};
+        s_deferredEvents[slot].generation = handler.generation;
+        if (!chipintelli_arduino_post_event_from_isr(
+                deferredGpioEvent,
+                reinterpret_cast<void *>(static_cast<uintptr_t>(slot)), 0U)) {
+            s_deferredEvents[slot].used = false;
+            ++s_gpioDropped;
+        }
+    }
+    const uint64_t duration = get_timer_value() - entered;
+    if (duration > s_gpioMaxIsrTicks) s_gpioMaxIsrTicks = duration;
+    return handled;
+}
 
 static void ensureInterruptPort(uint8_t port) {
-    if (port >= 3 || s_registered[port]) return;
-    static gpio_irq_callback_t callbacks[] = {dispatchA, dispatchB, dispatchC};
+    if (port >= 3 || s_portEnabled[port]) return;
     static const uint32_t irqs[] = {PA_IRQn, PB_IRQn, AON_PC_IRQn};
-    s_nodes[port].gpio_irq_callback = callbacks[port];
-    s_nodes[port].next = nullptr;
-    registe_gpio_callback(portBase(port), &s_nodes[port]);
     eclic_irq_enable(irqs[port]);
-    s_registered[port] = true;
+    s_portEnabled[port] = true;
 }
 
 static void simpleInterruptThunk(void *arg) {
@@ -147,11 +231,13 @@ extern "C" void digitalToggle(uint8_t pin) {
 }
 
 static void attachInterruptArgInternal(uint8_t pin, voidFuncPtrArg callback,
+                                       chipintelli_gpio_event_callback_t eventCallback,
                                        void *arg, int mode, bool runInIsr) {
     if (pin >= NUM_DIGITAL_PINS) return;
     const PinDescription &desc = g_APinDescription[pin];
     if (!(desc.capabilities & PIN_CAP_INTERRUPT) || desc.port >= 3U ||
-        desc.bit >= 8U || !callback) return;
+        desc.bit >= 8U || (callback == nullptr && eventCallback == nullptr) ||
+        (runInIsr && callback == nullptr)) return;
     if (!pinModeOwned(pin, INPUT, PeripheralOwner::GPIO)) return;
     gpio_trigger_t trigger;
     switch (mode) {
@@ -165,7 +251,8 @@ static void attachInterruptArgInternal(uint8_t pin, voidFuncPtrArg callback,
     taskENTER_CRITICAL();
     uint32_t generation = ++s_nextGeneration;
     if (generation == 0U) generation = ++s_nextGeneration;
-    s_handlers[pin] = {callback, arg, generation, runInIsr};
+    s_handlers[pin] = {callback, eventCallback, arg, generation, mode,
+                       runInIsr};
     s_registeredBits[desc.port] = static_cast<uint8_t>(
         s_registeredBits[desc.port] | (1U << desc.bit));
     s_pinForPortBit[desc.port][desc.bit] = pin;
@@ -178,12 +265,18 @@ static void attachInterruptArgInternal(uint8_t pin, voidFuncPtrArg callback,
 
 extern "C" void attachInterruptArg(uint8_t pin, voidFuncPtrArg callback,
                                       void *arg, int mode) {
-    attachInterruptArgInternal(pin, callback, arg, mode, false);
+    attachInterruptArgInternal(pin, callback, nullptr, arg, mode, false);
 }
 
 extern "C" void attachInterruptArgISR(uint8_t pin, voidFuncPtrArg callback,
                                          void *arg, int mode) {
-    attachInterruptArgInternal(pin, callback, arg, mode, true);
+    attachInterruptArgInternal(pin, callback, nullptr, arg, mode, true);
+}
+
+extern "C" void attachInterruptEvent(
+    uint8_t pin, chipintelli_gpio_event_callback_t callback, void *context,
+    int mode) {
+    attachInterruptArgInternal(pin, nullptr, callback, context, mode, false);
 }
 
 extern "C" void attachInterrupt(uint8_t pin, voidFuncPtr callback, int mode) {
@@ -211,7 +304,31 @@ extern "C" void detachInterrupt(uint8_t pin) {
     taskENTER_CRITICAL();
     s_registeredBits[desc.port] = static_cast<uint8_t>(
         s_registeredBits[desc.port] & ~(1U << desc.bit));
-    s_handlers[pin] = {nullptr, nullptr, ++s_nextGeneration, false};
+    s_handlers[pin] = {nullptr, nullptr, nullptr, ++s_nextGeneration, CHANGE,
+                       false};
     s_simpleHandlers[pin] = nullptr;
+    taskEXIT_CRITICAL();
+}
+
+extern "C" chipintelli_gpio_interrupt_stats_t gpioInterruptStats(void) {
+    taskENTER_CRITICAL();
+    const uint32_t dispatched = s_gpioDispatched;
+    const uint32_t dropped = s_gpioDropped;
+    const uint64_t maxTicks = s_gpioMaxIsrTicks;
+    taskEXIT_CRITICAL();
+    const uint32_t frequency = get_systick_clk();
+    const uint32_t maxMicros = frequency == 0U
+        ? 0U
+        : static_cast<uint32_t>(
+              (maxTicks / frequency) * 1000000ULL +
+              ((maxTicks % frequency) * 1000000ULL) / frequency);
+    return {dispatched, dropped, maxMicros};
+}
+
+extern "C" void gpioInterruptClearStats(void) {
+    taskENTER_CRITICAL();
+    s_gpioDispatched = 0U;
+    s_gpioDropped = 0U;
+    s_gpioMaxIsrTicks = 0U;
     taskEXIT_CRITICAL();
 }

@@ -162,6 +162,32 @@ void attachInterruptArgISR(uint8_t pin, voidFuncPtrArg callback, void *arg,
                            int mode);
 void detachInterrupt(uint8_t pin);
 
+typedef uint8_t chipintelli_gpio_edge_t;
+enum {
+    CHIPINTELLI_GPIO_EDGE_UNKNOWN = 0,
+    CHIPINTELLI_GPIO_EDGE_RISING,
+    CHIPINTELLI_GPIO_EDGE_FALLING,
+    CHIPINTELLI_GPIO_LEVEL_HIGH,
+    CHIPINTELLI_GPIO_LEVEL_LOW
+};
+typedef struct {
+    uint8_t pin;
+    chipintelli_gpio_edge_t edge;
+    uint32_t timestampMicros;
+} chipintelli_gpio_event_t;
+typedef void (*chipintelli_gpio_event_callback_t)(
+    const chipintelli_gpio_event_t *event, void *context);
+typedef struct {
+    uint32_t dispatched;
+    uint32_t dropped;
+    uint32_t maxIsrMicros;
+} chipintelli_gpio_interrupt_stats_t;
+void attachInterruptEvent(uint8_t pin,
+                          chipintelli_gpio_event_callback_t callback,
+                          void *context, int mode);
+chipintelli_gpio_interrupt_stats_t gpioInterruptStats(void);
+void gpioInterruptClearStats(void);
+
 typedef uint8_t chipintelli_loop_mode_t;
 enum {
     CHIPINTELLI_LOOP_COMPATIBLE = 0,

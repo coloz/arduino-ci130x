@@ -469,6 +469,15 @@ if (-not (Test-Path -LiteralPath $packagedIicSource -PathType Leaf)) {
 $stagedIicSource = Join-Path $sourceOutput 'driver\ci130x_chip_driver\src\ci130x_iic.c'
 Copy-Item -LiteralPath $packagedIicSource -Destination $stagedIicSource -Force
 
+# Preserve the Arduino GPIO IRQ bridge, which passes the single captured MIS
+# bitmap to the core dispatcher and lets the SDK retain any unhandled bits.
+$packagedGpioSource = Join-Path $sdkOutput 'src\driver\ci130x_chip_driver\src\ci130x_gpio.c'
+if (-not (Test-Path -LiteralPath $packagedGpioSource -PathType Leaf)) {
+    throw "The current Arduino GPIO IRQ bridge source is missing: $packagedGpioSource"
+}
+$stagedGpioSource = Join-Path $sourceOutput 'driver\ci130x_chip_driver\src\ci130x_gpio.c'
+Copy-Item -LiteralPath $packagedGpioSource -Destination $stagedGpioSource -Force
+
 # Preserve the bounded NVDM mutex/error-path adaptation. The upstream port
 # waits forever for its mutex and halts on malformed flash records; Arduino
 # callers instead receive a normal operation failure after a finite timeout.

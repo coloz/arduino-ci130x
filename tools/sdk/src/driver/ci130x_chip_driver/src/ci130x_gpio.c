@@ -34,6 +34,11 @@ typedef struct
 	volatile uint32_t gpio_afsel;        /*!< 0x420-0x424 模式控制寄存器 */
 }gpio_register_t;
 
+#if defined(CI_ARDUINO_CORE)
+extern uint8_t chipintelli_gpio_irq_dispatch(
+    uint32_t base, int port_index, uint8_t pending) __attribute__((weak));
+#endif
+
 /*--------------------以下API可同时操作一个或多个pin脚------------------------*/
 
 /**
@@ -355,12 +360,26 @@ void registe_gpio_callback(gpio_base_t base, gpio_irq_callback_list_t *gpio_irq_
 
 void GPIO_IRQ_Default_proc(gpio_base_t base, int gpio_port_index)
 {
+	gpio_register_t *gpio = (gpio_register_t *)base;
+	uint8_t pending = (uint8_t)(gpio->gpio_mis & 0xffU);
 	call_irq_callback(&g_gpio_callback_list_root[gpio_port_index]);
+	uint8_t handled = 0;
+#if defined(CI_ARDUINO_CORE)
+	if (chipintelli_gpio_irq_dispatch != NULL)
+	{
+		handled = chipintelli_gpio_irq_dispatch((uint32_t)base,
+		                                         gpio_port_index, pending);
+	}
+#endif
+	uint8_t remaining = (uint8_t)(pending & (uint8_t)~handled);
+	if (remaining != 0U)
+	{
+		gpio->gpio_ic = remaining;
+	}
 	for (int i = 0; i < 8; i++)
 	{
-		if(gpio_get_irq_mask_status_single(base,(0x1<<i)))
+		if(remaining & (1U << i))
 		{
-			gpio_clear_irq_single(base,(0x1<<i));
 #ifdef CIAS_BLE_CONNECT_MODE_ENABLE
 			extern void rf_irq_handle(gpio_base_t base, int gpio_port_index);
             rf_irq_handle(base, i);
