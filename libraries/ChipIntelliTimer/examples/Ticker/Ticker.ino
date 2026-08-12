@@ -4,7 +4,7 @@ Ticker statusTicker;
 volatile uint32_t tickerCount = 0;
 
 void onTicker() {
-  // Ticker callbacks run in the FreeRTOS timer-service task, not in an ISR.
+  // The timer-service task posts this to the Arduino event dispatcher.
   ++tickerCount;
 }
 

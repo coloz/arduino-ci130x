@@ -33,7 +33,7 @@ The no-STOP write is deferred and executed together with the following read.
 7-bit address, then STOP; no dummy register byte is written.
 
 The transfer timeout defaults to 25 ms and follows the Arduino Wire timeout
-API:
+API, with a non-disableable 25 ms hardware fail-safe:
 
 ```cpp
 Wire.setWireTimeout(3000, true);
@@ -43,9 +43,10 @@ if (Wire.endTransmission() == 5 && Wire.getWireTimeoutFlag()) {
 }
 ```
 
-A zero timeout disables the software deadline. With reset enabled, a timeout
-issues STOP, resets IIC0, restores its pins and clock, and latches the timeout
-flag. `requestFrom(..., false)` is accepted for source compatibility, but the
+A zero timeout disables the user deadline, but the hardware fail-safe remains
+active so a missing ready/transfer bit cannot hang the task forever. With reset
+enabled, a timeout issues STOP, resets IIC0, restores its pins and clock, and
+latches the timeout flag. `requestFrom(..., false)` is accepted for source compatibility, but the
 current CI130X controller wrapper always releases the bus after a read.
 
 ## Peripheral mode
@@ -68,9 +69,14 @@ void setup() {
 }
 ```
 
-Callbacks run in the IIC interrupt context. Keep them short: do not delay,
-print, allocate memory, access SD, or call blocking communication APIs. A write
-followed by a repeated START is finalized before `onRequest()` runs.
+`onReceive()` is deferred to Arduino task context; received bytes are copied to
+a separate buffer before the ISR returns. `onReceiveISR()` is the explicit
+advanced form and must not delay, print, allocate, access SD, or call blocking
+APIs. Because a peripheral must produce the first response byte immediately,
+`onRequest()` and the explicit alias `onRequestISR()` both run in the IIC ISR;
+prepare or copy only a short response there. A write followed by a repeated
+START is finalized before the request callback runs. `callbackDrops()` reports
+receive callbacks lost when the dispatcher or callback buffer is full.
 
 Transfers use a 64-byte buffer by default. Define `I2C_BUFFER_LENGTH` before
 including `Wire.h` to choose another size. Clocks from 10 kHz through 400 kHz

@@ -1,5 +1,7 @@
 #include "ChipIntelliASR.h"
 
+#include <ArduinoEvent.h>
+
 #include <string.h>
 
 extern "C" {
@@ -656,30 +658,38 @@ void ChipIntelliASRClass::enqueue(const chipintelli_asr_result_t &source) {
   // The zero-wait queue send is safe inside this short outer critical section.
   // Keeping the accepting check and copy atomic with end() guarantees that
   // end() really leaves an empty queue even if an SDK callback was in flight.
+  bool accepted = false;
   taskENTER_CRITICAL();
   QueueHandle_t queue = static_cast<QueueHandle_t>(_resultQueue);
   if (_accepting && queue != nullptr) {
     queued.sequence = _nextSequence++;
     if (xQueueSend(queue, &queued, 0) != pdPASS) {
       ++_dropped;
+    } else {
+      accepted = true;
     }
   }
   taskEXIT_CRITICAL();
+  if (accepted) chipintelli_arduino_wake();
 }
 
 void ChipIntelliASRClass::enqueueLifecycle(LifecycleEvent event) {
   QueuedLifecycleEvent queued;
   queued.event = event;
 
+  bool accepted = false;
   taskENTER_CRITICAL();
   QueueHandle_t queue = static_cast<QueueHandle_t>(_lifecycleQueue);
   if (_accepting && queue != nullptr) {
     queued.sequence = _nextSequence++;
     if (xQueueSend(queue, &queued, 0) != pdPASS) {
       ++_droppedEvents;
+    } else {
+      accepted = true;
     }
   }
   taskEXIT_CRITICAL();
+  if (accepted) chipintelli_arduino_wake();
 }
 
 /**

@@ -1,7 +1,12 @@
 #include "Wire.h"
+#include "ArduinoEvent.h"
 #include "PeripheralManager.h"
 
+#include <string.h>
+
 extern "C" {
+#include "FreeRTOS.h"
+#include "task.h"
 #include "ci130x_core_eclic.h"
 #include "ci130x_dpmu.h"
 #include "ci130x_iic.h"
@@ -69,6 +74,7 @@ TwoWire Wire;
 TwoWire::TwoWire()
     : _txBuffer{},
       _rxBuffer{},
+      _slaveRxBuffer{},
       _txLength(0),
       _rxLength(0),
       _rxIndex(0),
@@ -89,7 +95,12 @@ TwoWire::TwoWire()
       _inSlaveRequest(false),
       _slaveRequestActive(false),
       _onReceive(nullptr),
-      _onRequest(nullptr) {}
+      _onReceiveISR(nullptr),
+      _onRequest(nullptr),
+      _receiveCallbackPending(false),
+      _receiveGeneration(1U),
+      _pendingReceiveGeneration(0U),
+      _callbackDrops(0U) {}
 
 void TwoWire::configurePins() {
   dpmu_set_adio_reuse(
@@ -143,6 +154,8 @@ bool TwoWire::configure(uint32_t frequency, uint8_t address, Mode mode) {
   _slaveRxLength = 0;
   _slaveTxIndex = 0;
   _slaveRequestActive = false;
+  _receiveCallbackPending = false;
+  if (++_receiveGeneration == 0U) ++_receiveGeneration;
   clearRx();
 
   if (mode == Mode::Slave) {
@@ -191,6 +204,8 @@ void TwoWire::end() {
   _txLength = 0;
   _slaveRxLength = 0;
   _slaveRequestActive = false;
+  _receiveCallbackPending = false;
+  if (++_receiveGeneration == 0U) ++_receiveGeneration;
   clearRx();
 }
 
@@ -242,10 +257,12 @@ void TwoWire::recoverFromTimeout() {
 
 bool TwoWire::waitForMask(volatile uint32_t *value, uint32_t mask, bool set) {
   const uint32_t started = micros();
+  const uint32_t timeout = _timeoutMicros != 0U
+                               ? _timeoutMicros
+                               : static_cast<uint32_t>(WIRE_FAILSAFE_TIMEOUT);
   for (;;) {
     if (((*value & mask) != 0U) == set) return true;
-    if (_timeoutMicros != 0U &&
-        static_cast<uint32_t>(micros() - started) >= _timeoutMicros) {
+    if (static_cast<uint32_t>(micros() - started) >= timeout) {
       recoverFromTimeout();
       return false;
     }
@@ -500,16 +517,92 @@ int TwoWire::peek() {
 
 void TwoWire::flush() {}
 
-void TwoWire::onReceive(void (*callback)(int)) { _onReceive = callback; }
+void TwoWire::onReceive(void (*callback)(int)) {
+  taskENTER_CRITICAL();
+  // Invalidate any event queued for the previous registration. A newly
+  // installed callback must never receive an older slave transaction.
+  if (++_receiveGeneration == 0U) ++_receiveGeneration;
+  _receiveCallbackPending = false;
+  _onReceive = callback;
+  _onReceiveISR = nullptr;
+  taskEXIT_CRITICAL();
+}
 
-void TwoWire::onRequest(void (*callback)(void)) { _onRequest = callback; }
+void TwoWire::onRequest(void (*callback)(void)) {
+  // A slave must provide the first response byte before the controller can
+  // release clock stretching, so this compatibility API is necessarily ISR.
+  onRequestISR(callback);
+}
+
+void TwoWire::onReceiveISR(void (*callback)(int)) {
+  taskENTER_CRITICAL();
+  if (++_receiveGeneration == 0U) ++_receiveGeneration;
+  _receiveCallbackPending = false;
+  _onReceiveISR = callback;
+  _onReceive = nullptr;
+  taskEXIT_CRITICAL();
+}
+
+void TwoWire::onRequestISR(void (*callback)(void)) {
+  taskENTER_CRITICAL();
+  _onRequest = callback;
+  taskEXIT_CRITICAL();
+}
+
+uint32_t TwoWire::callbackDrops() const {
+  taskENTER_CRITICAL();
+  const uint32_t drops = _callbackDrops;
+  taskEXIT_CRITICAL();
+  return drops;
+}
+
+void TwoWire::receiveEvent(void *context, uint32_t value) {
+  TwoWire *wire = static_cast<TwoWire *>(context);
+  if (wire == nullptr) return;
+  void (*callback)(int) = nullptr;
+  size_t received = 0U;
+  taskENTER_CRITICAL();
+  if (wire->_mode == Mode::Slave && wire->_receiveCallbackPending &&
+      wire->_pendingReceiveGeneration == value &&
+      wire->_receiveGeneration == value) {
+    callback = wire->_onReceive;
+    received = wire->_rxLength;
+  }
+  taskEXIT_CRITICAL();
+
+  if (callback != nullptr) callback(static_cast<int>(received));
+
+  taskENTER_CRITICAL();
+  if (wire->_receiveCallbackPending &&
+      wire->_pendingReceiveGeneration == value) {
+    wire->_receiveCallbackPending = false;
+  }
+  taskEXIT_CRITICAL();
+}
 
 void TwoWire::finishSlaveReceive() {
   if (_slaveRxLength == 0) return;
-  _rxLength = _slaveRxLength;
-  _rxIndex = 0;
+  const size_t received = _slaveRxLength;
   _slaveRxLength = 0;
-  if (_onReceive != nullptr) _onReceive(static_cast<int>(_rxLength));
+  if (_receiveCallbackPending) {
+    ++_callbackDrops;
+    return;
+  }
+  memcpy(_rxBuffer, _slaveRxBuffer, received);
+  _rxLength = received;
+  _rxIndex = 0;
+  if (_onReceiveISR != nullptr) {
+    _onReceiveISR(static_cast<int>(received));
+    return;
+  }
+  if (_onReceive == nullptr) return;
+  _receiveCallbackPending = true;
+  _pendingReceiveGeneration = _receiveGeneration;
+  if (!chipintelli_arduino_post_event_from_isr(
+          receiveEvent, this, _pendingReceiveGeneration)) {
+    _receiveCallbackPending = false;
+    ++_callbackDrops;
+  }
 }
 
 void TwoWire::prepareSlaveResponse() {
@@ -533,7 +626,7 @@ bool TwoWire::handleSlaveReceive(char data, bool stop) {
     _lastError = 1;
     return false;
   }
-  _rxBuffer[_slaveRxLength++] = static_cast<uint8_t>(data);
+  _slaveRxBuffer[_slaveRxLength++] = static_cast<uint8_t>(data);
   return true;
 }
 

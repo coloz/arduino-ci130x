@@ -15,6 +15,9 @@
 #ifndef WIRE_DEFAULT_RESET_WITH_TIMEOUT
 #define WIRE_DEFAULT_RESET_WITH_TIMEOUT true
 #endif
+#ifndef WIRE_FAILSAFE_TIMEOUT
+#define WIRE_FAILSAFE_TIMEOUT 25000UL
+#endif
 
 class TwoWire : public Stream {
 public:
@@ -57,6 +60,9 @@ public:
 
   void onReceive(void (*callback)(int));
   void onRequest(void (*callback)(void));
+  void onReceiveISR(void (*callback)(int));
+  void onRequestISR(void (*callback)(void));
+  uint32_t callbackDrops() const;
 
   // Arduino Wire status: 0 success, 1 buffer overflow, 2 address NACK,
   // 3 data NACK, 4 other error, 5 timeout.
@@ -76,6 +82,7 @@ private:
   void clearRx();
   void finishSlaveReceive();
   void prepareSlaveResponse();
+  static void receiveEvent(void *context, uint32_t value);
 
   bool waitForMask(volatile uint32_t *value, uint32_t mask, bool set);
   bool executeCommand(uint32_t command, uint32_t &status);
@@ -88,6 +95,7 @@ private:
 
   uint8_t _txBuffer[I2C_BUFFER_LENGTH];
   uint8_t _rxBuffer[I2C_BUFFER_LENGTH];
+  uint8_t _slaveRxBuffer[I2C_BUFFER_LENGTH];
   size_t _txLength;
   size_t _rxLength;
   size_t _rxIndex;
@@ -108,7 +116,12 @@ private:
   volatile bool _inSlaveRequest;
   volatile bool _slaveRequestActive;
   void (*_onReceive)(int);
+  void (*_onReceiveISR)(int);
   void (*_onRequest)(void);
+  volatile bool _receiveCallbackPending;
+  volatile uint32_t _receiveGeneration;
+  volatile uint32_t _pendingReceiveGeneration;
+  volatile uint32_t _callbackDrops;
 };
 
 extern TwoWire Wire;

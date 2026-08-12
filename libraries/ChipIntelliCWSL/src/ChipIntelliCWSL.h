@@ -100,18 +100,24 @@ private:
 
   static void receiveFromCore(const chipintelli_cwsl_event_t *event,
                               void *context);
+  static void dispatchEvent(void *context, uint32_t value);
+  void dispatchCallbacks();
   void enqueue(const chipintelli_cwsl_event_t &event);
   bool begun() const;
 
   Event _queue[kQueueSize];
+  Event _callbackQueue[kQueueSize];
   volatile uint8_t _head;
   volatile uint8_t _tail;
+  volatile uint8_t _callbackHead;
+  volatile uint8_t _callbackTail;
   volatile uint32_t _dropped;
   EventCallback _callback;
   ContextCallback _contextCallback;
   void *_callbackContext;
   volatile bool _begun;
   volatile bool _accepting;
+  volatile bool _callbackDispatchPending;
 };
 
 extern ChipIntelliCWSLClass ChipIntelliCWSL;

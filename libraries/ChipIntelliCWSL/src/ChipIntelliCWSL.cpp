@@ -1,5 +1,7 @@
 #include "ChipIntelliCWSL.h"
 
+#include <ArduinoEvent.h>
+
 extern "C" {
 #include "FreeRTOS.h"
 #include "task.h"
@@ -14,12 +16,15 @@ static bool validExactTemplate(uint32_t commandId, uint16_t groupId) {
 ChipIntelliCWSLClass::ChipIntelliCWSLClass()
     : _head(0),
       _tail(0),
+      _callbackHead(0),
+      _callbackTail(0),
       _dropped(0),
       _callback(nullptr),
       _contextCallback(nullptr),
       _callbackContext(nullptr),
       _begun(false),
-      _accepting(false) {}
+      _accepting(false),
+      _callbackDispatchPending(false) {}
 
 bool ChipIntelliCWSLClass::begin(uint32_t timeoutMs) {
   if (!chipintelli_cwsl_profile_enabled()) {
@@ -33,6 +38,9 @@ bool ChipIntelliCWSLClass::begin(uint32_t timeoutMs) {
   }
   _head = 0;
   _tail = 0;
+  _callbackHead = 0;
+  _callbackTail = 0;
+  _callbackDispatchPending = false;
   _dropped = 0;
   _accepting = true;
   taskEXIT_CRITICAL();
@@ -70,6 +78,9 @@ void ChipIntelliCWSLClass::end() {
   _begun = false;
   _head = 0;
   _tail = 0;
+  _callbackHead = 0;
+  _callbackTail = 0;
+  _callbackDispatchPending = false;
   _dropped = 0;
   taskEXIT_CRITICAL();
   chipintelli_cwsl_set_callback(nullptr, nullptr);
@@ -163,6 +174,9 @@ int ChipIntelliCWSLClass::maxTemplates() const {
 
 void ChipIntelliCWSLClass::onEvent(EventCallback callback) {
   taskENTER_CRITICAL();
+  // Callback records belong to the registration that was active when they
+  // were received. Do not deliver an old backlog through a replacement.
+  _callbackTail = _callbackHead;
   _callback = callback;
   _contextCallback = nullptr;
   _callbackContext = nullptr;
@@ -171,6 +185,7 @@ void ChipIntelliCWSLClass::onEvent(EventCallback callback) {
 
 void ChipIntelliCWSLClass::onEvent(ContextCallback callback, void *context) {
   taskENTER_CRITICAL();
+  _callbackTail = _callbackHead;
   _contextCallback = callback;
   _callbackContext = context;
   _callback = nullptr;
@@ -195,6 +210,7 @@ void ChipIntelliCWSLClass::enqueue(const chipintelli_cwsl_event_t &source) {
       source.distance
   };
 
+  bool scheduleCallback = false;
   taskENTER_CRITICAL();
   if (!_accepting) {
     taskEXIT_CRITICAL();
@@ -208,15 +224,64 @@ void ChipIntelliCWSLClass::enqueue(const chipintelli_cwsl_event_t &source) {
     _queue[head] = delivered;
     _head = next;
   }
-  ContextCallback contextCallback = _contextCallback;
-  EventCallback callback = _callback;
-  void *callbackContext = _callbackContext;
+  if (_contextCallback != nullptr || _callback != nullptr) {
+    const uint8_t callbackHead = _callbackHead;
+    const uint8_t callbackNext =
+        static_cast<uint8_t>((callbackHead + 1U) % kQueueSize);
+    if (callbackNext == _callbackTail) {
+      ++_dropped;
+    } else {
+      _callbackQueue[callbackHead] = delivered;
+      _callbackHead = callbackNext;
+      if (!_callbackDispatchPending) {
+        _callbackDispatchPending = true;
+        scheduleCallback = true;
+      }
+    }
+  }
   taskEXIT_CRITICAL();
 
-  if (contextCallback != nullptr) {
-    contextCallback(delivered, callbackContext);
-  } else if (callback != nullptr) {
-    callback(delivered);
+  if (scheduleCallback &&
+      !chipintelli_arduino_post_event(dispatchEvent, this, 0U)) {
+    taskENTER_CRITICAL();
+    // No dispatcher token exists for these records. Drop the callback-side
+    // backlog atomically so a later event cannot deliver stale notifications.
+    _callbackTail = _callbackHead;
+    _callbackDispatchPending = false;
+    ++_dropped;
+    taskEXIT_CRITICAL();
+  }
+  chipintelli_arduino_wake();
+}
+
+void ChipIntelliCWSLClass::dispatchEvent(void *context, uint32_t value) {
+  (void)value;
+  if (context != nullptr) {
+    static_cast<ChipIntelliCWSLClass *>(context)->dispatchCallbacks();
+  }
+}
+
+void ChipIntelliCWSLClass::dispatchCallbacks() {
+  for (;;) {
+    taskENTER_CRITICAL();
+    if (_callbackTail == _callbackHead) {
+      _callbackDispatchPending = false;
+      taskEXIT_CRITICAL();
+      return;
+    }
+    const Event delivered = _callbackQueue[_callbackTail];
+    _callbackTail =
+        static_cast<uint8_t>((_callbackTail + 1U) % kQueueSize);
+    ContextCallback contextCallback = _contextCallback;
+    EventCallback callback = _callback;
+    void *callbackContext = _callbackContext;
+    taskEXIT_CRITICAL();
+
+    if (contextCallback != nullptr) {
+      contextCallback(delivered, callbackContext);
+    } else if (callback != nullptr) {
+      callback(delivered);
+    }
   }
 }
 

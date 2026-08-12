@@ -1,5 +1,7 @@
 #include "ChipIntelliAudio.h"
 
+#include <ArduinoEvent.h>
+
 extern "C" {
 #include "FreeRTOS.h"
 #include "audio_play_api.h"
@@ -1397,6 +1399,7 @@ extern "C" void chipintelli_sdk_prompt_unlocked(void) {
 ChipIntelliAudioClass::ChipIntelliAudioClass()
     : _finishedCallback(nullptr),
       _finishedContext(nullptr),
+      _finishedGeneration(0U),
       _begun(false),
       _muted(false),
       _unmutedVolume(70),
@@ -1405,7 +1408,8 @@ ChipIntelliAudioClass::ChipIntelliAudioClass()
       _playbackTask(nullptr),
       _sdkFinished{0U, 0U},
       _activeCallbackSlot(0U),
-      _playbackActive(false) {}
+      _playbackActive(false),
+      _droppedFinishedCallbacks(0U) {}
 
 bool ChipIntelliAudioClass::ensurePlaybackTask() {
   if (_playbackQueue == nullptr) {
@@ -1501,13 +1505,29 @@ bool ChipIntelliAudioClass::startPlaybackRequest(
 void ChipIntelliAudioClass::finishLogicalPlayback() {
   taskENTER_CRITICAL();
   _playbackActive = false;
-  FinishedCallback callback = _finishedCallback;
-  void *context = _finishedContext;
+  const bool hasCallback = _finishedCallback != nullptr;
+  const uint32_t callbackGeneration = _finishedGeneration;
   taskEXIT_CRITICAL();
 
-  if (callback != nullptr) {
-    callback(context);
+  if (hasCallback &&
+      !chipintelli_arduino_post_event(finishedEvent, this,
+                                     callbackGeneration)) {
+    taskENTER_CRITICAL();
+    ++_droppedFinishedCallbacks;
+    taskEXIT_CRITICAL();
   }
+}
+
+void ChipIntelliAudioClass::finishedEvent(void *context, uint32_t value) {
+  ChipIntelliAudioClass *audio =
+      static_cast<ChipIntelliAudioClass *>(context);
+  if (audio == nullptr) return;
+  taskENTER_CRITICAL();
+  const bool current = value == audio->_finishedGeneration;
+  FinishedCallback callback = current ? audio->_finishedCallback : nullptr;
+  void *callbackContext = current ? audio->_finishedContext : nullptr;
+  taskEXIT_CRITICAL();
+  if (callback != nullptr) callback(callbackContext);
 }
 
 void ChipIntelliAudioClass::playbackTaskLoop() {
@@ -2090,6 +2110,7 @@ bool ChipIntelliAudioClass::isMuted() const {
 void ChipIntelliAudioClass::onFinished(FinishedCallback callback,
                                        void *context) {
   taskENTER_CRITICAL();
+  ++_finishedGeneration;
   _finishedCallback = callback;
   _finishedContext = callback != nullptr ? context : nullptr;
   taskEXIT_CRITICAL();
@@ -2098,6 +2119,13 @@ void ChipIntelliAudioClass::onFinished(FinishedCallback callback,
 void ChipIntelliAudioClass::sdkPlaybackFinished0(void *commandHandle) {
   (void)commandHandle;
   ChipIntelliAudio.recordSdkPlaybackFinished(0U);
+}
+
+uint32_t ChipIntelliAudioClass::droppedFinishedCallbacks() const {
+  taskENTER_CRITICAL();
+  const uint32_t dropped = _droppedFinishedCallbacks;
+  taskEXIT_CRITICAL();
+  return dropped;
 }
 
 void ChipIntelliAudioClass::sdkPlaybackFinished1(void *commandHandle) {

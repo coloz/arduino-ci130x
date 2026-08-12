@@ -2,12 +2,12 @@
 
 This library provides two timing APIs for CI1302, CI1303 and CI1306:
 
-- `ChipIntelliTimer` drives TIMER0, TIMER1 or TIMER2. Its callback runs in
-  interrupt context and can provide microsecond periods. TIMER3 is reserved by
-  the official BLE stack in the current Arduino profile.
+- `ChipIntelliTimer` drives TIMER0, TIMER1 or TIMER2. Its ISR clears the timer
+  and posts the user callback to the Arduino event dispatcher. TIMER3 is
+  reserved by the official BLE stack in the current Arduino profile.
 - `Ticker` (also available as `ChipIntelliTicker`) uses a FreeRTOS software
-  timer. Its callback runs in the timer-service task and does not consume a
-  hardware timer.
+  timer. Its timer-service hook only posts to the same dispatcher and does not
+  consume a hardware timer.
 
 ## Hardware timer
 
@@ -39,13 +39,15 @@ provided.
 `timerNumber()` and `lastError()` are available. `end()` disables the interrupt
 and releases the timer resource.
 
-Hardware timer callbacks execute directly in an interrupt. Do not call
-`Serial`, `delay()`, heap allocation, flash writes, or blocking/FreeRTOS APIs
-from them. Set a `volatile` flag or counter and perform that work from
-`loop()`. The timer's own `begin()`, `end()`, `start()`, `stop()`, `restart()`
-and `setPeriod()` methods are also task-only: an ISR call is rejected with
+Hardware timer user callbacks execute in Arduino task context, not in the
+interrupt. `Serial` and normal task APIs are therefore allowed, although a
+callback must remain bounded because it shares the Arduino dispatcher. The
+timer's own `begin()`, `end()`, `start()`, `stop()`, `restart()` and
+`setPeriod()` methods are task-only: an ISR call is rejected with
 `Error::InterruptContext`. Do not destroy a timer object from its callback.
 Concurrent task control of the same object is rejected with `Error::Busy`.
+If the fixed dispatcher is full, `lastError()` reports `Error::QueueFull` and
+the global `chipintelli_arduino_event_dropped()` counter is incremented.
 TIMER0 through TIMER2 are separate from both the BLE TIMER3 time base and the
 machine timer used for the FreeRTOS scheduler and Arduino `millis()`.
 
@@ -77,8 +79,9 @@ scheduled simultaneously.
 
 Ticker uses the SDK's FreeRTOS software-timer service. The configured kernel
 tick rate is 500 Hz, so intervals have 2 ms resolution and are rounded up to
-the next tick. Callbacks should remain short: blocking a Ticker callback also
-delays SDK software timers used by audio, keys, and other services. Create and
+the next tick. The timer-service task only posts a zero-wait event; the user
+callback runs later in Arduino task context and cannot delay SDK software
+timers. Keep it bounded because it shares the Arduino dispatcher. Create and
 control Tickers from `setup()`, `loop()`, or another task, not from an ISR;
 ISR calls fail safely with `Ticker::Error::InterruptContext`.
 Calling `detach()` or attaching a new interval from the Ticker callback is

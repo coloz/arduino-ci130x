@@ -213,10 +213,10 @@ public:
   void unmute();
   bool isMuted() const;
 
-  // Callback runs from the dedicated playback task after the SDK releases its
-  // prompt mutex. Keep it short and hand longer work back to loop(). Pass
-  // nullptr to clear the callback.
+  // Callback runs from the Arduino event dispatcher after the SDK releases
+  // its prompt mutex. Pass nullptr to clear the callback.
   void onFinished(FinishedCallback callback, void *context = nullptr);
+  uint32_t droppedFinishedCallbacks() const;
 
 private:
   struct PlaybackRequest;
@@ -229,6 +229,7 @@ private:
   static void playbackTaskEntry(void *context);
   static void sdkPlaybackFinished0(void *commandHandle);
   static void sdkPlaybackFinished1(void *commandHandle);
+  static void finishedEvent(void *context, uint32_t value);
   void playbackTaskLoop();
   bool ensurePlaybackTask();
   bool enqueuePlaybackRequest(const PlaybackRequest &request);
@@ -243,6 +244,7 @@ private:
 
   FinishedCallback _finishedCallback;
   void *_finishedContext;
+  uint32_t _finishedGeneration;
   bool _begun;
   bool _muted;
   uint8_t _unmutedVolume;
@@ -252,6 +254,7 @@ private:
   uint32_t _sdkFinished[2];
   uint8_t _activeCallbackSlot;
   bool _playbackActive;
+  volatile uint32_t _droppedFinishedCallbacks;
 };
 
 extern ChipIntelliAudioClass &ChipIntelliAudio;

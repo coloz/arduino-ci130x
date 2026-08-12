@@ -278,8 +278,8 @@ void loop() {
 
 The SDK originally invokes completion while holding its prompt mutex. The
 Arduino integration records that event, waits for the post-unlock hook, and
-wakes the dedicated playback task. The user callback therefore always runs
-from the `ChipIntelliAudio` playback task, once per logical request rather than
+wakes the dedicated playback task, which then posts a zero-wait dispatcher
+event. The user callback therefore runs from the Arduino task, once per logical request rather than
 once per number token. Keep it short and avoid `delay()`, waiting for locks,
 Flash writes, large prints, or other time-consuming work. Prefer setting a
 `volatile` flag or sending a non-blocking queue message, then handling it from
@@ -287,6 +287,7 @@ Flash writes, large prints, or other time-consuming work. Prefer setting a
 also follow an interrupted request or a late resource lookup failure. The
 `context` passed to `onFinished()` is forwarded unchanged. Call
 `onFinished(nullptr)` to clear the callback.
+`droppedFinishedCallbacks()` reports completions that could not be queued.
 
 ## Examples
 

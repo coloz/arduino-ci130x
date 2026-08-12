@@ -8,8 +8,10 @@ standard offline-ASR profile.
 
 Learning is asynchronous. `learnCommand()` or `learnWakeWord()` starts audio
 capture and returns immediately. Poll events with `read()` or install an
-`onEvent()` callback. Callbacks execute in a vendor SDK task and must not
-block; use the event queue for longer work from `loop()`.
+`onEvent()` callback. Vendor SDK tasks only copy events into zero-wait queues;
+callbacks execute later in the Arduino event dispatcher and therefore do not
+block the capture/recognition task. Keep callbacks bounded because they share
+the dispatcher. `droppedEvents()` reports callback/read queue overflow.
 Control calls made synchronously from `onEvent()` can return `false` while the
 current event owns the operation transition. Queue those requests and execute
 them from `loop()` instead.

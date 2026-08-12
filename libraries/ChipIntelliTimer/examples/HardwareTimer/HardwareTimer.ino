@@ -4,7 +4,7 @@ ChipIntelliTimer hardwareTimer;
 volatile uint32_t pendingTicks = 0;
 
 void onHardwareTimer() {
-  // Hardware timer callbacks run in interrupt context. Keep them short.
+  // The ISR posts this callback to the Arduino event dispatcher.
   ++pendingTicks;
 }
 

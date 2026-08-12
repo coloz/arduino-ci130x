@@ -20,6 +20,7 @@ class ChipIntelliTimer {
     AlreadyBegun,
     Busy,
     InterruptContext,
+    QueueFull,
   };
 
   ChipIntelliTimer();
@@ -67,6 +68,7 @@ class ChipIntelliTimer {
   void handleInterrupt();
 
   static void dispatch(uint8_t timerNumber);
+  static void dispatchDeferred(void *context, uint32_t generation);
   static void handleTimer0();
   static void handleTimer1();
   static void handleTimer2();
@@ -82,5 +84,6 @@ class ChipIntelliTimer {
   bool _begun;
   bool _operationInProgress;
   volatile bool _running;
+  uint32_t _generation;
   Error _lastError;
 };

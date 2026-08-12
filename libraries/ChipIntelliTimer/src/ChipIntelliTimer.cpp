@@ -1,6 +1,7 @@
 #include "ChipIntelliTimer.h"
 
 #include <Arduino.h>
+#include <ArduinoEvent.h>
 #include <PeripheralManager.h>
 #include <limits.h>
 
@@ -26,6 +27,7 @@ constexpr uint8_t kAvailableTimerCount = kHardwareTimerCount;
 #endif
 constexpr uint8_t kInterruptLevel = 3;
 constexpr uint8_t kInterruptPriority = 0;
+uint32_t s_nextTimerGeneration = 0U;
 
 const timer_base_t kTimerBases[kHardwareTimerCount] = {
     TIMER0, TIMER1, TIMER2, TIMER3};
@@ -83,6 +85,7 @@ ChipIntelliTimer::ChipIntelliTimer()
       _begun(false),
       _operationInProgress(false),
       _running(false),
+      _generation(0U),
       _lastError(Error::None) {}
 
 ChipIntelliTimer::~ChipIntelliTimer() { end(); }
@@ -209,6 +212,8 @@ bool ChipIntelliTimer::acquire(uint8_t timerNumber) {
     return false;
   }
   s_owners[timerNumber] = this;
+  _generation = ++s_nextTimerGeneration;
+  if (_generation == 0U) _generation = ++s_nextTimerGeneration;
   taskEXIT_CRITICAL();
 
   const PeripheralResource resource = timerResource(timerNumber);
@@ -300,6 +305,7 @@ void ChipIntelliTimer::endInternal() {
   _timerNumber = Automatic;
   _repeat = false;
   _begun = false;
+  _generation = 0U;
   _lastError = Error::None;
 }
 
@@ -423,6 +429,7 @@ const char *ChipIntelliTimer::errorString(Error error) {
     case Error::AlreadyBegun: return "timer already begun";
     case Error::Busy: return "timer operation already in progress";
     case Error::InterruptContext: return "timer control is not allowed in an ISR";
+    case Error::QueueFull: return "Arduino event queue full";
   }
   return "unknown";
 }
@@ -433,9 +440,33 @@ void ChipIntelliTimer::handleInterrupt() {
     _running = false;
   }
 
-  Callback callback = _callback;
-  CallbackWithArg callbackWithArg = _callbackWithArg;
-  void *argument = _argument;
+  const uint8_t timerNumber = _timerNumber;
+  if (!chipintelli_arduino_post_event_from_isr(
+          dispatchDeferred,
+          reinterpret_cast<void *>(static_cast<uintptr_t>(timerNumber)),
+          _generation)) {
+    _lastError = Error::QueueFull;
+  }
+}
+
+void ChipIntelliTimer::dispatchDeferred(void *context, uint32_t generation) {
+  const uint8_t timerNumber = static_cast<uint8_t>(
+      reinterpret_cast<uintptr_t>(context));
+  if (timerNumber >= kHardwareTimerCount) return;
+
+  Callback callback = nullptr;
+  CallbackWithArg callbackWithArg = nullptr;
+  void *argument = nullptr;
+  taskENTER_CRITICAL();
+  ChipIntelliTimer *owner = s_owners[timerNumber];
+  if (owner != nullptr && owner->_begun &&
+      owner->_generation == generation) {
+    callback = owner->_callback;
+    callbackWithArg = owner->_callbackWithArg;
+    argument = owner->_argument;
+  }
+  taskEXIT_CRITICAL();
+
   if (callback != nullptr) {
     callback();
   } else if (callbackWithArg != nullptr) {

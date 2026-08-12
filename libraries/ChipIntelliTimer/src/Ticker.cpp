@@ -1,5 +1,7 @@
 #include "Ticker.h"
 
+#include <ArduinoEvent.h>
+
 #include <cmath>
 #include <limits.h>
 
@@ -22,15 +24,20 @@ struct TickerSlot {
   bool allocated;
   bool active;
   bool repeat;
+  uint32_t generation;
 };
 
 TickerSlot s_slots[kMaximumTickers] = {};
+uint32_t s_nextGeneration = 0U;
 
 int8_t reserveSlot() {
   taskENTER_CRITICAL();
   for (uint8_t index = 0; index < kMaximumTickers; ++index) {
     if (!s_slots[index].allocated) {
       s_slots[index].allocated = true;
+      uint32_t generation = ++s_nextGeneration;
+      if (generation == 0U) generation = ++s_nextGeneration;
+      s_slots[index].generation = generation;
       taskEXIT_CRITICAL();
       return static_cast<int8_t>(index);
     }
@@ -50,21 +57,18 @@ TickType_t commandWait() {
   return wait > 0 ? wait : 1;
 }
 
-void tickerDispatch(TimerHandle_t timer) {
-  TickerSlot *slot = static_cast<TickerSlot *>(pvTimerGetTimerID(timer));
+void tickerEvent(void *context, uint32_t generation) {
+  TickerSlot *slot = static_cast<TickerSlot *>(context);
   Ticker::Callback callback = nullptr;
   Ticker::CallbackWithArg callbackWithArg = nullptr;
   void *argument = nullptr;
 
   taskENTER_CRITICAL();
-  if (slot != nullptr && slot->allocated && slot->timer == timer &&
-      slot->active) {
+  if (slot != nullptr && slot->allocated &&
+      slot->generation == generation) {
     callback = slot->callback;
     callbackWithArg = slot->callbackWithArg;
     argument = slot->argument;
-    if (!slot->repeat) {
-      slot->active = false;
-    }
   }
   taskEXIT_CRITICAL();
 
@@ -72,6 +76,25 @@ void tickerDispatch(TimerHandle_t timer) {
     callback();
   } else if (callbackWithArg != nullptr) {
     callbackWithArg(argument);
+  }
+}
+
+void tickerDispatch(TimerHandle_t timer) {
+  TickerSlot *slot = static_cast<TickerSlot *>(pvTimerGetTimerID(timer));
+  uint32_t generation = 0U;
+
+  taskENTER_CRITICAL();
+  if (slot != nullptr && slot->allocated && slot->timer == timer &&
+      slot->active) {
+    generation = slot->generation;
+    if (!slot->repeat) {
+      slot->active = false;
+    }
+  }
+  taskEXIT_CRITICAL();
+
+  if (generation != 0U) {
+    (void)chipintelli_arduino_post_event(tickerEvent, slot, generation);
   }
 }
 }  // namespace
