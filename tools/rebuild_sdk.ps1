@@ -459,6 +459,16 @@ if (-not (Test-Path -LiteralPath $packagedAdcSource -PathType Leaf)) {
 $stagedAdcSource = Join-Path $sourceOutput 'driver\ci130x_chip_driver\src\ci130x_adc.c'
 Copy-Item -LiteralPath $packagedAdcSource -Destination $stagedAdcSource -Force
 
+# Preserve the Arduino Wire IRQ bridge. It lets the core's master state
+# machine handle IIC0 while retaining the vendor handler for slave mode and
+# for firmware that does not link the Wire library.
+$packagedIicSource = Join-Path $sdkOutput 'src\driver\ci130x_chip_driver\src\ci130x_iic.c'
+if (-not (Test-Path -LiteralPath $packagedIicSource -PathType Leaf)) {
+    throw "The current Arduino IIC IRQ bridge source is missing: $packagedIicSource"
+}
+$stagedIicSource = Join-Path $sourceOutput 'driver\ci130x_chip_driver\src\ci130x_iic.c'
+Copy-Item -LiteralPath $packagedIicSource -Destination $stagedIicSource -Force
+
 # Preserve the bounded NVDM mutex/error-path adaptation. The upstream port
 # waits forever for its mutex and halts on malformed flash records; Arduino
 # callers instead receive a normal operation failure after a finite timeout.

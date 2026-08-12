@@ -78,6 +78,12 @@ typedef struct
 
 static iic_status_t iic0_status = {0};
 
+#if defined(CI_ARDUINO_CORE)
+/* Arduino's Wire master owns its transfer state machine. Keep a weak fallback
+ * so sketches that never link Wire still retain the vendor slave handler. */
+extern bool chipintelli_wire_master_irq(void) __attribute__((weak));
+#endif
+
 static void delay_time(int32_t time)
 {
     volatile int32_t loop;
@@ -1251,6 +1257,13 @@ void IIC_IRQHandler(iic_base_t base)
 
 
 void IIC0_IRQHandler(void){
+#if defined(CI_ARDUINO_CORE)
+    if (chipintelli_wire_master_irq != NULL &&
+        chipintelli_wire_master_irq())
+    {
+        return;
+    }
+#endif
     IIC_IRQHandler(IIC0);
 }
 
