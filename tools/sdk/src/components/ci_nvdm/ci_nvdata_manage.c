@@ -136,10 +136,6 @@ typedef struct
 /*now align to 4byte*/
 #define CINV_ITEM_LEN_ACTUAL_USED( len )  (((len)+3)/4*4)
 
-/*just for test*/
-#define POWEROFF_TEST(pos) do{}while(0)  /*no test and save code size*/
-//#define POWEROFF_TEST(pos) poweroff_random_test(pos)
-
 #define PFT_POS_RECLAIM_BEFORE_ERASE1       0
 #define PFT_POS_BEFORE_WRITING_NEW          1
 #define PFT_POS_BEFORE_WRITING_START        2
@@ -154,6 +150,8 @@ static uint16_t g_feb_total_count; /*flash total used size is CINV_FLASH_ERASE_B
 
 
 
+#if defined(CINV_ENABLE_POWEROFF_TEST)
+/* Deliberate fault-injection halt, excluded from every production build. */
 static void poweroff_random_test(uint32_t pos)
 {
     if(PFT_POS_SET_TRANSFERING == pos)
@@ -161,6 +159,10 @@ static void poweroff_random_test(uint32_t pos)
         while(1);/*reset or while 1 for manual reset*/
     }
 }
+#define POWEROFF_TEST(pos) poweroff_random_test(pos)
+#else
+#define POWEROFF_TEST(pos) do{}while(0)
+#endif
 
 
 /**
@@ -528,7 +530,8 @@ static bool reclaim_block(uint32_t blk_num, uint32_t old_id)
         {
             POWEROFF_TEST(offset);
             POWEROFF_TEST(di_hdr->status);
-            while(1);
+            cinv_log_error("invalid item status 0x%x in block %u\n",
+                           di_hdr->status, blk_num);
             break;/*mabey error or last data*/ // TODO:  deal error?
         }
         offset += item_len;
@@ -613,7 +616,8 @@ static int32_t init_page_id(uint32_t blk_num, uint32_t id, bool transid_valid)
         {
             lost += CINV_FLASH_ERASE_BLOCK_SIZE - offset;
             offset =  CINV_FLASH_ERASE_BLOCK_SIZE;
-            while(1);
+            cinv_log_error("invalid item status 0x%x in block %u\n",
+                           di_hdr->status, blk_num);
             break;/*error*/
         }
         
@@ -710,7 +714,8 @@ static int32_t init_page(uint32_t blk_num)
         {
             lost += CINV_FLASH_ERASE_BLOCK_SIZE - offset;
             offset = CINV_FLASH_ERASE_BLOCK_SIZE;
-            while(1);
+            cinv_log_error("invalid item status 0x%x in block %u\n",
+                           di_hdr->status, blk_num);
             break;/*error*/
         }
         
@@ -1184,8 +1189,11 @@ void cinv_init(uint32_t flash_addr, uint32_t size)
     }
 
     g_flash_base_addr = flash_addr;
-    cinv_port_mutex_creat();
-    cinv_port_mutex_take();
+    if (!cinv_port_mutex_creat() || !cinv_port_mutex_take())
+    {
+        cinv_log_error("%s, mutex unavailable\n", __func__);
+        return;
+    }
     cinv_port_flash_used_request();
     ci_logdebug(LOG_NVDATA,"\nnvdata init\n\n");
     cinv_port_flash_protect(F_DISABLE);
@@ -1363,7 +1371,10 @@ cinv_item_ret_t cinv_item_init(uint32_t id, uint16_t len, void *buf)
         return CINV_ITEM_LEN_ERR;
     }
 
-    cinv_port_mutex_take();
+    if (!cinv_port_mutex_take())
+    {
+        return CINV_OPER_FAILED;
+    }
     cinv_port_flash_used_request();
 
     offset = find_id(id, &blk);
@@ -1423,7 +1434,10 @@ cinv_item_ret_t cinv_item_write(uint32_t id, uint16_t len, void *buf)
         return CINV_ITEM_LEN_ERR;
     }
     
-    cinv_port_mutex_take();
+    if (!cinv_port_mutex_take())
+    {
+        return CINV_OPER_FAILED;
+    }
     cinv_port_flash_used_request();
 
     src_off = find_id(id, &src_blk);
@@ -1487,7 +1501,10 @@ cinv_item_ret_t cinv_item_read(uint32_t id, uint16_t len, void *buf, uint16_t *r
 
     item_len = item_len > CINV_IO_BUFFER_SIZE ? CINV_IO_BUFFER_SIZE:item_len;
 
-    cinv_port_mutex_take();
+    if (!cinv_port_mutex_take())
+    {
+        return CINV_OPER_FAILED;
+    }
     cinv_port_flash_used_request();
 
     offset = find_id(id, &blk);
@@ -1542,7 +1559,10 @@ cinv_item_ret_t cinv_item_delete(uint32_t id)
     uint16_t blk;
     cinv_item_ret_t ret = CINV_OPER_SUCCESS;
 
-    cinv_port_mutex_take();
+    if (!cinv_port_mutex_take())
+    {
+        return CINV_OPER_FAILED;
+    }
     cinv_port_flash_used_request();
 
     offset = find_id(id, &blk);

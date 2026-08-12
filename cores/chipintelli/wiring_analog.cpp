@@ -15,20 +15,45 @@ extern "C" {
 // from its public header in V2.7.12.
 extern "C" void adc_clear_flag(void);
 extern "C" void adc_mask_int(FunctionalState cmd);
+extern "C" void adc_convert_config(adc_channelx_t channel,
+                                     adc_clkcyclex_t holdtime);
+extern "C" void adc_continuons_convert(FunctionalState cmd);
+extern "C" void adc_int_sel(adc_int_mode_t condition);
+
+static TaskHandle_t s_adcWaiter;
+static volatile bool s_adcBusy;
 
 // The SDK's default vector is weak and empty even though adc_signal_mode()
 // waits for flags set by ADC_irqhandle(). Supply the missing bridge.
 extern "C" void __wrap_ADC_IRQHandler(void) {
     ADC_irqhandle();
+    TaskHandle_t waiter = s_adcWaiter;
+    if (waiter != nullptr) {
+        BaseType_t higherPriorityTaskWoken = pdFALSE;
+        vTaskNotifyGiveFromISR(waiter, &higherPriorityTaskWoken);
+        portYIELD_FROM_ISR(higherPriorityTaskWoken);
+    }
 }
 
 static uint8_t s_readResolution = 12;
 static uint8_t s_writeResolution = 8;
 static uint32_t s_writeFrequency = 1000;
 static bool s_adcReady;
+static volatile chipintelli_error_t s_adcLastError = CHIPINTELLI_ERROR_NONE;
+constexpr uint32_t kAdcHardwareTimeoutUs = 5000U;
+constexpr uint32_t kAdcConversionTimeoutMs = 10U;
 static TimerHandle_t s_toneTimers[6];
 static uint8_t s_tonePins[6];
 static bool s_toneActive[6];
+
+static void releaseAdcRead(uint8_t pin) {
+    (void)pinModeOwned(pin, INPUT, PeripheralOwner::Adc);
+    PeripheralManager.releasePin(PeripheralOwner::Adc, pin);
+    taskENTER_CRITICAL();
+    s_adcWaiter = nullptr;
+    s_adcBusy = false;
+    taskEXIT_CRITICAL();
+}
 static uint8_t s_pwmPins[6] = {255, 255, 255, 255, 255, 255};
 static PeripheralOwner s_pwmOwners[6] = {};
 
@@ -85,15 +110,39 @@ extern "C" void analogReadResolution(uint8_t bits) {
 }
 
 extern "C" int analogRead(uint8_t pin) {
-    if (pin >= NUM_DIGITAL_PINS) return 0;
+    if (pin >= NUM_DIGITAL_PINS) {
+        s_adcLastError = CHIPINTELLI_ERROR_HARDWARE_FAULT;
+        return 0;
+    }
     const PinDescription &desc = g_APinDescription[pin];
-    if (!(desc.capabilities & PIN_CAP_ADC)) return 0;
-    if (!PeripheralManager.claimPin(PeripheralOwner::Adc, pin)) return 0;
+    if (!(desc.capabilities & PIN_CAP_ADC)) {
+        s_adcLastError = CHIPINTELLI_ERROR_HARDWARE_FAULT;
+        return 0;
+    }
+    taskENTER_CRITICAL();
+    if (s_adcBusy) {
+        taskEXIT_CRITICAL();
+        s_adcLastError = CHIPINTELLI_ERROR_BUSY;
+        return 0;
+    }
+    s_adcBusy = true;
+    taskEXIT_CRITICAL();
+    if (!PeripheralManager.claimPin(PeripheralOwner::Adc, pin)) {
+        taskENTER_CRITICAL();
+        s_adcBusy = false;
+        taskEXIT_CRITICAL();
+        s_adcLastError = CHIPINTELLI_ERROR_BUSY;
+        return 0;
+    }
     detachInterrupt(pin);
     if (!s_adcReady) {
         scu_set_device_gate(HAL_ADC_BASE, ENABLE);
-        adc_poweron();
-        adc_reset();
+        if (adc_poweron_timeout(kAdcHardwareTimeoutUs) != RETURN_OK ||
+            adc_reset_timeout(kAdcHardwareTimeoutUs) != RETURN_OK) {
+            s_adcLastError = CHIPINTELLI_ERROR_TIMEOUT;
+            releaseAdcRead(pin);
+            return 0;
+        }
         adc_clear_flag();
         for (uint8_t channel = 0; channel < ADC_CHANNEL_MAX; ++channel) {
             adc_int_clear(static_cast<adc_channelx_t>(channel));
@@ -106,13 +155,60 @@ extern "C" int analogRead(uint8_t pin) {
     dpmu_set_io_pull(static_cast<PinPad_Name>(desc.pad), DPMU_IO_PULL_DISABLE);
     dpmu_set_adio_reuse(static_cast<PinPad_Name>(desc.pad), ANALOG_MODE);
     adc_channelx_t channel = static_cast<adc_channelx_t>(desc.adcChannel);
-    adc_signal_mode(channel);
+    bool converted = false;
+    if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
+        TaskHandle_t current = xTaskGetCurrentTaskHandle();
+        taskENTER_CRITICAL();
+        s_adcWaiter = current;
+        taskEXIT_CRITICAL();
+        (void)ulTaskNotifyTake(pdTRUE, 0U);
+        adc_clear_flag();
+        adc_int_clear(channel);
+        adc_convert_config(channel, ADC_CLKCYCLE_2);
+        adc_continuons_convert(DISABLE);
+        adc_int_sel(ADC_INT_MODE_TRANS_END);
+        adc_soc_soft_ctrl(ENABLE);
+        const uint32_t conversionStarted = millis();
+        for (;;) {
+            // Direct task notifications are also used to wake the Arduino task
+            // for UART/GPIO/Timer events. Confirm the ADC channel flag instead
+            // of treating an unrelated notification as conversion completion.
+            if (adc_wait_int_timeout(channel, 1U) == RETURN_OK) {
+                converted = true;
+                break;
+            }
+            const uint32_t elapsed = millis() - conversionStarted;
+            if (elapsed >= kAdcConversionTimeoutMs) break;
+            const uint32_t remaining = kAdcConversionTimeoutMs - elapsed;
+            TickType_t wait = static_cast<TickType_t>(
+                (remaining + portTICK_PERIOD_MS - 1U) /
+                portTICK_PERIOD_MS);
+            (void)ulTaskNotifyTake(pdTRUE, wait > 0U ? wait : 1U);
+        }
+    } else {
+        adc_convert_config(channel, ADC_CLKCYCLE_2);
+        adc_continuons_convert(DISABLE);
+        adc_int_sel(ADC_INT_MODE_TRANS_END);
+        adc_soc_soft_ctrl(ENABLE);
+        converted = adc_wait_int_timeout(channel, kAdcHardwareTimeoutUs) ==
+                    RETURN_OK;
+    }
+    if (!converted) {
+        s_adcLastError = CHIPINTELLI_ERROR_TIMEOUT;
+        adc_int_clear(channel);
+        releaseAdcRead(pin);
+        return 0;
+    }
     const int result = static_cast<int>(
         scaleResolution(adc_get_result(channel) & 0x0fffU, 12,
                         s_readResolution));
-    (void)pinModeOwned(pin, INPUT, PeripheralOwner::Adc);
-    PeripheralManager.releasePin(PeripheralOwner::Adc, pin);
+    releaseAdcRead(pin);
+    s_adcLastError = CHIPINTELLI_ERROR_NONE;
     return result;
+}
+
+extern "C" chipintelli_error_t analogReadLastError(void) {
+    return s_adcLastError;
 }
 
 extern "C" void analogWriteResolution(uint8_t bits) {

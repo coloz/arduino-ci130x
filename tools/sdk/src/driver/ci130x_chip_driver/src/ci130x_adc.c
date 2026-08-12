@@ -11,6 +11,12 @@
 
 
 #include "ci130x_adc.h"
+#include "ci130x_core_timer.h"
+#include "platform_config.h"
+
+#ifndef ADC_DEFAULT_TIMEOUT_US
+#define ADC_DEFAULT_TIMEOUT_US 5000U
+#endif
 
 /*ADC寄存器定义*/
 typedef struct
@@ -64,37 +70,42 @@ void adc_clear_flag(void)
 }
 
 
-void adc_wait_int(adc_channelx_t cha)
+static int8_t adc_wait_value(volatile uint8_t *value, uint8_t expected,
+                             uint32_t timeout_us)
 {
+    uint32_t frequency = get_systick_clk();
+    uint64_t started = get_timer_value();
+    uint64_t timeout_ticks =
+        ((uint64_t)frequency * timeout_us + 999999ULL) / 1000000ULL;
+    if (timeout_ticks == 0U) timeout_ticks = 1U;
+    while (*value != expected)
+    {
+        if ((get_timer_value() - started) >= timeout_ticks) return RETURN_ERR;
+    }
+    return RETURN_OK;
+}
+
+int8_t adc_wait_int_timeout(adc_channelx_t cha, uint32_t timeout_us)
+{
+    volatile uint8_t *flag = NULL;
     switch(cha)
     {
-        case ADC_CHANNEL_0:
-            while(!adc_cha0_int_flag);
-            adc_cha0_int_flag = 0;
-            break;
-        case ADC_CHANNEL_1:
-            while(!adc_cha1_int_flag);
-            adc_cha1_int_flag = 0;
-            break;
-        case ADC_CHANNEL_2:
-            while(!adc_cha2_int_flag);
-            adc_cha2_int_flag = 0;
-            break;
-        case ADC_CHANNEL_3:
-            while(!adc_cha3_int_flag);
-            adc_cha3_int_flag = 0;
-            break;
-        case ADC_CHANNEL_4:
-			while(!adc_cha4_int_flag);
-			adc_cha4_int_flag = 0;
-			break;
-		case ADC_CHANNEL_5:
-			while(!adc_cha5_int_flag);
-			adc_cha5_int_flag = 0;
-			break;
-        default:
-            break;
+        case ADC_CHANNEL_0: flag = &adc_cha0_int_flag; break;
+        case ADC_CHANNEL_1: flag = &adc_cha1_int_flag; break;
+        case ADC_CHANNEL_2: flag = &adc_cha2_int_flag; break;
+        case ADC_CHANNEL_3: flag = &adc_cha3_int_flag; break;
+        case ADC_CHANNEL_4: flag = &adc_cha4_int_flag; break;
+        case ADC_CHANNEL_5: flag = &adc_cha5_int_flag; break;
+        default: return RETURN_ERR;
     }
+    if (adc_wait_value(flag, 1U, timeout_us) != RETURN_OK) return RETURN_ERR;
+    *flag = 0U;
+    return RETURN_OK;
+}
+
+void adc_wait_int(adc_channelx_t cha)
+{
+    (void)adc_wait_int_timeout(cha, ADC_DEFAULT_TIMEOUT_US);
 }
 void ADC_irqhandle(void){
 	    uint32_t status = ADC->ADCINTFLG;
@@ -538,13 +549,32 @@ int8_t adc_get_vol_value(adc_channelx_t cha,float* vol_val)
     return RETURN_OK;
 }
 
-void adc_poweron(void)
+static int8_t adc_wait_power_ready(uint8_t ready, uint32_t timeout_us)
+{
+    uint32_t frequency = get_systick_clk();
+    uint64_t started = get_timer_value();
+    uint64_t timeout_ticks =
+        ((uint64_t)frequency * timeout_us + 999999ULL) / 1000000ULL;
+    if (timeout_ticks == 0U) timeout_ticks = 1U;
+    while (((ADC->ADCPWRRDY & 0x1U) != 0U) != (ready != 0U))
+    {
+        if ((get_timer_value() - started) >= timeout_ticks) return RETURN_ERR;
+    }
+    return RETURN_OK;
+}
+
+int8_t adc_poweron_timeout(uint32_t timeout_us)
 {
     ADC->ADCCTRLa |= (0x1 << 3);
     ADC->ADCRSTN |= (0x7 << 0);//高于400ns
     ADC->ADCLOADEN |= (0x1 << 0);
     adc_power_ctrl(ENABLE);
-    while(!(ADC->ADCPWRRDY & 0x1));
+    return adc_wait_power_ready(1U, timeout_us);
+}
+
+void adc_poweron(void)
+{
+    (void)adc_poweron_timeout(ADC_DEFAULT_TIMEOUT_US);
 }
 
 void adc_powerdown(void)
@@ -553,16 +583,21 @@ void adc_powerdown(void)
     adc_clear_flag();
 }
 
-void adc_reset(void)
+int8_t adc_reset_timeout(uint32_t timeout_us)
 {
 	//进入复位
     ADC->ADCCTRLa &= ~(0x1 << 3);
     ADC->ADCLOADEN |= (0x1 << 0);
-    while(ADC->ADCPWRRDY & 0x1);
+    if (adc_wait_power_ready(0U, timeout_us) != RETURN_OK) return RETURN_ERR;
     //释放复位
     ADC->ADCCTRLa |= (0x1 << 3);
 	ADC->ADCLOADEN |= (0x1 << 0);
-	while(!(ADC->ADCPWRRDY & 0x1));
+	return adc_wait_power_ready(1U, timeout_us);
+}
+
+void adc_reset(void)
+{
+    (void)adc_reset_timeout(ADC_DEFAULT_TIMEOUT_US);
 }
 
 void adc_signal_mode(adc_channelx_t cha)

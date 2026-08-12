@@ -15,6 +15,7 @@ void is_ci_flash_data_info_inited(bool *state);
 
 namespace {
 constexpr uint32_t kInitTimeoutMs = 10000;
+constexpr uint32_t kMutexTimeoutMs = 1000;
 
 SemaphoreHandle_t s_preferencesMutex = nullptr;
 
@@ -53,7 +54,8 @@ class PreferencesLock {
  public:
   PreferencesLock() : _mutex(preferencesMutex()), _locked(false) {
     if (_mutex != nullptr) {
-      _locked = xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE;
+      TickType_t wait = pdMS_TO_TICKS(kMutexTimeoutMs);
+      _locked = xSemaphoreTake(_mutex, wait > 0U ? wait : 1U) == pdTRUE;
     }
   }
 
@@ -64,6 +66,7 @@ class PreferencesLock {
   }
 
   bool locked() const { return _locked; }
+  bool hasMutex() const { return _mutex != nullptr; }
 
  private:
   SemaphoreHandle_t _mutex;
@@ -77,7 +80,8 @@ Preferences::Preferences()
       _length(0),
       _id(0),
       _begun(false),
-      _readOnly(false) {}
+      _readOnly(false),
+      _lastError(Error::None) {}
 
 Preferences::~Preferences() {
   end();
@@ -90,11 +94,13 @@ bool Preferences::waitForNvData() const {
     is_ci_flash_data_info_inited(&ready);
     if (!ready) {
       if (chipintelli_sdk_state() == CHIPINTELLI_SDK_FAILED) {
+        setError(Error::HardwareFault);
         return false;
       }
       delay(1);
     }
   } while (!ready && (millis() - started) < kInitTimeoutMs);
+  if (!ready) setError(Error::Timeout);
   return ready;
 }
 
@@ -194,28 +200,41 @@ bool Preferences::initializeNamespace(const char *name, uint32_t id) {
 bool Preferences::begin(const char *name, bool readOnly,
                         const char *partitionLabel) {
   if (check_curr_trap() != 0) {
+    setError(Error::Busy);
     return false;
   }
   if (name == nullptr) {
+    setError(Error::InvalidArgument);
     return false;
   }
   const size_t nameLength = strnlen(name, kMaxNameLength + 1);
   if (!validNamespace(name, nameLength)) {
+    setError(Error::InvalidArgument);
     return false;
   }
   if (partitionLabel != nullptr) {
     if (partitionLabel[0] == '\0' ||
         (strcmp(partitionLabel, "nvs") != 0 &&
          strcmp(partitionLabel, "ci-nvdm") != 0)) {
+      setError(Error::InvalidArgument);
       return false;
     }
   }
-  if (!chipintelli_sdk_begin() || !waitForNvData()) {
+  if (!chipintelli_sdk_begin()) {
+    setError(Error::HardwareFault);
+    return false;
+  }
+  if (!waitForNvData()) {
     return false;
   }
 
   PreferencesLock lock;
-  if (!lock.locked() || _begun) {
+  if (!lock.locked()) {
+    setError(lock.hasMutex() ? Error::Busy : Error::NoMemory);
+    return false;
+  }
+  if (_begun) {
+    setError(Error::AlreadyBegun);
     return false;
   }
   resetState();
@@ -240,6 +259,7 @@ bool Preferences::begin(const char *name, bool readOnly,
     if (result != CINV_OPER_SUCCESS) {
       // A checksum/read failure is not a hash collision. Do not create a
       // second copy of the same namespace at another probe position.
+      setError(Error::HardwareFault);
       return false;
     }
     if (actual < sizeof(NamespaceHeader)) {
@@ -250,6 +270,7 @@ bool Preferences::begin(const char *name, bool readOnly,
       // A damaged Preferences header must not fork into another probe slot.
       // A shorter record with a different magic is simply an SDK/user item.
       if (magic == kMagic) {
+        setError(Error::HardwareFault);
         return false;
       }
       continue;
@@ -266,6 +287,7 @@ bool Preferences::begin(const char *name, bool readOnly,
         header.name[header.nameLength] != '\0' ||
         strnlen(header.name, kMaxNameLength + 1) != header.nameLength ||
         !namespaceIdMatches(header.name, id)) {
+      setError(Error::HardwareFault);
       return false;
     }
     if (header.nameLength != nameLength ||
@@ -273,6 +295,7 @@ bool Preferences::begin(const char *name, bool readOnly,
       continue;
     }
     if (hasMatch) {
+      setError(Error::HardwareFault);
       return false;
     }
     hasMatch = true;
@@ -288,10 +311,20 @@ bool Preferences::begin(const char *name, bool readOnly,
       resetState();
       return false;
     }
+    setError(Error::None);
     return true;
   }
 
-  if (readOnly || !hasEmpty || !initializeNamespace(name, firstEmpty)) {
+  if (readOnly) {
+    setError(Error::NotFound);
+    return false;
+  }
+  if (!hasEmpty) {
+    setError(Error::NoSpace);
+    return false;
+  }
+  if (!initializeNamespace(name, firstEmpty)) {
+    setError(Error::HardwareFault);
     return false;
   }
   _readOnly = false;
@@ -299,8 +332,10 @@ bool Preferences::begin(const char *name, bool readOnly,
   _begun = true;
   if (entryCount() > kMaxEntries) {
     resetState();
+    setError(Error::HardwareFault);
     return false;
   }
+  setError(Error::None);
   return true;
 }
 
@@ -317,17 +352,22 @@ void Preferences::end() {
   PreferencesLock lock;
   if (lock.locked()) {
     resetState();
+    setError(Error::None);
+  } else {
+    setError(lock.hasMutex() ? Error::Busy : Error::NoMemory);
   }
 }
 
 bool Preferences::load() {
   if (!_begun) {
+    setError(Error::NotBegun);
     return false;
   }
   uint16_t actual = 0;
   const cinv_item_ret_t result = cinv_item_read(
       _id, static_cast<uint16_t>(sizeof(_data)), _data, &actual);
   if (result != CINV_OPER_SUCCESS || actual < sizeof(NamespaceHeader)) {
+    setError(Error::HardwareFault);
     return false;
   }
   NamespaceHeader header{};
@@ -341,22 +381,40 @@ bool Preferences::load() {
       !namespaceIdMatches(header.name, _id) ||
       header.nameLength != nameLength ||
       memcmp(header.name, _name, nameLength) != 0) {
+    setError(Error::HardwareFault);
     return false;
   }
   _length = actual;
-  return entryCount() <= kMaxEntries;
+  if (entryCount() > kMaxEntries) {
+    setError(Error::HardwareFault);
+    return false;
+  }
+  return true;
 }
 
 bool Preferences::store() {
-  if (!_begun || _readOnly || _length < sizeof(NamespaceHeader) ||
-      _length > sizeof(_data)) {
+  if (!_begun) {
+    setError(Error::NotBegun);
+    return false;
+  }
+  if (_readOnly) {
+    setError(Error::ReadOnly);
+    return false;
+  }
+  if (_length < sizeof(NamespaceHeader) || _length > sizeof(_data)) {
+    setError(Error::HardwareFault);
     return false;
   }
   NamespaceHeader header{};
   memcpy(&header, _data, sizeof(header));
   header.used = _length;
   memcpy(_data, &header, sizeof(header));
-  return cinv_item_write(_id, _length, _data) == CINV_OPER_SUCCESS;
+  if (cinv_item_write(_id, _length, _data) != CINV_OPER_SUCCESS) {
+    setError(Error::HardwareFault);
+    return false;
+  }
+  setError(Error::None);
+  return true;
 }
 
 bool Preferences::validStoredValue(uint8_t type, const uint8_t *value,
@@ -505,14 +563,26 @@ size_t Preferences::putValue(const char *key, StoredType type,
                              const void *value, size_t length) {
   PreferencesLock lock;
   if (!lock.locked()) {
+    setError(lock.hasMutex() ? Error::Busy : Error::NoMemory);
     return 0;
   }
   size_t keyLength = 0;
-  if (!_begun || _readOnly || value == nullptr || length == 0 ||
-      length > UINT16_MAX || !validKey(key, &keyLength) ||
+  if (!_begun) {
+    setError(Error::NotBegun);
+    return 0;
+  }
+  if (_readOnly) {
+    setError(Error::ReadOnly);
+    return 0;
+  }
+  if (value == nullptr || length == 0 || length > UINT16_MAX ||
+      !validKey(key, &keyLength) ||
       !validStoredValue(static_cast<uint8_t>(type),
-                        static_cast<const uint8_t *>(value), length) ||
-      !load()) {
+                        static_cast<const uint8_t *>(value), length)) {
+    setError(Error::InvalidArgument);
+    return 0;
+  }
+  if (!load()) {
     return 0;
   }
 
@@ -520,17 +590,20 @@ size_t Preferences::putValue(const char *key, StoredType type,
   const bool replacing = findEntry(key, &oldEntry);
   const size_t oldLength = replacing ? oldEntry.totalLength : 0;
   if (!replacing && entryCount() >= kMaxEntries) {
+    setError(Error::NoSpace);
     return 0;
   }
   const size_t newEntryLength = sizeof(EntryHeader) + keyLength + length;
   if (newEntryLength > sizeof(_data) ||
       _length - oldLength > sizeof(_data) - newEntryLength) {
+    setError(Error::NoSpace);
     return 0;
   }
 
   if (replacing && oldEntry.header.type == static_cast<uint8_t>(type) &&
       oldEntry.header.valueLength == length &&
       memcmp(oldEntry.value, value, length) == 0) {
+    setError(Error::None);
     return length;
   }
 
@@ -570,23 +643,51 @@ bool Preferences::getBlobUnlocked(const char *key, StoredType type,
 bool Preferences::getValue(const char *key, StoredType type, void *value,
                            size_t length) {
   PreferencesLock lock;
-  if (!lock.locked() || !_begun || !load()) {
+  if (!lock.locked()) {
+    setError(lock.hasMutex() ? Error::Busy : Error::NoMemory);
+    return false;
+  }
+  if (!_begun) {
+    setError(Error::NotBegun);
+    return false;
+  }
+  if (!load()) {
     return false;
   }
   const uint8_t *stored = nullptr;
   size_t storedLength = 0;
-  if (value == nullptr ||
-      !getBlobUnlocked(key, type, &stored, &storedLength) ||
-      storedLength != length) {
+  if (value == nullptr) {
+    setError(Error::InvalidArgument);
+    return false;
+  }
+  if (!getBlobUnlocked(key, type, &stored, &storedLength)) {
+    setError(Error::NotFound);
+    return false;
+  }
+  if (storedLength != length) {
+    setError(Error::InvalidArgument);
     return false;
   }
   memcpy(value, stored, length);
+  setError(Error::None);
   return true;
 }
 
 bool Preferences::clear() {
   PreferencesLock lock;
-  if (!lock.locked() || !_begun || _readOnly || !load()) {
+  if (!lock.locked()) {
+    setError(lock.hasMutex() ? Error::Busy : Error::NoMemory);
+    return false;
+  }
+  if (!_begun) {
+    setError(Error::NotBegun);
+    return false;
+  }
+  if (_readOnly) {
+    setError(Error::ReadOnly);
+    return false;
+  }
+  if (!load()) {
     return false;
   }
   _length = sizeof(NamespaceHeader);
@@ -595,11 +696,24 @@ bool Preferences::clear() {
 
 bool Preferences::remove(const char *key) {
   PreferencesLock lock;
-  if (!lock.locked() || !_begun || _readOnly || !load()) {
+  if (!lock.locked()) {
+    setError(lock.hasMutex() ? Error::Busy : Error::NoMemory);
+    return false;
+  }
+  if (!_begun) {
+    setError(Error::NotBegun);
+    return false;
+  }
+  if (_readOnly) {
+    setError(Error::ReadOnly);
+    return false;
+  }
+  if (!load()) {
     return false;
   }
   EntryView entry{};
   if (!findEntry(key, &entry)) {
+    setError(Error::NotFound);
     return false;
   }
   const size_t tailOffset = entry.offset + entry.totalLength;
@@ -610,28 +724,64 @@ bool Preferences::remove(const char *key) {
 
 bool Preferences::isKey(const char *key) {
   PreferencesLock lock;
-  if (!lock.locked() || !_begun || !load()) {
+  if (!lock.locked()) {
+    setError(lock.hasMutex() ? Error::Busy : Error::NoMemory);
     return false;
   }
-  return findEntry(key, nullptr);
+  if (!_begun) {
+    setError(Error::NotBegun);
+    return false;
+  }
+  if (!load()) {
+    return false;
+  }
+  const bool found = findEntry(key, nullptr);
+  setError(found ? Error::None : Error::NotFound);
+  return found;
 }
 
 PreferenceType Preferences::getType(const char *key) {
   PreferencesLock lock;
-  if (!lock.locked() || !_begun || !load()) {
+  if (!lock.locked()) {
+    setError(lock.hasMutex() ? Error::Busy : Error::NoMemory);
+    return PT_INVALID;
+  }
+  if (!_begun) {
+    setError(Error::NotBegun);
+    return PT_INVALID;
+  }
+  if (!load()) {
     return PT_INVALID;
   }
   EntryView entry{};
-  return findEntry(key, &entry) ? publicType(entry.header.type) : PT_INVALID;
+  if (!findEntry(key, &entry)) {
+    setError(Error::NotFound);
+    return PT_INVALID;
+  }
+  setError(Error::None);
+  return publicType(entry.header.type);
 }
 
 size_t Preferences::freeEntries() {
   PreferencesLock lock;
-  if (!lock.locked() || !_begun || !load()) {
+  if (!lock.locked()) {
+    setError(lock.hasMutex() ? Error::Busy : Error::NoMemory);
+    return 0;
+  }
+  if (!_begun) {
+    setError(Error::NotBegun);
+    return 0;
+  }
+  if (!load()) {
     return 0;
   }
   const size_t count = entryCount();
-  return count <= kMaxEntries ? kMaxEntries - count : 0;
+  if (count > kMaxEntries) {
+    setError(Error::HardwareFault);
+    return 0;
+  }
+  setError(Error::None);
+  return kMaxEntries - count;
 }
 
 bool Preferences::isReadOnly() const {
@@ -642,6 +792,36 @@ bool Preferences::isReadOnly() const {
 bool Preferences::isBegun() const {
   PreferencesLock lock;
   return lock.locked() && _begun;
+}
+
+Preferences::Error Preferences::lastError() const {
+  taskENTER_CRITICAL();
+  const Error error = _lastError;
+  taskEXIT_CRITICAL();
+  return error;
+}
+
+const char *Preferences::errorString(Error error) {
+  switch (error) {
+    case Error::None: return "none";
+    case Error::InvalidArgument: return "invalid argument or stored type";
+    case Error::AlreadyBegun: return "namespace already open";
+    case Error::NotBegun: return "namespace not open";
+    case Error::ReadOnly: return "namespace is read-only";
+    case Error::NotFound: return "namespace or key not found";
+    case Error::NoSpace: return "Preferences storage is full";
+    case Error::Timeout: return "timed out waiting for NVDM";
+    case Error::Busy: return "Preferences mutex busy or ISR call rejected";
+    case Error::NoMemory: return "unable to allocate Preferences mutex";
+    case Error::HardwareFault: return "NVDM read/write or data integrity failure";
+  }
+  return "unknown Preferences error";
+}
+
+void Preferences::setError(Error error) const {
+  taskENTER_CRITICAL();
+  _lastError = error;
+  taskEXIT_CRITICAL();
 }
 
 #define PREFERENCES_PUT_SCALAR(method, cppType, prefType)                 \
@@ -677,6 +857,7 @@ size_t Preferences::putBool(const char *key, bool value) {
 
 size_t Preferences::putString(const char *key, const char *value) {
   if (value == nullptr) {
+    setError(Error::InvalidArgument);
     return 0;
   }
   const size_t length = strlen(value) + 1;
@@ -738,7 +919,15 @@ bool Preferences::getBool(const char *key, bool defaultValue) {
 size_t Preferences::getString(const char *key, char *value,
                               size_t maxLength) {
   PreferencesLock lock;
-  if (!lock.locked() || !_begun || !load()) {
+  if (!lock.locked()) {
+    setError(lock.hasMutex() ? Error::Busy : Error::NoMemory);
+    return 0;
+  }
+  if (!_begun) {
+    setError(Error::NotBegun);
+    return 0;
+  }
+  if (!load()) {
     return 0;
   }
   const uint8_t *stored = nullptr;
@@ -747,15 +936,27 @@ size_t Preferences::getString(const char *key, char *value,
       !getBlobUnlocked(key, StoredType::String, &stored, &length) ||
       length == 0 ||
       stored[length - 1] != '\0' || length > maxLength) {
+    setError(value == nullptr || maxLength == 0 || length > maxLength
+                 ? Error::InvalidArgument
+                 : Error::NotFound);
     return 0;
   }
   memcpy(value, stored, length);
+  setError(Error::None);
   return length;
 }
 
 String Preferences::getString(const char *key, const String &defaultValue) {
   PreferencesLock lock;
-  if (!lock.locked() || !_begun || !load()) {
+  if (!lock.locked()) {
+    setError(lock.hasMutex() ? Error::Busy : Error::NoMemory);
+    return defaultValue;
+  }
+  if (!_begun) {
+    setError(Error::NotBegun);
+    return defaultValue;
+  }
+  if (!load()) {
     return defaultValue;
   }
   const uint8_t *stored = nullptr;
@@ -763,14 +964,24 @@ String Preferences::getString(const char *key, const String &defaultValue) {
   if (!getBlobUnlocked(key, StoredType::String, &stored, &length) ||
       length == 0 ||
       stored[length - 1] != '\0') {
+    setError(Error::NotFound);
     return defaultValue;
   }
+  setError(Error::None);
   return String(reinterpret_cast<const char *>(stored));
 }
 
 size_t Preferences::getStringLength(const char *key) {
   PreferencesLock lock;
-  if (!lock.locked() || !_begun || !load()) {
+  if (!lock.locked()) {
+    setError(lock.hasMutex() ? Error::Busy : Error::NoMemory);
+    return 0;
+  }
+  if (!_begun) {
+    setError(Error::NotBegun);
+    return 0;
+  }
+  if (!load()) {
     return 0;
   }
   const uint8_t *stored = nullptr;
@@ -778,39 +989,65 @@ size_t Preferences::getStringLength(const char *key) {
   if (!getBlobUnlocked(key, StoredType::String, &stored, &length) ||
       length == 0 ||
       stored[length - 1] != '\0') {
+    setError(Error::NotFound);
     return 0;
   }
+  setError(Error::None);
   return length;
 }
 
 size_t Preferences::getBytesLength(const char *key) {
   PreferencesLock lock;
-  if (!lock.locked() || !_begun || !load()) {
+  if (!lock.locked()) {
+    setError(lock.hasMutex() ? Error::Busy : Error::NoMemory);
     return 0;
   }
-  const uint8_t *stored = nullptr;
-  size_t length = 0;
-  return getBlobUnlocked(key, StoredType::Blob, &stored, &length) ? length
-                                                                  : 0;
-}
-
-size_t Preferences::getBytes(const char *key, void *value,
-                             size_t maxLength) {
-  PreferencesLock lock;
-  if (!lock.locked() || !_begun || !load()) {
+  if (!_begun) {
+    setError(Error::NotBegun);
+    return 0;
+  }
+  if (!load()) {
     return 0;
   }
   const uint8_t *stored = nullptr;
   size_t length = 0;
   if (!getBlobUnlocked(key, StoredType::Blob, &stored, &length)) {
+    setError(Error::NotFound);
+    return 0;
+  }
+  setError(Error::None);
+  return length;
+}
+
+size_t Preferences::getBytes(const char *key, void *value,
+                             size_t maxLength) {
+  PreferencesLock lock;
+  if (!lock.locked()) {
+    setError(lock.hasMutex() ? Error::Busy : Error::NoMemory);
+    return 0;
+  }
+  if (!_begun) {
+    setError(Error::NotBegun);
+    return 0;
+  }
+  if (!load()) {
+    return 0;
+  }
+  const uint8_t *stored = nullptr;
+  size_t length = 0;
+  if (!getBlobUnlocked(key, StoredType::Blob, &stored, &length)) {
+    setError(Error::NotFound);
     return 0;
   }
   if (value == nullptr || maxLength == 0) {
+    setError(Error::None);
     return length;
   }
   if (length > maxLength) {
+    setError(Error::InvalidArgument);
     return 0;
   }
   memcpy(value, stored, length);
+  setError(Error::None);
   return length;
 }

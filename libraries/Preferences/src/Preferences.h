@@ -27,6 +27,20 @@ class Preferences {
   static constexpr size_t kMaxItemSize = 240;
   static constexpr size_t kMaxEntries = 16;
 
+  enum class Error : uint8_t {
+    None = 0,
+    InvalidArgument,
+    AlreadyBegun,
+    NotBegun,
+    ReadOnly,
+    NotFound,
+    NoSpace,
+    Timeout,
+    Busy,
+    NoMemory,
+    HardwareFault,
+  };
+
   Preferences();
   ~Preferences();
 
@@ -44,6 +58,8 @@ class Preferences {
   size_t freeEntries();
   bool isReadOnly() const;
   bool isBegun() const;
+  Error lastError() const;
+  static const char *errorString(Error error);
 
   size_t putChar(const char *key, int8_t value);
   size_t putUChar(const char *key, uint8_t value);
@@ -165,6 +181,7 @@ class Preferences {
   static bool namespaceIdMatches(const char *name, uint32_t id);
   static uint32_t namespaceHash(const char *name);
   static uint32_t candidateId(uint32_t hash, uint8_t attempt);
+  void setError(Error error) const;
 
   alignas(4) uint8_t _data[kMaxItemSize];
   char _name[kMaxNameLength + 1];
@@ -172,4 +189,5 @@ class Preferences {
   uint32_t _id;
   bool _begun;
   bool _readOnly;
+  mutable Error _lastError;
 };

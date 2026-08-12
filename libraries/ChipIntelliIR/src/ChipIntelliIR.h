@@ -37,6 +37,7 @@ public:
     DatabaseMissing,
     AliasBusy,
     AllocationFailed,
+    MutexTimeout,
     AirCodeNotSelected,
   };
 

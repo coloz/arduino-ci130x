@@ -68,7 +68,9 @@ void adc_int_clear(adc_channelx_t channel);
 void adc_soc_soft_ctrl(FunctionalState cmd);
 int8_t adc_get_vol_value(adc_channelx_t cha,float* vol_val);
 void adc_poweron(void);
+int8_t adc_poweron_timeout(uint32_t timeout_us);
 void adc_reset(void);
+int8_t adc_reset_timeout(uint32_t timeout_us);
 void adc_signal_mode(adc_channelx_t cha);
 void adc_series_mode(adc_channelx_t cha);
 void adc_cycle_mode(adc_channelx_t cha,uint16_t cycle);
@@ -108,6 +110,7 @@ void adc_calibrate(FunctionalState cmd);
 #define an3_result_last    (volatile unsigned int *)(ADC_INIT_RSEILT_ADDR+ (13+24+12+8+6+3+3+3)*4)//3
 
 extern void adc_wait_int(adc_channelx_t cha);
+int8_t adc_wait_int_timeout(adc_channelx_t cha, uint32_t timeout_us);
 void ADC_irqhandle(void);
 
 /**

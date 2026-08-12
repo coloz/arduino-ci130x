@@ -24,29 +24,47 @@
 
 static SemaphoreHandle_t cinv_mutex;
 
+#define CINV_MUTEX_TIMEOUT_MS 1000U
 
-void cinv_port_mutex_creat(void)
+
+bool cinv_port_mutex_creat(void)
 {
+    if (cinv_mutex != NULL)
+    {
+        return true;
+    }
     cinv_mutex = xSemaphoreCreateMutex();
 
     if (NULL == cinv_mutex) 
     {
         cinv_log_error("%s, error\n",__func__);
+        return false;
     }
     // cinv_log_debug("%s\n",__func__);
+    return true;
 }
 
 
-void cinv_port_mutex_take(void)
+bool cinv_port_mutex_take(void)
 {
+    if (cinv_mutex == NULL)
+    {
+        cinv_log_error("%s, mutex unavailable\n",__func__);
+        return false;
+    }
     if (taskSCHEDULER_RUNNING == xTaskGetSchedulerState()) 
     {
-        if (xSemaphoreTake(cinv_mutex, portMAX_DELAY) == pdFALSE)
+        const TickType_t timeout_ticks =
+            (TickType_t)((CINV_MUTEX_TIMEOUT_MS + portTICK_PERIOD_MS - 1U) /
+                         portTICK_PERIOD_MS);
+        if (xSemaphoreTake(cinv_mutex, timeout_ticks) == pdFALSE)
         {
-            cinv_log_error("%s, error\n",__func__);
+            cinv_log_error("%s, timeout\n",__func__);
+            return false;
         }
         // cinv_log_debug("%s\n",__func__);
     }
+    return true;
 }
 
 
@@ -93,7 +111,7 @@ void cinv_port_flash_read(uint32_t address, uint8_t *buffer, uint32_t length)
 void cinv_port_flash_write(uint32_t address, const uint8_t *buffer, uint32_t length)
 {
     // flash_write(QSPI0, address, (uint32_t)buffer, length);
-    post_write_flash((uint32_t)buffer, (char*)address, length);
+    post_write_flash((char *)buffer, address, length);
 
     // cinv_log_debug("cinv_port_flash_write: address = 0x%x, buffer = 0x%x, length = %d\n", address, (uint32_t)buffer, length);
 }

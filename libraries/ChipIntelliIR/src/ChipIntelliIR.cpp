@@ -16,6 +16,7 @@ extern "C" {
 
 namespace {
 constexpr uint32_t kSdkReadyTimeoutMs = 10000;
+constexpr uint32_t kMutexTimeoutMs = 1000;
 constexpr uint32_t kMaximumReceiveTimeoutMs = 60000;
 constexpr uint16_t kMinimumRawDurationUs = 200;
 constexpr uint16_t kTrailingReceiveGapUnits = 50000;
@@ -46,7 +47,11 @@ public:
   explicit SemaphoreGuard(void *mutex)
       : _mutex(static_cast<SemaphoreHandle_t>(mutex)),
         _locked(_mutex != nullptr &&
-                xSemaphoreTake(_mutex, portMAX_DELAY) == pdTRUE) {}
+                xSemaphoreTake(
+                    _mutex,
+                    pdMS_TO_TICKS(kMutexTimeoutMs) > 0U
+                        ? pdMS_TO_TICKS(kMutexTimeoutMs)
+                        : 1U) == pdTRUE) {}
 
   ~SemaphoreGuard() {
     if (_locked) {
@@ -359,7 +364,7 @@ bool ChipIntelliIRClass::begin(uint8_t transmitPin, uint8_t receivePin,
   }
   SemaphoreGuard guard(_mutex);
   if (!guard.locked()) {
-    setError(Error::AllocationFailed);
+    setError(Error::MutexTimeout);
     return false;
   }
   if (_ready) {
@@ -411,7 +416,7 @@ bool ChipIntelliIRClass::beginAirConditioner(uint8_t transmitPin,
   }
   SemaphoreGuard guard(_mutex);
   if (!guard.locked()) {
-    setError(Error::AllocationFailed);
+    setError(Error::MutexTimeout);
     return false;
   }
   if (_ready) {
@@ -509,7 +514,11 @@ bool ChipIntelliIRClass::sendRaw(const uint16_t *durationsUs, size_t count) {
     return false;
   }
   SemaphoreGuard guard(_mutex);
-  if (!guard.locked() || !requireMode(Mode::Raw)) {
+  if (!guard.locked()) {
+    setError(Error::MutexTimeout);
+    return false;
+  }
+  if (!requireMode(Mode::Raw)) {
     return false;
   }
   if (durationsUs == nullptr || count == 0 || count > MaxRawEntries) {
@@ -546,7 +555,11 @@ bool ChipIntelliIRClass::sendNEC(uint8_t address, uint8_t command,
     return false;
   }
   SemaphoreGuard guard(_mutex);
-  if (!guard.locked() || !requireMode(Mode::Raw)) {
+  if (!guard.locked()) {
+    setError(Error::MutexTimeout);
+    return false;
+  }
+  if (!requireMode(Mode::Raw)) {
     return false;
   }
   if (repeats > kMaximumNecRepeats) {
@@ -580,7 +593,11 @@ bool ChipIntelliIRClass::sendExtendedNEC(uint16_t address, uint8_t command,
     return false;
   }
   SemaphoreGuard guard(_mutex);
-  if (!guard.locked() || !requireMode(Mode::Raw)) {
+  if (!guard.locked()) {
+    setError(Error::MutexTimeout);
+    return false;
+  }
+  if (!requireMode(Mode::Raw)) {
     return false;
   }
   if (repeats > kMaximumNecRepeats) {
@@ -613,7 +630,11 @@ bool ChipIntelliIRClass::startReceive(uint32_t timeoutMs) {
     return false;
   }
   SemaphoreGuard guard(_mutex);
-  if (!guard.locked() || !requireMode(Mode::Raw)) {
+  if (!guard.locked()) {
+    setError(Error::MutexTimeout);
+    return false;
+  }
+  if (!requireMode(Mode::Raw)) {
     return false;
   }
   if (timeoutMs == 0U || timeoutMs > kMaximumReceiveTimeoutMs) {
@@ -641,7 +662,11 @@ bool ChipIntelliIRClass::stopReceive() {
     return false;
   }
   SemaphoreGuard guard(_mutex);
-  if (!guard.locked() || !requireMode(Mode::Raw)) {
+  if (!guard.locked()) {
+    setError(Error::MutexTimeout);
+    return false;
+  }
+  if (!requireMode(Mode::Raw)) {
     return false;
   }
   if (_receiveStatus == ReceiveStatus::Receiving &&
@@ -675,7 +700,11 @@ ChipIntelliIRClass::ReceiveStatus ChipIntelliIRClass::receiveStatus() {
     return ReceiveStatus::Error;
   }
   SemaphoreGuard guard(_mutex);
-  if (!guard.locked() || !requireMode(Mode::Raw)) {
+  if (!guard.locked()) {
+    setError(Error::MutexTimeout);
+    return ReceiveStatus::Error;
+  }
+  if (!requireMode(Mode::Raw)) {
     return ReceiveStatus::Error;
   }
   return pollReceiveStatus();
@@ -688,7 +717,11 @@ bool ChipIntelliIRClass::readRaw(uint16_t *durationsUs, size_t capacity,
     return false;
   }
   SemaphoreGuard guard(_mutex);
-  if (!guard.locked() || !requireMode(Mode::Raw)) {
+  if (!guard.locked()) {
+    setError(Error::MutexTimeout);
+    return false;
+  }
+  if (!requireMode(Mode::Raw)) {
     return false;
   }
   if (pollReceiveStatus() != ReceiveStatus::Ready) {
@@ -745,7 +778,11 @@ bool ChipIntelliIRClass::selectAirBrand(AirBrand brand) {
     return false;
   }
   SemaphoreGuard guard(_mutex);
-  if (!guard.locked() || !requireMode(Mode::AirConditioner)) {
+  if (!guard.locked()) {
+    setError(Error::MutexTimeout);
+    return false;
+  }
+  if (!requireMode(Mode::AirConditioner)) {
     return false;
   }
   const uint8_t value = static_cast<uint8_t>(brand);
@@ -776,7 +813,11 @@ bool ChipIntelliIRClass::selectAirCode(uint32_t codeId) {
     return false;
   }
   SemaphoreGuard guard(_mutex);
-  if (!guard.locked() || !requireMode(Mode::AirConditioner)) {
+  if (!guard.locked()) {
+    setError(Error::MutexTimeout);
+    return false;
+  }
+  if (!requireMode(Mode::AirConditioner)) {
     return false;
   }
   if (searchActiveFor(this) || check_ir_busy_state() == RETURN_OK) {
@@ -822,7 +863,11 @@ bool ChipIntelliIRClass::sendAir(AirCommand command) {
     return false;
   }
   SemaphoreGuard guard(_mutex);
-  if (!guard.locked() || !requireMode(Mode::AirConditioner)) {
+  if (!guard.locked()) {
+    setError(Error::MutexTimeout);
+    return false;
+  }
+  if (!requireMode(Mode::AirConditioner)) {
     return false;
   }
   return sendAirUnlocked(command);
@@ -851,7 +896,11 @@ bool ChipIntelliIRClass::startAirSearch(AirSearchType type,
     return false;
   }
   SemaphoreGuard guard(_mutex);
-  if (!guard.locked() || !requireMode(Mode::AirConditioner)) {
+  if (!guard.locked()) {
+    setError(Error::MutexTimeout);
+    return false;
+  }
+  if (!requireMode(Mode::AirConditioner)) {
     return false;
   }
   if (callback == nullptr || sendCount < 3U || intervalMs < 3000U ||
@@ -905,7 +954,11 @@ bool ChipIntelliIRClass::stopAirSearch() {
     return false;
   }
   SemaphoreGuard guard(_mutex);
-  if (!guard.locked() || !requireMode(Mode::AirConditioner)) {
+  if (!guard.locked()) {
+    setError(Error::MutexTimeout);
+    return false;
+  }
+  if (!requireMode(Mode::AirConditioner)) {
     return false;
   }
   taskENTER_CRITICAL();
@@ -979,6 +1032,7 @@ const char *ChipIntelliIRClass::errorString(Error error) {
     case Error::DatabaseMissing: return "compatible air-conditioner database is missing";
     case Error::AliasBusy: return "user-file compatibility alias is busy";
     case Error::AllocationFailed: return "unable to allocate the infrared mutex";
+    case Error::MutexTimeout: return "timed out waiting for the infrared mutex";
     case Error::AirCodeNotSelected: return "select an air-conditioner code first";
   }
   return "unknown infrared error";

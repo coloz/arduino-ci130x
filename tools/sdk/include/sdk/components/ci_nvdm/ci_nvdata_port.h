@@ -26,8 +26,8 @@ typedef enum
     F_ENABLE = !F_DISABLE
 }functional_state_t;
 
-void cinv_port_mutex_creat(void);
-void cinv_port_mutex_take(void);
+bool cinv_port_mutex_creat(void);
+bool cinv_port_mutex_take(void);
 void cinv_port_mutex_give(void);
 
 void *cinv_port_malloc(uint32_t size);

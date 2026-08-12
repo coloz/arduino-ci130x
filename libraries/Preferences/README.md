@@ -39,9 +39,16 @@ void loop() {}
 - Access through multiple objects and FreeRTOS tasks is serialized internally.
   Each operation waits for and holds the same mutex while reloading the current
   record, so a complete read-modify-write transaction cannot silently overwrite
-  another task's update. Call the API only from task context; it intentionally
+  another task's update. The Preferences mutex and the underlying NVDM mutex
+  each have a 1000 ms upper bound; no flash operation can wait forever. Call
+  the API only from task context; it intentionally
   rejects interrupt-context access. Avoid high-frequency writes to reduce flash
   wear.
+
+When a boolean/size getter cannot distinguish an empty value from failure, use
+`lastError()` and `Preferences::errorString()` to identify invalid arguments,
+state/read-only errors, missing data, capacity exhaustion, timeout, contention,
+allocation failure, or an NVDM hardware/data-integrity fault.
 
 The library reserves NVDM IDs `0xE0000000` through `0xEFFFFFFF`. Namespace IDs
 are derived with FNV-1a and 16 deterministic probe positions. `begin()` scans
