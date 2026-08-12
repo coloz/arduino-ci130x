@@ -8,12 +8,22 @@ extern "C" {
 #include "FreeRTOS.h"
 #include "task.h"
 #include "ci130x_core_eclic.h"
+#include "ci130x_dma.h"
+#include "ci130x_scu.h"
 #include "ci130x_uart.h"
 }
 
+extern "C" void set_dma_int_callback(DMACChannelx channel,
+                                      dma_callback_func_ptr_t callback);
+
 namespace {
-constexpr uint16_t kRxMask = SERIAL_RX_BUFFER_SIZE - 1U;
-constexpr uint16_t kTxMask = SERIAL_TX_BUFFER_SIZE - 1U;
+alignas(4) uint8_t s_serial0Rx[SERIAL0_RX_BUFFER_SIZE];
+alignas(4) uint8_t s_serial0Tx[SERIAL0_TX_BUFFER_SIZE];
+alignas(4) uint8_t s_serial1Rx[SERIAL1_RX_BUFFER_SIZE];
+alignas(4) uint8_t s_serial1Tx[SERIAL1_TX_BUFFER_SIZE];
+alignas(4) uint8_t s_serial2Rx[SERIAL2_RX_BUFFER_SIZE];
+alignas(4) uint8_t s_serial2Tx[SERIAL2_TX_BUFFER_SIZE];
+HardwareSerial *s_dmaSerial;
 #ifndef SERIAL_WRITE_TIMEOUT_MS
 constexpr uint32_t kDefaultWriteTimeoutMs = 1000U;
 #else
@@ -59,6 +69,44 @@ PeripheralResource resourceForNumber(uint8_t number) {
         case 2: return PeripheralResource::Uart2;
         default: return PeripheralResource::Uart0;
     }
+}
+
+uint8_t *rxBufferForNumber(uint8_t number) {
+    return number == 1U ? s_serial1Rx : (number == 2U ? s_serial2Rx
+                                                      : s_serial0Rx);
+}
+
+uint8_t *txBufferForNumber(uint8_t number) {
+    return number == 1U ? s_serial1Tx : (number == 2U ? s_serial2Tx
+                                                      : s_serial0Tx);
+}
+
+uint16_t rxSizeForNumber(uint8_t number) {
+    return number == 1U ? SERIAL1_RX_BUFFER_SIZE
+                        : (number == 2U ? SERIAL2_RX_BUFFER_SIZE
+                                        : SERIAL0_RX_BUFFER_SIZE);
+}
+
+uint16_t txSizeForNumber(uint8_t number) {
+    return number == 1U ? SERIAL1_TX_BUFFER_SIZE
+                        : (number == 2U ? SERIAL2_TX_BUFFER_SIZE
+                                        : SERIAL0_TX_BUFFER_SIZE);
+}
+
+DMAC_Peripherals dmaPeripheralForNumber(uint8_t number) {
+    return number == 1U ? DMAC_Peripherals_UART1_TX
+                        : (number == 2U ? DMAC_Peripherals_UART2_TX
+                                        : DMAC_Peripherals_UART0_TX);
+}
+
+uint32_t fifoForNumber(uint8_t number) {
+    return number == 1U ? UART1FIFO_BASE
+                        : (number == 2U ? UART2FIFO_BASE : UART0FIFO_BASE);
+}
+
+void serialDmaCallback() {
+    HardwareSerial *serial = s_dmaSerial;
+    if (serial != nullptr) serial->handleDmaInterrupt();
 }
 
 void pinsForNumber(uint8_t number, uint8_t (&pins)[2]) {
@@ -125,13 +173,21 @@ HardwareSerial::HardwareSerial(uint8_t uartNumber)
       _rxTail(0),
       _txHead(0),
       _txTail(0),
-      _rxBuffer{},
-      _txBuffer{},
+      _rxBuffer(rxBufferForNumber(uartNumber)),
+      _txBuffer(txBufferForNumber(uartNumber)),
+      _rxMask(static_cast<uint16_t>(rxSizeForNumber(uartNumber) - 1U)),
+      _txMask(static_cast<uint16_t>(txSizeForNumber(uartNumber) - 1U)),
+      _rxBufferSize(rxSizeForNumber(uartNumber)),
+      _txBufferSize(txSizeForNumber(uartNumber)),
       _errorCounts{},
       _rxWaiter(nullptr),
       _txWaiter(nullptr),
       _lastError(HardwareSerialStartError::None),
-      _started(false) {}
+      _started(false),
+      _txDMABusy(false),
+      _txDMAEnabled(false),
+      _txDMAThreshold(64U),
+      _dmaWaiter(nullptr) {}
 
 void HardwareSerial::begin(unsigned long baud, uint32_t config) {
     if (!supportedBaud(baud)) {
@@ -202,6 +258,7 @@ void HardwareSerial::begin(unsigned long baud, uint32_t config) {
 void HardwareSerial::end() {
     if (!_started) return;
     (void)flush(kDefaultWriteTimeoutMs);
+    (void)enableTxDMA(false);
 
     UART_TypeDef *uart = uartForNumber(_uartNumber);
     eclic_irq_disable(irqForNumber(_uartNumber));
@@ -231,11 +288,11 @@ void HardwareSerial::end() {
 }
 
 uint16_t HardwareSerial::rxCount() const {
-    return static_cast<uint16_t>((_rxHead - _rxTail) & kRxMask);
+    return static_cast<uint16_t>((_rxHead - _rxTail) & _rxMask);
 }
 
 uint16_t HardwareSerial::txCount() const {
-    return static_cast<uint16_t>((_txHead - _txTail) & kTxMask);
+    return static_cast<uint16_t>((_txHead - _txTail) & _txMask);
 }
 
 int HardwareSerial::available() {
@@ -243,7 +300,9 @@ int HardwareSerial::available() {
 }
 
 int HardwareSerial::availableForWrite() {
-    return _started ? static_cast<int>(kTxMask - txCount()) : 0;
+    return _started && !_txDMABusy
+               ? static_cast<int>(_txMask - txCount())
+               : 0;
 }
 
 int HardwareSerial::peek() {
@@ -259,7 +318,7 @@ int HardwareSerial::read() {
         return -1;
     }
     const uint8_t value = _rxBuffer[_rxTail];
-    _rxTail = static_cast<uint16_t>((_rxTail + 1U) & kRxMask);
+    _rxTail = static_cast<uint16_t>((_rxTail + 1U) & _rxMask);
     taskEXIT_CRITICAL();
     return value;
 }
@@ -268,7 +327,7 @@ void HardwareSerial::pumpTxLocked() {
     UART_TypeDef *const uart = uartForNumber(_uartNumber);
     while (_txTail != _txHead && !UART_FLAGSTAT(uart, UART_TXFF)) {
         UART_TXDATAConfig(uart, _txBuffer[_txTail]);
-        _txTail = static_cast<uint16_t>((_txTail + 1U) & kTxMask);
+        _txTail = static_cast<uint16_t>((_txTail + 1U) & _txMask);
     }
     UART_IntMaskConfig(uart, UART_TXInt,
                        _txHead == _txTail ? ENABLE : DISABLE);
@@ -314,7 +373,7 @@ bool HardwareSerial::waitForTxSpace(uint32_t timeoutMs) {
     TaskHandle_t current = xTaskGetCurrentTaskHandle();
     taskENTER_CRITICAL();
     pumpTxLocked();
-    if (static_cast<uint16_t>((_txHead + 1U) & kTxMask) != _txTail) {
+    if (static_cast<uint16_t>((_txHead + 1U) & _txMask) != _txTail) {
         taskEXIT_CRITICAL();
         return true;
     }
@@ -330,7 +389,7 @@ bool HardwareSerial::waitForTxSpace(uint32_t timeoutMs) {
     taskENTER_CRITICAL();
     if (_txWaiter == current) _txWaiter = nullptr;
     pumpTxLocked();
-    const bool ready = static_cast<uint16_t>((_txHead + 1U) & kTxMask) !=
+    const bool ready = static_cast<uint16_t>((_txHead + 1U) & _txMask) !=
                        _txTail;
     taskEXIT_CRITICAL();
     return ready;
@@ -344,7 +403,7 @@ bool HardwareSerial::flush(uint32_t timeoutMs) {
     for (;;) {
         taskENTER_CRITICAL();
         pumpTxLocked();
-        const bool complete = _txHead == _txTail &&
+        const bool complete = !_txDMABusy && _txHead == _txTail &&
                               UART_FLAGSTAT(uartForNumber(_uartNumber),
                                             UART_TXFE);
         taskEXIT_CRITICAL();
@@ -369,7 +428,7 @@ size_t HardwareSerial::tryWrite(uint8_t value) {
 }
 
 size_t HardwareSerial::tryWrite(const uint8_t *buffer, size_t size) {
-    if (buffer == nullptr || size == 0U || !_started) return 0U;
+    if (buffer == nullptr || size == 0U || !_started || _txDMABusy) return 0U;
 
     taskENTER_CRITICAL();
     UART_TypeDef *const uart = uartForNumber(_uartNumber);
@@ -383,17 +442,17 @@ size_t HardwareSerial::tryWrite(const uint8_t *buffer, size_t size) {
     }
 
     while (written < size) {
-        const uint16_t next = static_cast<uint16_t>((_txHead + 1U) & kTxMask);
+        const uint16_t next = static_cast<uint16_t>((_txHead + 1U) & _txMask);
         if (next == _txTail) break;
         const uint16_t contiguous = _txHead < _txTail
                                         ? static_cast<uint16_t>(_txTail - _txHead - 1U)
-                                        : static_cast<uint16_t>(SERIAL_TX_BUFFER_SIZE - _txHead -
+                                        : static_cast<uint16_t>(_txBufferSize - _txHead -
                                                                 (_txTail == 0U ? 1U : 0U));
         size_t chunk = size - written;
         if (chunk > contiguous) chunk = contiguous;
         if (chunk == 0U) break;
         memcpy(&_txBuffer[_txHead], &buffer[written], chunk);
-        _txHead = static_cast<uint16_t>((_txHead + chunk) & kTxMask);
+        _txHead = static_cast<uint16_t>((_txHead + chunk) & _txMask);
         written += chunk;
     }
     if (_txHead != _txTail) UART_IntMaskConfig(uart, UART_TXInt, DISABLE);
@@ -419,6 +478,14 @@ size_t HardwareSerial::write(const uint8_t *buffer, size_t size,
     _lastError = HardwareSerialStartError::None;
     const uint32_t started = millis();
     size_t written = 0U;
+    if (_txDMAEnabled && size >= _txDMAThreshold &&
+        xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
+        written = writeDma(buffer, size, timeoutMs);
+        if (written == size ||
+            _lastError == HardwareSerialStartError::Timeout) {
+            return written;
+        }
+    }
     while (written < size) {
         written += tryWrite(buffer + written, size - written);
         if (written == size) {
@@ -458,6 +525,137 @@ void HardwareSerial::clearErrorCounts() {
     taskEXIT_CRITICAL();
 }
 
+bool HardwareSerial::enableTxDMA(bool enabled, size_t threshold) {
+    const PeripheralOwner owner = ownerForNumber(_uartNumber);
+    constexpr PeripheralResource resource = PeripheralResource::Dma1;
+    if (!enabled) {
+        if (!_txDMAEnabled && !_txDMABusy) return true;
+        if (_txDMABusy) {
+            UART_TypeDef *uart = uartForNumber(_uartNumber);
+            uart->UARTDMACR &= ~(1U << UART_TXDMA);
+            DMAC_ChannelHalt(DMACChannel1, ENABLE);
+            DMAC_ChannelDisable(DMACChannel1);
+            DMAC_IntTCClear(DMACChannel1);
+            DMAC_IntErrorClear(DMACChannel1);
+            _txDMABusy = false;
+        }
+        set_dma_int_callback(DMACChannel1, nullptr);
+        if (s_dmaSerial == this) s_dmaSerial = nullptr;
+        _dmaWaiter = nullptr;
+        _txDMAEnabled = false;
+        PeripheralManager.releaseResource(owner, resource);
+        return true;
+    }
+    if (!_started || _txDMABusy || threshold == 0U) {
+        _lastError = HardwareSerialStartError::Busy;
+        return false;
+    }
+    if (!PeripheralManager.claimResource(owner, resource)) {
+        _lastError = HardwareSerialStartError::ResourceBusy;
+        return false;
+    }
+    _txDMAThreshold = threshold;
+    _txDMAEnabled = true;
+    s_dmaSerial = this;
+    set_dma_int_callback(DMACChannel1, serialDmaCallback);
+    scu_set_device_gate(HAL_GDMA_BASE, ENABLE);
+    eclic_clear_pending(DMA_IRQn);
+    eclic_irq_enable(DMA_IRQn);
+    _lastError = HardwareSerialStartError::None;
+    return true;
+}
+
+void HardwareSerial::handleDmaInterrupt() {
+    if (!_txDMABusy) return;
+    uartForNumber(_uartNumber)->UARTDMACR &= ~(1U << UART_TXDMA);
+    DMAC_ChannelDisable(DMACChannel1);
+    _txDMABusy = false;
+    TaskHandle_t waiter = static_cast<TaskHandle_t>(_dmaWaiter);
+    if (waiter != nullptr) {
+        BaseType_t higherPriorityTaskWoken = pdFALSE;
+        vTaskNotifyGiveFromISR(waiter, &higherPriorityTaskWoken);
+        portYIELD_FROM_ISR(higherPriorityTaskWoken);
+    }
+}
+
+size_t HardwareSerial::writeDma(const uint8_t *buffer, size_t size,
+                                uint32_t timeoutMs) {
+    if (!_txDMAEnabled || buffer == nullptr || size == 0U ||
+        xTaskGetSchedulerState() != taskSCHEDULER_RUNNING) {
+        return 0U;
+    }
+    const uint32_t started = millis();
+    if (!flush(timeoutMs)) return 0U;
+
+    size_t written = 0U;
+    while (written < size) {
+        const uint32_t elapsed = millis() - started;
+        if (elapsed >= timeoutMs) {
+            _lastError = HardwareSerialStartError::Timeout;
+            break;
+        }
+        size_t chunk = size - written;
+        if (chunk > 4095U) chunk = 4095U;
+        TaskHandle_t current = xTaskGetCurrentTaskHandle();
+        (void)ulTaskNotifyTake(pdTRUE, 0U);
+        _dmaWaiter = current;
+        _txDMABusy = true;
+
+        UART_TypeDef *uart = uartForNumber(_uartNumber);
+        UART_IntMaskConfig(uart, UART_TXInt, ENABLE);
+        UART_TXRXDMAConfig(uart, UART_TXDMA);
+        DMAC_ChannelDisable(DMACChannel1);
+        DMAC_ChannelPowerDown(DMACChannel1, DISABLE);
+        DMAC_IntTCClear(DMACChannel1);
+        DMAC_IntErrorClear(DMACChannel1);
+        DMAC_Config(DMAC_AHBMaster1, LittleENDIANMODE);
+        DMAC_EN(ENABLE);
+        DMAC_ChannelSoureAddr(
+            DMACChannel1,
+            static_cast<unsigned int>(reinterpret_cast<uintptr_t>(buffer + written)));
+        DMAC_ChannelDestAddr(DMACChannel1, fifoForNumber(_uartNumber));
+        DMAC_ChannelLLI(DMACChannel1, 0U, DMAC_AHBMaster1);
+        DMAC_ChannelProtectionConfig(DMACChannel1, DMAC_ACCESS_USERMODE,
+                                     NONBUFFERABLE, NONCACHEABLE);
+        DMAC_ChannelTCInt(DMACChannel1, ENABLE);
+        DMAC_ChannelSourceConfig(DMACChannel1, INCREMENT, DMAC_AHBMaster1,
+                                 TRANSFERWIDTH_8b, BURSTSIZE1);
+        DMAC_ChannelDestConfig(DMACChannel1, NOINCREMENT, DMAC_AHBMaster1,
+                               TRANSFERWIDTH_8b, BURSTSIZE1);
+        DMAC_ChannelTransferSize(DMACChannel1,
+                                 static_cast<unsigned short>(chunk));
+        DMAC_ChannelHalt(DMACChannel1, DISABLE);
+        DMAC_ChannelInterruptMask(DMACChannel1, CHANNELINTMASK_ITC, DISABLE);
+        DMAC_ChannelInterruptMask(DMACChannel1, CHANNELINTMASK_IE, ENABLE);
+        const DMAC_Peripherals peripheral =
+            dmaPeripheralForNumber(_uartNumber);
+        DMAC_ChannelConfig(DMACChannel1, static_cast<char>(peripheral),
+                           static_cast<char>(peripheral), M2P_DMA);
+        DMAC_ChannelLock(DMACChannel1, DISABLE);
+        DMAC_ChannelEnable(DMACChannel1);
+
+        while (_txDMABusy) {
+            const uint32_t currentElapsed = millis() - started;
+            if (currentElapsed >= timeoutMs) break;
+            (void)ulTaskNotifyTake(pdTRUE,
+                timeoutTicks(timeoutMs - currentElapsed));
+        }
+        _dmaWaiter = nullptr;
+        if (_txDMABusy) {
+            uart->UARTDMACR &= ~(1U << UART_TXDMA);
+            DMAC_ChannelHalt(DMACChannel1, ENABLE);
+            DMAC_ChannelDisable(DMACChannel1);
+            DMAC_IntTCClear(DMACChannel1);
+            DMAC_IntErrorClear(DMACChannel1);
+            _txDMABusy = false;
+            _lastError = HardwareSerialStartError::Timeout;
+            break;
+        }
+        written += chunk;
+    }
+    return written;
+}
+
 void HardwareSerial::handleInterrupt() {
     UART_TypeDef *uart = uartForNumber(_uartNumber);
     if (!_started) {
@@ -477,7 +675,7 @@ void HardwareSerial::handleInterrupt() {
             overrunReportedByData = true;
         }
 
-        const uint16_t next = static_cast<uint16_t>((_rxHead + 1U) & kRxMask);
+        const uint16_t next = static_cast<uint16_t>((_rxHead + 1U) & _rxMask);
         if (next == _rxTail) {
             ++_errorCounts.bufferOverflow;
         } else {
@@ -496,7 +694,7 @@ void HardwareSerial::handleInterrupt() {
         const uint16_t oldTail = _txTail;
         while (_txTail != _txHead && !UART_FLAGSTAT(uart, UART_TXFF)) {
             UART_TXDATAConfig(uart, _txBuffer[_txTail]);
-            _txTail = static_cast<uint16_t>((_txTail + 1U) & kTxMask);
+            _txTail = static_cast<uint16_t>((_txTail + 1U) & _txMask);
         }
         if (_txTail == _txHead) {
             UART_IntMaskConfig(uart, UART_TXInt, ENABLE);

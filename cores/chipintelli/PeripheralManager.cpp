@@ -36,6 +36,10 @@ bool systemReservedPin(uint8_t pin) {
 }
 
 bool systemReserved(PeripheralResource resource) {
+  if (resource == PeripheralResource::Dma0) return true;
+#if defined(USE_UART_SEND_PRE_RSLT_AUDIO) && USE_UART_SEND_PRE_RSLT_AUDIO
+  if (resource == PeripheralResource::Dma1) return true;
+#endif
 #if defined(USE_BLE) && USE_BLE
   // The fixed Arduino SDK profile enables the vendor BLE stack, whose RF
   // driver owns TIMER3 without going through PeripheralManager.
@@ -260,6 +264,8 @@ const char *PeripheralManagerClass::resourceName(
     case PeripheralResource::Timer1: return "TIMER1";
     case PeripheralResource::Timer2: return "TIMER2";
     case PeripheralResource::Timer3: return "TIMER3";
+    case PeripheralResource::Dma0: return "GDMA channel 0";
+    case PeripheralResource::Dma1: return "GDMA channel 1";
     case PeripheralResource::Count: break;
   }
   return "unknown";

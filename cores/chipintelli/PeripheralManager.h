@@ -39,6 +39,8 @@ enum class PeripheralResource : uint8_t {
   Timer1,
   Timer2,
   Timer3,
+  Dma0,
+  Dma1,
   Count,
 };
 
