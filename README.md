@@ -250,6 +250,40 @@ Serial.print(PeripheralManager.ownerName(conflict.currentOwner));
 公共 `pinMode()` 对正在由外设占用的管脚不会改写复用寄存器。应先调用对应的
 `end()`、`detach()` 或 `noTone()`；普通 GPIO 所有权可以被外设 `begin()` 安全接管。
 
+### 调度、等待与回调上下文
+
+Arduino task 默认优先级为 2，低于原厂 ASR/音频实时任务的优先级 4；需要降低
+交互延迟时可调用 `chipintelli_arduino_set_interactive(true)` 临时切换为优先级 3。
+默认 `CHIPINTELLI_LOOP_EVENT_DRIVEN` 模式按 2 ms 执行预算批量运行事件和
+`loop()`，GPIO、UART、ASR、CWSL 与 Timer 到达时会通过 task notification 立即
+唤醒，同时每 8 个窗口强制让出一个 tick 给 idle housekeeping。也可通过
+`chipintelli_arduino_set_loop_mode()` 选择每轮延迟一个 tick 的 `COMPATIBLE`，或
+最长等待 20 ms 通知的 `LOW_POWER`。这些默认值可用 `ARDUINO_TASK_PRIORITY`、
+`ARDUINO_INTERACTIVE_TASK_PRIORITY`、`ARDUINO_LOOP_EXECUTION_BUDGET_US`、
+`ARDUINO_LOOP_MAX_ITERATIONS`、`ARDUINO_FORCED_IDLE_WINDOWS` 和
+`ARDUINO_LOW_POWER_POLL_MS` 构建宏调整。
+
+调度器启动后，`delay(ms > 0)` 会向上取整为 FreeRTOS tick 并阻塞当前 task；
+`yield()` 只请求一次调度，不再固定等待 2 ms。`delayMicroseconds()` 仍是主动
+忙等，适合必要的短脉冲，长时间调用会占用 CPU。`Stream` 的等待钩子允许串口
+解析函数睡眠；`HardwareSerial` 的 RX/TX ISR 会通知等待 task，并提供
+`tryWrite()`、`write(..., timeoutMs)` 和 `flush(timeoutMs)`。默认 `write()` 最长
+等待 1000 ms，超时可通过 `lastError()` 查询。
+
+普通 `attachInterrupt()`/`attachInterruptArg()`、硬件 Timer、`Ticker`、音频完成、
+CWSL 以及 Wire 接收回调统一在 Arduino event dispatcher 中执行，可以安全使用
+普通 task API。只有明确命名的 `attachInterruptISR()`、`attachInterruptArgISR()`、
+`Wire.onReceiveISR()` 和 `Wire.onRequestISR()` 在中断中执行；Wire 请求回调必须在
+首字节发送前即时生成响应，因此兼容入口 `onRequest()` 也保留 ISR 语义。事件投递
+均为零等待，`chipintelli_arduino_event_dropped()`、
+`chipintelli_arduino_event_pending()` 和
+`chipintelli_arduino_event_high_water_mark()` 可用于诊断队列压力。
+
+Arduino Release profile 在 SDK 初始化完成后删除 init task；周期 task/heap 监控只在
+`CI_ARDUINO_DIAGNOSTICS` 中保留。`chipintelli_arduino_fault()`、各驱动
+`lastError()` 和 `analogReadLastError()` 用于区分内存不足、忙、超时、硬件故障及
+事件队列满等失败。
+
 ## 示例
 
 Arduino IDE 的 **文件 > 示例** 菜单中包含：
@@ -307,8 +341,8 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
   command/group 只允许一个模板，而官方支持两个唤醒词模板同时映射到 ID 1、
   group 0。此 SDK 的 CWSL 不支持 `MULT_INTENT > 1`。
 - Arduino 接口采用异步事件，不依赖原厂语音引导提示，可由 sketch 使用串口、LED、
-  显示屏或 `ChipIntelliAudio` 提供反馈。回调运行在 SDK task 中，不能阻塞；耗时
-  工作应在 `loop()` 中从事件队列读取后处理。所有 CWSL API 只能从 task 上下文
+  显示屏或 `ChipIntelliAudio` 提供反馈。回调由 Arduino event dispatcher 执行，
+  不会阻塞 SDK 实时 task；回调仍应保持有界。所有 CWSL API 只能从 task 上下文
   调用，不可从 ISR 或硬件定时器回调直接调用。
 - 原厂 record-end 回调没有会话 ID 或最终排空确认，因此 `cancelLearning()` 只在
   `CWSLLearningStarted` 前受理。录音请求入队后的强制休眠/复位、官方语音流程在
@@ -366,11 +400,13 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 - 官方数据库只覆盖空调。电视、风扇、灯具等设备通过 raw 学习/保存/回放或 NEC
   控制；空调数据库以 sketch-local user-file ID `50000` 叠加，不占用 TTS 的 ID `0`。
 - `ChipIntelliTimer` 会通过资源管理器申请 TIMER0–2；当前 SDK 的 BLE 射频驱动固定
-  占用 TIMER3，资源管理器将其标记为系统保留，Timer 和 IR 都不能覆盖。硬件回调
-  运行在中断中，不能阻塞、访问 Flash 或调用 `Serial`。`Ticker` 不占硬件 Timer，
-  但回调运行在共享的 FreeRTOS timer-service task，耗时操作会延迟 SDK 的其他软件定时器。
-- `ChipIntelliWatchdog` 和原厂音频任务共用唯一 IWDG；音频输入任务也会喂狗，
-  因此它用于检测系统/音频管线整体停滞，不能严格只监视 Arduino `loop()`。
+  占用 TIMER3，资源管理器将其标记为系统保留，Timer 和 IR 都不能覆盖。硬件 ISR
+  与 `Ticker` 的 timer-service 回调只投递零等待事件，用户回调统一在 Arduino task
+  中执行；硬件 Timer 由 `lastError()` 报告投递失败，`Ticker` 可查询全局 event
+  drop count。
+- `ChipIntelliWatchdog` 和原厂音频任务共用唯一 IWDG。普通 `begin()` 保持兼容喂狗；
+  `beginSupervised()` 只有在 Arduino loop、SDK 音频和可选应用心跳全部到达后才真正
+  喂狗，避免任一健康 task 掩盖另一关键路径的停滞。
 - `Preferences` 每个 namespace 最多 16 项且整个记录最多 240 B；它保留 NVDM
   ID `0xE0000000`–`0xEFFFFFFF`，与 IR 等 user-file 资源 ID 属于不同地址空间。
 - `ChipIntelliAudio` 只能播放完整固件 `voice.bin` 中已经配置的提示音，不能读取
