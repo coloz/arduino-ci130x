@@ -199,6 +199,15 @@ bool TwoWire::setClock(uint32_t frequency) {
     _lastError = 4;
     return false;
   }
+  // Libraries such as U8g2 call setClock() before every I2C transaction.
+  // Reconfiguring an already-running controller at the same frequency can
+  // glitch the bus between back-to-back transfers and make the next address
+  // phase appear as a NACK. Match the usual Wire semantics and make an
+  // unchanged clock request a no-op.
+  if (_frequency == frequency) {
+    _lastError = 0;
+    return true;
+  }
   _frequency = frequency;
   if (_mode == Mode::Stopped) return true;
   return configure(frequency, _slaveAddress, _mode);
