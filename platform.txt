@@ -38,6 +38,10 @@ compiler.ar.flags=crs
 compiler.c.extra_flags=
 compiler.cpp.extra_flags=
 compiler.S.extra_flags=
+# FastLED 3.10.x triggers a GCC 9 LTO ICE when its full C++ library is linked.
+# Libraries can opt individual translation units out of LTO, but Arduino CLI
+# cannot set per-library flags. Keep this override documented for FastLED users:
+# --build-property compiler.cpp.extra_flags=-fno-lto
 # Binary-only vendor archives retain stale GCC 9.2 LTO type metadata. Suppress
 # only that known final-link diagnostic; source compilation warnings stay on.
 compiler.c.elf.extra_flags=-Wno-lto-type-mismatch
