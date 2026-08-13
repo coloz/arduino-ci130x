@@ -9,7 +9,7 @@ on:
       release_tag:
         description: Existing release tag to update
         required: true
-        default: v1.0.12
+        default: v1.0.13
 
 permissions:
   contents: write
@@ -302,17 +302,15 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## 主要更新
 
-          - Arduino 主任务改为通知驱动调度，并新增统一的延后事件分发器，避免 1 ms 轮询以及在中断或 SDK 回调中直接执行用户代码。
-          - 加固 SDK 初始化、看门狗存活检测、ADC 与存储等待路径；异常或外设无响应时使用有界等待，降低永久阻塞风险。
-          - `Wire` 新增中断驱动的主机传输和异步 API；ADC 新增异步采样与空闲掉电；串口新增可配置缓冲区和可选 TX DMA。
-          - GPIO 中断按位图分发并提供事件元数据；SPI 增加寄存器快速路径和协作式批量传输，改善高频访问及 SD 大块读写时的调度公平性。
-          - 更新核心库文档和示例，演示异步外设 API、回调上下文和可移植的引脚写法。
+          - 补齐 `PinStatus`、`PinMode`、`BitOrder`、`pin_size_t` 等 ArduinoCore-API 兼容类型，以及 `OUTPUT_OPENDRAIN`、`NOT_AN_INTERRUPT` 和时钟换算宏。
+          - 为 `pulseIn()`、`pulseInLong()` 和 `tone()` 恢复 Arduino 标准默认参数，并提供 `isinf`、`isnan`、跨类型 `min/max` 等常用接口。
+          - 补充 `SERIAL_PORT_MONITOR`、`HAVE_HWSERIAL*`、`SPI_HAS_NOTUSINGINTERRUPT`、`WIRE_HAS_END` 和 `BUFFER_LENGTH` 等第三方库常用能力标记。
+          - 改善依赖标准 Arduino API 的现有 sketch 和第三方库在 CI13XX 平台上的源码兼容性。
           - 继续复用 `v1.0.10` 发布的完整 Nuclei GCC 9.2.0 三平台工具包。
 
           ## 验证
 
-          - CI1302、CI1303 和 CI1306 已完成代表性示例及 P1 API 编译、链接和固件后处理验证。
-          - 本次验证覆盖 `Wire/AsyncTransfer`、`Wire/RegisterRead`、GPIO 中断、硬件定时器、SD 读写及 CI13XX 冒烟示例；未新增实体板运行结论。
+          - CI13XX 冒烟示例和本次新增的 Arduino API 兼容声明已完成编译、链接与固件后处理验证；未新增实体板运行结论。
           - Arduino 平台版本、归档结构与运行时脚本由发布工作流校验。
           - Windows x86_64、macOS Universal（Intel + Apple Silicon）和 Linux x86_64 公共工具包由发布工作流校验版本、结构和 SHA-256。
           - Arduino 平台归档、公共工具依赖和 Boards Manager 索引由发布工作流统一校验后生成。
