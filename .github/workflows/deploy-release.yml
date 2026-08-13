@@ -9,7 +9,7 @@ on:
       release_tag:
         description: Existing release tag to update
         required: true
-        default: v1.0.13
+        default: v1.0.14
 
 permissions:
   contents: write
@@ -302,15 +302,16 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## 主要更新
 
-          - 补齐 `PinStatus`、`PinMode`、`BitOrder`、`pin_size_t` 等 ArduinoCore-API 兼容类型，以及 `OUTPUT_OPENDRAIN`、`NOT_AN_INTERRUPT` 和时钟换算宏。
-          - 为 `pulseIn()`、`pulseInLong()` 和 `tone()` 恢复 Arduino 标准默认参数，并提供 `isinf`、`isnan`、跨类型 `min/max` 等常用接口。
-          - 补充 `SERIAL_PORT_MONITOR`、`HAVE_HWSERIAL*`、`SPI_HAS_NOTUSINGINTERRUPT`、`WIRE_HAS_END` 和 `BUFFER_LENGTH` 等第三方库常用能力标记。
-          - 改善依赖标准 Arduino API 的现有 sketch 和第三方库在 CI13XX 平台上的源码兼容性。
+          - 修复 MCU 单独复位后 SSD1306 可能保持在未完成 I2C 事务中、导致 U8g2 黑屏的问题；`Wire.begin()` 现在会在首次主机传输前安全释放总线。
+          - 修复 GPIO 总线恢复后 CI1306 SDA/SCL PAD 方向未还原的问题，确保 IIC0 能重新接管 PB7/PC0。
+          - `setWireTimeout(..., true)` 只在真正超时时恢复控制器，不再把普通地址或数据 NACK 当作超时处理。
+          - 改进 U8g2 示例的 CI13XX 引脚说明和传输错误检查，避免 OLED 初始化失败时误报成功。
           - 继续复用 `v1.0.10` 发布的完整 Nuclei GCC 9.2.0 三平台工具包。
 
           ## 验证
 
-          - CI13XX 冒烟示例和本次新增的 Arduino API 兼容声明已完成编译、链接与固件后处理验证；未新增实体板运行结论。
+          - 在 CI1306 实体板、正式 1.0.13 基线和 SSD1306 `0x3C` 上完成原始命令、U8g2 初始化、动态帧及连续四次 MCU 复位验证，均无 Wire 错误或超时。
+          - 最小 U8g2 硬件 I2C 示例已完成编译、烧录和固件 CRC 校验。
           - Arduino 平台版本、归档结构与运行时脚本由发布工作流校验。
           - Windows x86_64、macOS Universal（Intel + Apple Silicon）和 Linux x86_64 公共工具包由发布工作流校验版本、结构和 SHA-256。
           - Arduino 平台归档、公共工具依赖和 Boards Manager 索引由发布工作流统一校验后生成。

@@ -8,8 +8,9 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 > [!IMPORTANT]
 > 当前项目仍处于开发预览阶段。源码编译、链接、双核镜像后处理和本地
 > Boards Manager 安装流程已经验证；CI1303 已完成 Standard/CWSL 启动、音频提示
-> 回调、核心外设以及 I2C/SSD1306 实体测试。CI1302、CI1306 和受控说词识别仍待
-> 实体回归；AEC/语音打断目前完成构建验证，仍待带参考回采硬件的声学实测。请勿
+> 回调、核心外设以及 I2C/SSD1306 实体测试，CI1306 已完成 Wire/I2C 与
+> U8g2/SSD1306 实体测试。CI1302、CI1306 其余功能和受控说词识别仍待实体回归；
+> AEC/语音打断目前完成构建验证，仍待带参考回采硬件的声学实测。请勿
 > 直接用于量产固件。
 
 ## 目录
@@ -31,15 +32,15 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前开发版本 | `1.0.13` |
+| 当前开发版本 | `1.0.14` |
 | Arduino IDE | Arduino IDE 2.x |
 | Arduino CLI | 已使用 1.5.0 验证 |
 | 主机系统 | 完整固件流程：Windows 10/11 x64、macOS 15+ Apple Silicon；Linux x86_64 已通过编译/链接验证，完整回归待补充 |
 | 编译器 | Nuclei RISC-V GCC 9.2.0（`rv32imafc / ilp32f`）；macOS 由官方 `nuclei_9.2_fixjalr_forhw` 源码构建 |
 | Algorithm Profile（算法） | CI1306 芯片默认标准 ASR + AEC；CI-D06GT01D 默认标准 ASR（无 AEC）；均可选择四种 profile |
 | Microphone Input（麦克风） | 支持模拟单/双麦和 PDM 数字单/双麦；CI1306 默认模拟单麦，CI-D06GT01D 默认模拟双麦 |
-| 公共 Boards Manager 发布 | `v1.0.13`（Windows x64、Linux x86_64、macOS Apple Silicon） |
-| 硬件运行验证 | CI1303：Windows/macOS Standard 启动和音频、CWSL 启动、核心外设、I2C/SSD1306 已通过；其余待验证 |
+| 公共 Boards Manager 发布 | `v1.0.14`（Windows x64、Linux x86_64、macOS Apple Silicon） |
+| 硬件运行验证 | CI1303：Windows/macOS Standard 启动和音频、CWSL 启动、核心外设、I2C/SSD1306 已通过；CI1306：Wire/I2C 与 U8g2/SSD1306 已通过；其余待验证 |
 
 当前版本在编译前检查 sketch 根目录的 profile 资源；标准 ASR/AEC 使用
 `recursos/*.bin`，CWSL/CWSL+AEC 使用 `recursos/cwsl/*.bin`。缺少分区时从
@@ -109,7 +110,7 @@ CI1306 编译和链接，完整后处理与实体板回归仍待补充。
 固定版本的索引也随 GitHub Release 发布：
 
 ```text
-https://github.com/coloz/arduino-ci130x/releases/download/v1.0.13/package_chipintelli_index.json
+https://github.com/coloz/arduino-ci130x/releases/download/v1.0.14/package_chipintelli_index.json
 ```
 
 ## 快速开始
@@ -467,8 +468,9 @@ dynamic memory 包含重叠的
   16 个安装后示例以及 CI1302/CI1303 的综合冒烟示例均编译通过，共 18/18；
 - CI1302、CI1303 与 CI1306 已在隔离 Arduino CLI 环境验证资源准备、完整编译、
   `compose` 和 `inspect`；CI1303 已使用 `citool-cli` 完成实体板上传、固件 CRC、
-  Standard/CWSL SDK 启动、UART0、音频提示回调和 I2C/SSD1306 运行验证，CI1302、
-  CI1306 与受控说词识别仍待验证。macOS Apple Silicon 的内部晶振 Standard 构建
+  Standard/CWSL SDK 启动、UART0、音频提示回调和 I2C/SSD1306 运行验证；CI1306
+  已完成 Windows 下 Wire/I2C 与 U8g2/SSD1306 回归，CI1302、CI1306 其余功能与
+  受控说词识别仍待验证。macOS Apple Silicon 的内部晶振 Standard 构建
   还通过了 CH343 上传、双核启动以及 voice ID 1/2/3 顺序播放。
 
 详细环境、步骤与已知工具链问题见 [package/VALIDATION.md](package/VALIDATION.md)。

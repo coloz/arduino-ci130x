@@ -620,3 +620,27 @@ host:
 The small host-program differences are expected from the native host GCC
 binaries; all complete firmware images have the same partitioned size. These
 are package and build-path checks; no new physical-board runtime claim is made.
+
+## CI1306 Wire recovery and U8g2 hardware validation
+
+On 2026-08-13, a CI1306 connected on COM5 was tested with an SSD1306 128x64
+I2C display at address `0x3C`, using PB7/SDA and PC0/SCL. The installed
+Boards Manager platform was the formal 1.0.13 release; test builds overrode
+only the bundled Wire library with the release-candidate source.
+
+An MCU-only reset could leave the display in an unfinished I2C transaction.
+The freshly initialized controller sometimes reported an idle bus, so its
+BUSY flag alone did not trigger recovery. Adding recovery to `Wire.begin()`
+initially exposed a second defect: GPIO recovery left the PAD direction in
+output mode, disconnecting IIC0 from SDA/SCL. The controller then accepted a
+START command but produced no interrupt and timed out. Restoring both PADs to
+input direction before selecting their IIC0 mux fixed the controller handoff.
+
+The final `CI1306U8g2Test` run found `0x3C`; SSD1306 commands `0xAF`, `0xA5`
+and `0xA4` all returned status 0. `u8g2.begin()`, the first framebuffer and
+dynamic frames completed with Wire error 0 and no timeout. The updated
+`U8g2TextTest` then passed four consecutive MCU-only resets: every boot found
+`0x3C`, initialized the OLED and produced at least three successful frames.
+The minimal hardware-I2C U8g2 sketch was also compiled and uploaded with
+firmware CRC verification. These checks validate the CI1306 Wire/I2C and
+U8g2/SSD1306 path; they do not extend to the board's other peripherals.
