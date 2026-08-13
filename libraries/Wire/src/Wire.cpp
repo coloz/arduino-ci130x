@@ -151,6 +151,15 @@ void TwoWire::configurePins() {
                    DPMU_IO_PULL_UP);
   dpmu_set_io_pull(static_cast<PinPad_Name>(g_APinDescription[SCL].pad),
                    DPMU_IO_PULL_UP);
+  // IIC0 owns the open-drain output enable through the pad mux. Restore the
+  // pad direction after GPIO-based bus recovery; otherwise the GPIO output
+  // direction remains latched and disconnects IIC0 from SDA/SCL on CI1306.
+  dpmu_set_io_direction(
+      static_cast<PinPad_Name>(g_APinDescription[SDA].pad),
+      DPMU_IO_DIRECTION_INPUT);
+  dpmu_set_io_direction(
+      static_cast<PinPad_Name>(g_APinDescription[SCL].pad),
+      DPMU_IO_DIRECTION_INPUT);
   dpmu_set_io_reuse(
       static_cast<PinPad_Name>(g_APinDescription[SDA].pad),
       static_cast<IOResue_FUNCTION>(SDA_MUX));
@@ -212,7 +221,13 @@ bool TwoWire::configure(uint32_t frequency, uint8_t address, Mode mode) {
 }
 
 bool TwoWire::begin() {
-  return configure(_frequency, 0, Mode::Master);
+  if (!configure(_frequency, 0, Mode::Master)) return false;
+  // Arduino uploads and watchdog resets restart the MCU without necessarily
+  // resetting I2C peripherals. A slave can therefore be left mid-byte even
+  // though the freshly initialized controller reports an idle bus. Recover
+  // unconditionally before the first master transaction; checking BUSY alone
+  // did not catch this state on SSD1306 displays.
+  return recoverBus();
 }
 
 bool TwoWire::begin(uint8_t address) {
@@ -224,7 +239,11 @@ bool TwoWire::begin(int sda, int scl, uint32_t frequency) {
     _lastError = 4;
     return false;
   }
-  return configure(frequency == 0 ? _frequency : frequency, 0, Mode::Master);
+  if (!configure(frequency == 0 ? _frequency : frequency, 0,
+                 Mode::Master)) {
+    return false;
+  }
+  return recoverBus();
 }
 
 void TwoWire::end() {
@@ -635,7 +654,7 @@ bool TwoWire::waitMasterTransfer() {
     recoverFromTimeout();
     return false;
   }
-  if (_masterResult != 0U && _resetOnTimeout) {
+  if (_masterResult == kErrorTimeout && _resetOnTimeout) {
     const uint8_t result = _masterResult;
     (void)recoverBus();
     _lastError = result;
@@ -672,7 +691,7 @@ void TwoWire::masterEvent(void *context, uint32_t generation) {
   if (destination != nullptr && received != 0U) {
     memcpy(destination, wire->_rxBuffer, received);
   }
-  if (result != 0U && wire->_resetOnTimeout) {
+  if (result == kErrorTimeout && wire->_resetOnTimeout) {
     (void)wire->recoverBus();
     wire->_lastError = result;
   }

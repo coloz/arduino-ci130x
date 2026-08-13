@@ -63,33 +63,11 @@ bool deviceResponds(uint8_t address) {
   return Wire.endTransmission() == 0;
 }
 
-void recoverI2cBus() {
-  // Release SDA, then clock up to nine pending bits out of a slave that was
-  // left mid-transfer by an MCU-only reset. Finish with a STOP condition.
-  pinMode(SDA, INPUT_PULLUP);
-  pinMode(SCL, INPUT_PULLUP);
-  delayMicroseconds(10);
-
-  for (uint8_t pulse = 0; pulse < 9; ++pulse) {
-    pinMode(SCL, OUTPUT);
-    digitalWrite(SCL, LOW);
-    delayMicroseconds(10);
-    pinMode(SCL, INPUT_PULLUP);
-    delayMicroseconds(10);
-  }
-
-  pinMode(SDA, OUTPUT);
-  digitalWrite(SDA, LOW);
-  delayMicroseconds(10);
-  pinMode(SCL, INPUT_PULLUP);
-  delayMicroseconds(10);
-  pinMode(SDA, INPUT_PULLUP);
-  delayMicroseconds(10);
-}
-
 bool startWire() {
   Wire.end();
-  recoverI2cBus();
+  // Wire.begin() performs an ownership-safe bus recovery. Manipulating SDA
+  // and SCL through pinMode() here would claim them as GPIO and prevent Wire
+  // from acquiring the I2C peripheral afterwards.
   if (!Wire.begin()) {
     Serial.println("ERROR: Wire.begin() failed");
     return false;
@@ -206,7 +184,7 @@ void setup() {
 
 void loop() {
   if (!oledReady) {
-    Serial.println("Retrying I2C bus recovery and scan...");
+    Serial.println("Retrying I2C setup and scan...");
     if (startWire() && scanForOled()) {
       initializeOled();
     }

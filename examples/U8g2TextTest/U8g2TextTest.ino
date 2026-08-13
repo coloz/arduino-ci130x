@@ -1,8 +1,8 @@
-// CI1303 + SSD1306 128x64 I2C OLED text test.
+// CI13XX + SSD1306 128x64 I2C OLED text test.
 //
-// Wiring (CI1303):
-//   OLED SDA -> PA2
-//   OLED SCL -> PA3
+// Wiring:
+//   OLED SDA -> the selected board's SDA pin
+//   OLED SCL -> the selected board's SCL pin
 //   OLED VCC -> the voltage required by the module
 //   OLED GND -> GND
 //
@@ -29,11 +29,11 @@ bool deviceResponds(uint8_t address) {
   return Wire.endTransmission() == 0;
 }
 
-void drawScreen() {
+bool drawScreen() {
   u8g2.clearBuffer();
 
   u8g2.setFont(u8g2_font_6x12_tf);
-  u8g2.drawStr(18, 12, "CI1303 OLED");
+  u8g2.drawStr(18, 12, "CI13XX OLED");
   u8g2.drawHLine(0, 16, 128);
 
   u8g2.setFont(u8g2_font_7x14B_tf);
@@ -48,15 +48,20 @@ void drawScreen() {
 
   // A moving pixel makes it obvious that the sketch is still running.
   u8g2.drawPixel(frameCounter % 128, 63);
+  Wire.clearWireTimeoutFlag();
   u8g2.sendBuffer();
+  return Wire.lastError() == 0 && !Wire.getWireTimeoutFlag();
 }
 }  // namespace
 
 void setup() {
   Serial.begin(kSerialBaud);
   Serial.println();
-  Serial.println("CI1303 U8g2 SSD1306 test starting");
-  Serial.println("I2C pins: SDA=PA2, SCL=PA3");
+  Serial.println("CI13XX U8g2 SSD1306 test starting");
+  Serial.print("I2C pins: SDA=");
+  Serial.print(SDA);
+  Serial.print(", SCL=");
+  Serial.println(SCL);
 
   if (!Wire.begin()) {
     Serial.println("ERROR: Wire.begin() failed");
@@ -89,14 +94,33 @@ void setup() {
   // U8g2 uses an 8-bit I2C address here, hence the left shift.
   u8g2.setI2CAddress(oledAddress << 1);
   u8g2.setBusClock(kI2cClock);
+  Wire.clearWireTimeoutFlag();
   u8g2.begin();
-  drawScreen();
+  if (Wire.lastError() != 0 || Wire.getWireTimeoutFlag()) {
+    Serial.print("ERROR: u8g2.begin() failed; Wire error=");
+    Serial.println(Wire.lastError());
+    while (true) {
+      delay(1000);
+    }
+  }
+  if (!drawScreen()) {
+    Serial.print("ERROR: initial OLED frame failed; Wire error=");
+    Serial.println(Wire.lastError());
+    while (true) {
+      delay(1000);
+    }
+  }
   Serial.println("OLED initialized; text test is running");
 }
 
 void loop() {
   ++frameCounter;
-  drawScreen();
+  if (!drawScreen()) {
+    Serial.print("ERROR: OLED frame failed; Wire error=");
+    Serial.println(Wire.lastError());
+    delay(1000);
+    return;
+  }
 
   Serial.print("OLED frame ");
   Serial.println(frameCounter);
