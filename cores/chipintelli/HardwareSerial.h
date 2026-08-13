@@ -3,6 +3,16 @@
 
 #include "Stream.h"
 
+#ifndef HAVE_HWSERIAL0
+#define HAVE_HWSERIAL0 1
+#endif
+#ifndef HAVE_HWSERIAL1
+#define HAVE_HWSERIAL1 1
+#endif
+#ifndef HAVE_HWSERIAL2
+#define HAVE_HWSERIAL2 1
+#endif
+
 #ifndef SERIAL_RX_BUFFER_SIZE
 #define SERIAL_RX_BUFFER_SIZE 128
 #endif

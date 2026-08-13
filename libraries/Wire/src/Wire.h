@@ -5,9 +5,20 @@
 #include <stdint.h>
 
 #ifndef I2C_BUFFER_LENGTH
+#ifdef BUFFER_LENGTH
+#define I2C_BUFFER_LENGTH BUFFER_LENGTH
+#else
 #define I2C_BUFFER_LENGTH 64
 #endif
+#endif
 
+#ifndef BUFFER_LENGTH
+#define BUFFER_LENGTH I2C_BUFFER_LENGTH
+#endif
+
+#ifndef WIRE_HAS_END
+#define WIRE_HAS_END 1
+#endif
 #define WIRE_HAS_TIMEOUT 1
 #ifndef WIRE_DEFAULT_TIMEOUT
 #define WIRE_DEFAULT_TIMEOUT 25000UL

@@ -5,6 +5,9 @@
 #include <stdint.h>
 
 #define SPI_HAS_TRANSACTION 1
+#ifndef SPI_HAS_NOTUSINGINTERRUPT
+#define SPI_HAS_NOTUSINGINTERRUPT 1
+#endif
 
 #ifndef SPI_MODE0
 #define SPI_MODE0 0x00

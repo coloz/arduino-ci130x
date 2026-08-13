@@ -17,6 +17,9 @@
 #ifdef __cplusplus
 #include <cmath>
 #include <algorithm>
+
+using std::isinf;
+using std::isnan;
 #endif
 
 #define ARDUINO_CORE_VERSION_MAJOR 0
@@ -31,6 +34,9 @@
 #define INPUT_PULLUP    0x05
 #define INPUT_PULLDOWN  0x09
 #define OUTPUT_OPEN_DRAIN 0x13
+#ifndef OUTPUT_OPENDRAIN
+#define OUTPUT_OPENDRAIN OUTPUT_OPEN_DRAIN
+#endif
 
 #define CHANGE  1
 #define FALLING 2
@@ -40,6 +46,13 @@
 
 #define LSBFIRST 0
 #define MSBFIRST 1
+
+// ArduinoCore-API compatibility types. Keep the existing CI13XX constant
+// values because the GPIO implementation uses them to select SDK modes.
+typedef uint8_t PinStatus;
+typedef uint8_t PinMode;
+typedef uint8_t BitOrder;
+typedef uint8_t pin_size_t;
 
 #define PI 3.1415926535897932384626433832795
 #define HALF_PI 1.5707963267948966192313216916398
@@ -108,15 +121,28 @@
 #define constrain(amt, low, high) ((amt) < (low) ? (low) : ((amt) > (high) ? (high) : (amt)))
 
 #ifdef __cplusplus
-#ifndef min
-#define min(a,b) ((a)<(b)?(a):(b))
-#endif
-#ifndef max
-#define max(a,b) ((a)>(b)?(a):(b))
-#endif
+template <class T, class L>
+auto min(const T &a, const L &b) -> decltype((b < a) ? b : a) {
+    return (b < a) ? b : a;
+}
+
+template <class T, class L>
+auto max(const T &a, const L &b) -> decltype((b < a) ? b : a) {
+    return (a < b) ? b : a;
+}
 #else
 #define min(a,b) ((a)<(b)?(a):(b))
 #define max(a,b) ((a)>(b)?(a):(b))
+#endif
+
+#ifndef clockCyclesPerMicrosecond
+#define clockCyclesPerMicrosecond() (F_CPU / 1000000L)
+#endif
+#ifndef clockCyclesToMicroseconds
+#define clockCyclesToMicroseconds(a) ((a) / clockCyclesPerMicrosecond())
+#endif
+#ifndef microsecondsToClockCycles
+#define microsecondsToClockCycles(a) ((a) * clockCyclesPerMicrosecond())
 #endif
 
 typedef bool boolean;
@@ -125,6 +151,7 @@ typedef uint16_t word;
 
 typedef void (*voidFuncPtr)(void);
 typedef void (*voidFuncPtrArg)(void *);
+typedef void (*voidFuncPtrParam)(void *);
 
 #ifdef __cplusplus
 extern "C" {
@@ -349,6 +376,9 @@ int chipintelli_cwsl_max_templates(void);
 #endif
 
 #define digitalPinToInterrupt(pin) (pin)
+#ifndef NOT_AN_INTERRUPT
+#define NOT_AN_INTERRUPT (-1)
+#endif
 #define cli() noInterrupts()
 #define sei() interrupts()
 
@@ -357,6 +387,7 @@ unsigned long pulseIn(uint8_t pin, uint8_t state,
                       unsigned long timeout = 1000000L);
 unsigned long pulseInLong(uint8_t pin, uint8_t state,
                           unsigned long timeout = 1000000L);
+void tone(uint8_t pin, unsigned int frequency, unsigned long duration = 0);
 
 long random(long max);
 long random(long min, long max);
@@ -376,5 +407,9 @@ uint16_t makeWord(uint8_t high, uint8_t low);
 #include "IPAddress.h"
 #include "HardwareSerial.h"
 #include "pins_arduino.h"
+
+#ifndef SERIAL_PORT_MONITOR
+#define SERIAL_PORT_MONITOR Serial
+#endif
 
 #endif
