@@ -353,6 +353,11 @@ int chipintelli_cwsl_max_templates(void);
 #define sei() interrupts()
 
 #ifdef __cplusplus
+unsigned long pulseIn(uint8_t pin, uint8_t state,
+                      unsigned long timeout = 1000000L);
+unsigned long pulseInLong(uint8_t pin, uint8_t state,
+                          unsigned long timeout = 1000000L);
+
 long random(long max);
 long random(long min, long max);
 void randomSeed(unsigned long seed);
