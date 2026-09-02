@@ -12,12 +12,12 @@
         {
           "name": "ChipIntelli CI130X Arduino",
           "architecture": "ci13xx",
-          "version": "1.0.14",
+          "version": "1.0.15",
           "category": "Contributed",
-          "url": "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.14/arduino-ci130x-1.0.14.zip",
-          "archiveFileName": "arduino-ci130x-1.0.14.zip",
-          "checksum": "SHA-256:4ec500b933724b3fd4cbc4e047d8d975f1a6df0acef05efd1f4019d2675276f6",
-          "size": "40365615",
+          "url": "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.15/arduino-ci130x-1.0.15.zip",
+          "archiveFileName": "arduino-ci130x-1.0.15.zip",
+          "checksum": "SHA-256:cb60d51f78684a9e4569cbbc4fd1fd5ffc887709d006ff13877ad4e1abb4f991",
+          "size": "40375575",
           "boards": [
             {
               "name": "ChipIntelli CI1302 (SSOP24, 2 MB)"
@@ -30,6 +30,9 @@
             },
             {
               "name": "ChipIntelli CI-D06GT01D Dev Board (CI1306, 4 MB)"
+            },
+            {
+              "name": "easyVoice 1306 dev (CI1306, 4 MB)"
             }
           ],
           "toolsDependencies": [
