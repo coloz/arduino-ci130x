@@ -9,7 +9,7 @@ on:
       release_tag:
         description: Existing release tag to update
         required: true
-        default: v1.0.14
+        default: v1.0.15
 
 permissions:
   contents: write
@@ -302,16 +302,15 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## 主要更新
 
-          - 修复 MCU 单独复位后 SSD1306 可能保持在未完成 I2C 事务中、导致 U8g2 黑屏的问题；`Wire.begin()` 现在会在首次主机传输前安全释放总线。
-          - 修复 GPIO 总线恢复后 CI1306 SDA/SCL PAD 方向未还原的问题，确保 IIC0 能重新接管 PB7/PC0。
-          - `setWireTimeout(..., true)` 只在真正超时时恢复控制器，不再把普通地址或数据 NACK 当作超时处理。
-          - 改进 U8g2 示例的 CI13XX 引脚说明和传输错误检查，避免 OLED 初始化失败时误报成功。
-          - 继续复用 `v1.0.10` 发布的完整 Nuclei GCC 9.2.0 三平台工具包。
+          - 新增 `easyVoice 1306 dev` 开发板变体，提供对应的 LED、Wire、软件 SPI、UART、ADC、PDM、IIS、USB-UART 与功放 MUTE 引脚映射。
+          - 提升 CI130X SD/SPI 可靠性：增加 FreeRTOS 互斥、资源与引脚释放、自定义 SD 软件 SPI 引脚，以及有效的 SD CRC7/CRC16 校验。
+          - 新增 CI1306 自定义 SD 引脚读写示例，并完善 SD/SPI 使用与资源冲突说明。
+          - 继续复用 `v1.0.10` 发布的 Nuclei GCC 9.2.0 三平台工具包和 `citool-cli-v1.2.2` 工具包；本 release 不重复上传编译器或 CLI 资产。
 
           ## 验证
 
-          - 在 CI1306 实体板、正式 1.0.13 基线和 SSD1306 `0x3C` 上完成原始命令、U8g2 初始化、动态帧及连续四次 MCU 复位验证，均无 Wire 错误或超时。
-          - 最小 U8g2 硬件 I2C 示例已完成编译、烧录和固件 CRC 校验。
+          - `easyvoice_1306_dev` 默认模拟单麦 + AEC 与 PDM 单麦无 AEC 配置均已完成 SDK 编译、链接和离线固件合成；专用断言覆盖板级引脚与菜单配置。
+          - SD/SPI 更新包含 CI1306 自定义引脚硬件读写测试，以及事务互斥、资源释放和 CRC 路径验证。
           - Arduino 平台版本、归档结构与运行时脚本由发布工作流校验。
           - Windows x86_64、macOS Universal（Intel + Apple Silicon）和 Linux x86_64 公共工具包由发布工作流校验版本、结构和 SHA-256。
           - Arduino 平台归档、公共工具依赖和 Boards Manager 索引由发布工作流统一校验后生成。
