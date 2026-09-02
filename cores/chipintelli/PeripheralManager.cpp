@@ -28,7 +28,7 @@ bool systemReservedPin(uint8_t pin) {
 #if defined(AUDIO_IN_FROM_DMIC) && AUDIO_IN_FROM_DMIC
   // PDM DATA/CLK are configured by the SDK before setup() and remain owned by
   // the audio input path for the lifetime of the firmware.
-  return pin == PB7 || pin == PC0;
+  return pin == PIN_PDM_DATA || pin == PIN_PDM_CLK;
 #else
   (void)pin;
   return false;

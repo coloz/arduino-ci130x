@@ -6,7 +6,8 @@ void setup() {
   Serial.begin(115200);
   Wire.begin();
 
-  // Wire and Serial1 share the same pads on every supported variant.
+  // Generic profiles share Wire and Serial1 pads. easyVoice 1306 dev uses
+  // separate routes, so both acquisitions can succeed on that board.
   Serial1.begin(115200);
   if (!Serial1) {
     const PeripheralConflict conflict = PeripheralManager.lastConflict();

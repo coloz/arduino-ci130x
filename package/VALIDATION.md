@@ -83,6 +83,32 @@ installation, and the legacy GCC failing when its C++ header path reaches about
 This validation covers Boards Manager installation and compilation. It does not
 claim physical-board upload or runtime hardware validation.
 
+## easyVoice 1306 dev variant validation
+
+On 2026-09-01, Arduino CLI resolved the source-tree
+`easyvoice_1306_dev` FQBN and all four Algorithm and Microphone menu choices.
+A dedicated assertion sketch checked the PD4 LED; PB3/PB4 Wire route; the
+PD0/PA7/PD1/PB0 software-SPI route and PA2 second chip select; all three UARTs;
+AIN2 through AIN5; PC3/PC2 PDM with PC1 alternate DATA; and the exposed IIS,
+USB-UART and amplifier-MUTE aliases.
+
+The default analog-single-microphone + AEC build completed SDK source
+compilation, link and offline firmware composition at 73,861 / 382,121 bytes of
+program storage and 111,420 / 532,480 bytes of dynamic memory. The
+`Microphone=pdm_single,Algorithm=null` build also completed at 72,325 / 382,577
+bytes and 111,420 / 532,480 bytes. Its SDK `board.o` disassembly loads physical
+pads 28 and 27 (PC3 DATA and PC2 CLK) with mux function 4. The amplifier helper
+symbols compile to two-byte no-op functions, so the SDK neither drives PC4
+against the populated R11 ground strap nor consumes the exposed PD0 S-SPI
+clock. A preprocessing negative test confirmed that PDM + AEC is rejected by
+the variant guard.
+
+All build tests forced the resource-generation service URL to
+`http://127.0.0.1:1`; the assertion sketch has no resource macros, so validation
+was local-only. This validates FQBN metadata, pin aliases, compilation and
+firmware composition, but not upload, LED polarity, analog behavior at PC4 or
+runtime operation on physical easyVoice hardware.
+
 ## citool-cli integration
 
 The platform consumes independently released `citool-cli@1.0.1` as a Windows

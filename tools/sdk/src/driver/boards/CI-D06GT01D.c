@@ -95,8 +95,13 @@ void pad_config_for_pdm(void)
 {
     #if AUDIO_IN_FROM_DMIC
     IOResue_FUNCTION IISx_IO_reuse = FIFTH_FUNCTION;
+	#if defined(CI_BOARD_EASYVOICE_1306_DEV) && CI_BOARD_EASYVOICE_1306_DEV
+	dpmu_set_io_reuse(PC3,IISx_IO_reuse);
+    dpmu_set_io_reuse(PC2,IISx_IO_reuse);
+	#else
 	dpmu_set_io_reuse(PB7,IISx_IO_reuse);
     dpmu_set_io_reuse(PC0,IISx_IO_reuse);
+	#endif
     #endif
 }
 
@@ -107,6 +112,11 @@ void pad_config_for_pdm(void)
  */
 void power_amplifier_on(void)
 {
+    #if defined(CI_BOARD_EASYVOICE_1306_DEV) && CI_BOARD_EASYVOICE_1306_DEV
+    // R11 straps the board's amplifier MUTE net to ground; there is no
+    // software-controlled amplifier-enable output to toggle.
+    return;
+    #else
     if (g_pa_pin_valid_level)
     {
         gpio_set_output_high_level(PD,pin_0);
@@ -115,6 +125,7 @@ void power_amplifier_on(void)
     {
         gpio_set_output_low_level(PD,pin_0);
     }
+    #endif
 }
 
 /**
@@ -123,6 +134,9 @@ void power_amplifier_on(void)
  */
 void power_amplifier_off(void)
 {
+    #if defined(CI_BOARD_EASYVOICE_1306_DEV) && CI_BOARD_EASYVOICE_1306_DEV
+    return;
+    #else
     if (g_pa_pin_valid_level)
     {
         gpio_set_output_low_level(PD,pin_0);
@@ -131,6 +145,7 @@ void power_amplifier_off(void)
     {
         gpio_set_output_high_level(PD,pin_0);
     }
+    #endif
 }
 
 /**
@@ -139,6 +154,11 @@ void power_amplifier_off(void)
  */
 void pad_config_for_power_amplifier(void)
 {
+    #if defined(CI_BOARD_EASYVOICE_1306_DEV) && CI_BOARD_EASYVOICE_1306_DEV
+    // Do not drive PC4 against the populated 0-ohm R11 ground strap, and do
+    // not consume the board's exposed PD0 software-SPI clock pin.
+    return;
+    #else
     scu_set_device_gate(PD,ENABLE);
 
     dpmu_set_io_direction(PD0,DPMU_IO_DIRECTION_INPUT);
@@ -164,6 +184,7 @@ void pad_config_for_power_amplifier(void)
     #else
     power_amplifier_on();
     #endif
+    #endif
 }
 
 #if USE_IIC_PAD
@@ -173,8 +194,13 @@ void pad_config_for_power_amplifier(void)
  */
 void pad_config_for_i2c(void)
 {
+    #if defined(CI_BOARD_EASYVOICE_1306_DEV) && CI_BOARD_EASYVOICE_1306_DEV
+    dpmu_set_io_reuse(PB3,THIRD_FUNCTION);
+    dpmu_set_io_reuse(PB4,THIRD_FUNCTION);
+    #else
     dpmu_set_io_reuse(PB7,THIRD_FUNCTION);
     dpmu_set_io_reuse(PC0,THIRD_FUNCTION);
+    #endif
 }
 #endif //USE_IIC_PAD
 

@@ -728,6 +728,12 @@ try {
                             [ordered]@{
                                 name = 'ChipIntelli CI1306 (QFN40, 4 MB)'
                             }
+                            [ordered]@{
+                                name = 'ChipIntelli CI-D06GT01D Dev Board (CI1306, 4 MB)'
+                            }
+                            [ordered]@{
+                                name = 'easyVoice 1306 dev (CI1306, 4 MB)'
+                            }
                         )
                         toolsDependencies = @(
                             [ordered]@{

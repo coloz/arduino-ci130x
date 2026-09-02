@@ -220,3 +220,56 @@ ci_d06gt01d.menu.Microphone.pdm_dual=PDM Digital Dual Microphones (Onboard Pair,
 ci_d06gt01d.menu.Microphone.pdm_dual.build.mic_flags=-DHOST_MIC_USE_NUMBER=2 -DAUDIO_IN_FROM_DMIC=1
 ci_d06gt01d.menu.Microphone.pdm_single=PDM Digital Single Microphone (Left Channel, Non-AEC Profiles Only)
 ci_d06gt01d.menu.Microphone.pdm_single.build.mic_flags=-DHOST_MIC_USE_NUMBER=1 -DAUDIO_IN_FROM_DMIC=1
+
+easyvoice_1306_dev.name=easyVoice 1306 dev (CI1306, 4 MB)
+
+easyvoice_1306_dev.upload.tool=citool-cli
+easyvoice_1306_dev.upload.tool.default=citool-cli
+easyvoice_1306_dev.upload.protocol=ci13xx_firmware
+easyvoice_1306_dev.upload.maximum_size=382121
+easyvoice_1306_dev.upload.maximum_data_size=532480
+easyvoice_1306_dev.upload.use_1200bps_touch=false
+easyvoice_1306_dev.upload.wait_for_upload_port=false
+
+easyvoice_1306_dev.build.mcu=ci1306
+easyvoice_1306_dev.build.f_cpu=246000000L
+easyvoice_1306_dev.build.clock_flags=-DUSE_EXTERNAL_CRYSTAL_OSC=1
+easyvoice_1306_dev.build.board=EASYVOICE_1306_DEV
+easyvoice_1306_dev.build.core=chipintelli
+easyvoice_1306_dev.build.variant=easyvoice_1306_dev
+easyvoice_1306_dev.build.algorithm=aec
+easyvoice_1306_dev.build.mic_flags=-DHOST_MIC_USE_NUMBER=1 -DAUDIO_IN_FROM_DMIC=0
+easyvoice_1306_dev.build.user_code_max=458752
+easyvoice_1306_dev.build.flash_size=4194304
+easyvoice_1306_dev.build.chip=ci1306
+easyvoice_1306_dev.build.extra_flags=-DARDUINO_CI1306 -DARDUINO_EASYVOICE_1306_DEV -DCI_CHIP_CI1306 -DCI_BOARD_EASYVOICE_1306_DEV=1 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=0 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
+
+easyvoice_1306_dev.menu.Algorithm.aec=Standard Offline ASR + AEC / Barge-in (Default, Analog Single Mic Only)
+easyvoice_1306_dev.menu.Algorithm.aec.build.algorithm=aec
+easyvoice_1306_dev.menu.Algorithm.aec.build.user_code_max=458752
+easyvoice_1306_dev.menu.Algorithm.aec.upload.maximum_size=382121
+easyvoice_1306_dev.menu.Algorithm.aec.build.extra_flags=-DARDUINO_CI1306 -DARDUINO_EASYVOICE_1306_DEV -DCI_CHIP_CI1306 -DCI_BOARD_EASYVOICE_1306_DEV=1 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=0 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
+easyvoice_1306_dev.menu.Algorithm.null=Standard Offline ASR (No AEC)
+easyvoice_1306_dev.menu.Algorithm.null.build.algorithm=null
+easyvoice_1306_dev.menu.Algorithm.null.build.user_code_max=458752
+easyvoice_1306_dev.menu.Algorithm.null.upload.maximum_size=382577
+easyvoice_1306_dev.menu.Algorithm.null.build.extra_flags=-DARDUINO_CI1306 -DARDUINO_EASYVOICE_1306_DEV -DCI_CHIP_CI1306 -DCI_BOARD_EASYVOICE_1306_DEV=1 -DNO_ASR_FLOW=0 -DUSE_NULL=1 -DUSE_CWSL=0 -DUSE_AEC_MODULE=0 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
+easyvoice_1306_dev.menu.Algorithm.cwsl_aec=CWSL Command-Word Learning + AEC / Barge-in (Analog Single Mic Only)
+easyvoice_1306_dev.menu.Algorithm.cwsl_aec.build.algorithm=cwsl_aec
+easyvoice_1306_dev.menu.Algorithm.cwsl_aec.build.user_code_max=458752
+easyvoice_1306_dev.menu.Algorithm.cwsl_aec.upload.maximum_size=382057
+easyvoice_1306_dev.menu.Algorithm.cwsl_aec.build.extra_flags=-DARDUINO_CI1306 -DARDUINO_EASYVOICE_1306_DEV -DCI_CHIP_CI1306 -DCI_BOARD_EASYVOICE_1306_DEV=1 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=1 -DUSE_AEC_MODULE=1 -DAEC_INTERRUPT_TYPE=2 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
+easyvoice_1306_dev.menu.Algorithm.cwsl=CWSL Command-Word Learning (No AEC)
+easyvoice_1306_dev.menu.Algorithm.cwsl.build.algorithm=cwsl
+easyvoice_1306_dev.menu.Algorithm.cwsl.build.user_code_max=458752
+easyvoice_1306_dev.menu.Algorithm.cwsl.upload.maximum_size=382513
+easyvoice_1306_dev.menu.Algorithm.cwsl.build.extra_flags=-DARDUINO_CI1306 -DARDUINO_EASYVOICE_1306_DEV -DCI_CHIP_CI1306 -DCI_BOARD_EASYVOICE_1306_DEV=1 -DNO_ASR_FLOW=0 -DUSE_NULL=0 -DUSE_CWSL=1 -DUSE_AEC_MODULE=0 -DSIMPLE_AUDIO_PLAYER_ENABLE=0 -DUSE_PWK=0 -DUSE_ALC_AUTO_SWITCH_MODULE=0 -DMULT_INTENT=1
+
+easyvoice_1306_dev.menu.Microphone.single=Analog Single Microphone (Default, Supports AEC)
+easyvoice_1306_dev.menu.Microphone.single.build.mic_flags=-DHOST_MIC_USE_NUMBER=1 -DAUDIO_IN_FROM_DMIC=0
+easyvoice_1306_dev.menu.Microphone.dual=Analog Dual Microphones (Non-AEC Profiles Only)
+easyvoice_1306_dev.menu.Microphone.dual.build.mic_flags=-DHOST_MIC_USE_NUMBER=2 -DAUDIO_IN_FROM_DMIC=0
+easyvoice_1306_dev.menu.Microphone.pdm_single=PDM Digital Single Microphone (PC3 Data / PC2 Clock, Non-AEC Profiles Only)
+easyvoice_1306_dev.menu.Microphone.pdm_single.build.mic_flags=-DHOST_MIC_USE_NUMBER=1 -DAUDIO_IN_FROM_DMIC=1
+easyvoice_1306_dev.menu.Microphone.pdm_dual=PDM Digital Dual Microphones (PC3 Data / PC2 Clock, Non-AEC Profiles Only)
+easyvoice_1306_dev.menu.Microphone.pdm_dual.build.mic_flags=-DHOST_MIC_USE_NUMBER=2 -DAUDIO_IN_FROM_DMIC=1

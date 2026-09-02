@@ -60,7 +60,7 @@ static void initializeDefaultPins() {
 #if defined(AUDIO_IN_FROM_DMIC) && AUDIO_IN_FROM_DMIC
         // The vendor SDK configures the PDM DATA/CLK pads before the Arduino
         // task starts. Preserve that mux instead of resetting it to GPIO.
-        if (pin == PB7 || pin == PC0) continue;
+        if (pin == PIN_PDM_DATA || pin == PIN_PDM_CLK) continue;
 #endif
         if (g_APinDescription[pin].capabilities & PIN_CAP_GPIO) {
             pinMode(pin, INPUT);

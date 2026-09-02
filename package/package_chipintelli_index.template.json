@@ -30,6 +30,9 @@
             },
             {
               "name": "ChipIntelli CI-D06GT01D Dev Board (CI1306, 4 MB)"
+            },
+            {
+              "name": "easyVoice 1306 dev (CI1306, 4 MB)"
             }
           ],
           "toolsDependencies": [

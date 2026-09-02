@@ -117,9 +117,10 @@ https://github.com/coloz/arduino-ci130x/releases/download/v1.0.14/package_chipin
 
 1. 在 Arduino IDE 中选择对应开发板：
    **ChipIntelli CI1302**、**ChipIntelli CI1303**、**ChipIntelli CI1306**，
-   或文档所述套件对应的 **ChipIntelli CI-D06GT01D Dev Board**。
+   或文档所述套件对应的 **ChipIntelli CI-D06GT01D Dev Board**、
+   **easyVoice 1306 dev**。
 2. CI-D06GT01D 默认选择 **模拟双麦** 和 **标准离线 ASR（无 AEC）**；通用 CI1306
-   芯片配置默认选择 **模拟单麦** 和 **标准离线 ASR + AEC/语音打断**。可在
+   与 easyVoice 1306 dev 默认选择 **模拟单麦** 和 **标准离线 ASR + AEC/语音打断**。可在
    **Tools > Microphone Input** 中选择模拟/PDM、单麦/双麦，并在
    **Tools > Algorithm Profile** 中
    选择 Standard 或 CWSL profile。模拟双麦以及所有 PDM 方案只能搭配名称中标有
@@ -183,6 +184,7 @@ arduino-cli compile --fqbn chipintelli:ci13xx:ci1303 `
 | CI1303 | CI-D03GS02S | SSOP24 / 4 MB | `chipintelli:ci13xx:ci1303` | 编译、烧录、UART0 与 I2C/SSD1306 运行通过 |
 | CI1306 | QFN40 兼容配置 | QFN40 / 4 MB | `chipintelli:ci13xx:ci1306` | 编译、链接、后处理通过 |
 | CI1306 | CI-D06GT01D 开发板 | QFN40 / 4 MB | `chipintelli:ci13xx:ci_d06gt01d` | 板级引脚映射与编译通过 |
+| CI1306 | easyVoice 1306 dev | QFN40 / 4 MB | `chipintelli:ci13xx:easyvoice_1306_dev` | 板级引脚映射与编译通过 |
 
 开发板或模组是否实际引出某个 PAD，应以对应硬件原理图为准。
 CI-D06GT01D FQBN 的默认音频输入是两路差分模拟麦克风；通用 CI1306 FQBN 为兼容
@@ -211,6 +213,26 @@ PC0/`PIN_PDM_CLK` 和 PB7/`PIN_PDM_DATA`；CI-D06GT01D 板载两个 PDM 麦克�
 OLED 接口的 `CS` 在原理图中未连接，`PIN_OLED_CS` 因而定义为 `255`。`Wire`、
 `Serial1` 和 PDM 麦克风共用 PB7/PC0；RGB、蜂鸣器、红外、IIS 与 software SPI
 也会复用 PWM 或 PAD，使用前应留意资源管理器报告的冲突。
+
+### easyVoice 1306 dev 板载资源与默认总线
+
+该变体按开发板 PinMap 定义以下默认路由：
+
+| 资源 | Arduino 常量 | 芯片管脚 |
+| --- | --- | --- |
+| 板载 LED | `LED_BUILTIN`、`PIN_LED_BUILTIN` | PD4 |
+| USB 串口 | `Serial`、`PIN_USB_UART_TX`、`PIN_USB_UART_RX` | PB5 / PB6 |
+| I2C0（板载 4.7 kΩ 上拉） | `SDA`、`SCL` | PB3 / PB4 |
+| software SPI | `SCK`、`MISO`、`MOSI`、`SS` | PD0 / PA7 / PD1 / PB0 |
+| 第二片选 | `SS1`、`PIN_SPI_CS1` | PA2 |
+| PDM | `PIN_PDM_DATA`、`PIN_PDM_CLK`、`PIN_PDM_DATA_ALT` | PC3 / PC2 / PC1 |
+| IIS 排针 | `PIN_I2S_MCLK`、`PIN_I2S_SCLK`、`PIN_I2S_LRCK`、`PIN_I2S_SDIN` | PA6 / PA5 / PA3 / PA2 |
+| 功放 MUTE 共用点 | `PIN_POWER_AMPLIFIER_MUTE`、`A0` | PC4 / AIN2 |
+
+`PC4` 与功放 MUTE 共用，且图示 R11 为 0 Ω 接地；未修改硬件前不要把它作为
+输出驱动，ADC 读数也会受该电路影响。PB5/PB6 与板载 USB-UART 共用，PD4 与
+板载 LED 共用。PA4、PC5 未引到 2×13 排针，`PIN_I2S_SDOUT` 因此定义为 `255`。
+easyVoice 的 `Wire` 使用 PB3/PB4，不与 `Serial1` 的 PB7/PC0 共用。
 
 ## Arduino API 与库
 
@@ -396,6 +418,7 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
   GPIO 输入。CI1302/CI1303 为 PA5/PA6，CI1306 为 PB1/PB2。
 - software SPI 默认使用 `SCK=PA5`、`MISO=PA2`、`MOSI=PA4`、`SS=PA3`，
   `SPI.begin()` 会原子申请四个引脚和 software-SPI 资源；冲突时返回 `false`。
+  easyVoice 1306 dev 按板上丝印改用 `PD0/PA7/PD1/PB0`，并以 PA2 作为第二片选别名。
   PA4 同时是复位阶段的 `PG_EN` 检测脚，外设在复位期间不得主动驱动它。
   软件 SPI 在 transaction 开始时缓存寄存器，使用核心 timer 控制亚微秒边沿；
   缓冲区/SD 块传输每 64 字节协作式让出。没有验证到安全的通用硬件 SPI 路由，

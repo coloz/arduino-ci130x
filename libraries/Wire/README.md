@@ -11,12 +11,14 @@ repeated starts, bus hold and recoverable timeouts are supported as well.
 | CI1302 / CI-D02GS02S | pin 2 / PA2 | pin 3 / PA3 | `Serial1` |
 | CI1303 / CI-D03GS02S | pin 2 / PA2 | pin 3 / PA3 | `Serial1` |
 | CI1306 / CI-D06GT01D | pin 15 / PB7 | pin 16 / PC0 | `Serial1` |
+| easyVoice 1306 dev | pin 11 / PB3 | pin 12 / PB4 | none (onboard 4.7 kOhm pull-ups) |
 
-`Wire.begin()` atomically acquires IIC0 and both pads. If `Serial1` already
-owns them, it returns `false` without changing any mux register. Call
-`Wire.end()` or `Serial1.end()` before switching functions. External I2C
-pull-up resistors are still required; the core also enables the weak internal
-pull-ups and open-drain mode.
+`Wire.begin()` atomically acquires IIC0 and both variant-selected pads. On the
+CI1302/CI1303/CI1306/CI-D06GT01D routes, it returns `false` without changing any
+mux register if `Serial1` already owns the shared pads; call `Wire.end()` or
+`Serial1.end()` before switching functions. External I2C pull-up resistors are
+required except on easyVoice 1306 dev, which already has 4.7 kOhm pull-ups on
+PB3/PB4. The core also enables weak internal pull-ups and open-drain mode.
 
 ## Controller mode
 
