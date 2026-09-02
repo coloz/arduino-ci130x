@@ -3,6 +3,8 @@
 
 extern "C" {
 #include "FreeRTOS.h"
+#include "ci130x_core_misc.h"
+#include "semphr.h"
 #include "task.h"
 #include "ci130x_core_timer.h"
 #include "ci130x_gpio.h"
@@ -27,6 +29,152 @@ gpio_base_t portBase(uint8_t port) {
   static const gpio_base_t bases[] = {PA, PB, PC, PD};
   return bases[port < 4U ? port : 0U];
 }
+
+SemaphoreHandle_t s_busMutex = nullptr;
+TaskHandle_t s_busOwner = nullptr;
+uint16_t s_transactionDepth = 0U;
+bool s_busLocked = false;
+
+SemaphoreHandle_t busMutex() {
+  if (check_curr_trap() != 0) {
+    return nullptr;
+  }
+
+  taskENTER_CRITICAL();
+  SemaphoreHandle_t mutex = s_busMutex;
+  taskEXIT_CRITICAL();
+  if (mutex != nullptr) {
+    return mutex;
+  }
+
+  SemaphoreHandle_t created = xSemaphoreCreateMutex();
+  if (created == nullptr) {
+    return nullptr;
+  }
+
+  taskENTER_CRITICAL();
+  if (s_busMutex == nullptr) {
+    s_busMutex = created;
+    created = nullptr;
+  }
+  mutex = s_busMutex;
+  taskEXIT_CRITICAL();
+
+  if (created != nullptr) {
+    vSemaphoreDelete(created);
+  }
+  return mutex;
+}
+
+bool busOwnedByCurrentTask() {
+  if (check_curr_trap() != 0) {
+    return false;
+  }
+  const TaskHandle_t current = xTaskGetCurrentTaskHandle();
+  taskENTER_CRITICAL();
+  const bool owned = s_busLocked && s_busOwner == current;
+  taskEXIT_CRITICAL();
+  return owned;
+}
+
+bool acquireBusScoped(bool &releaseRequired) {
+  releaseRequired = false;
+  if (check_curr_trap() != 0) {
+    return false;
+  }
+
+  const TaskHandle_t current = xTaskGetCurrentTaskHandle();
+  if (busOwnedByCurrentTask()) {
+    return true;
+  }
+
+  SemaphoreHandle_t mutex = busMutex();
+  if (mutex == nullptr) {
+    return false;
+  }
+  const TickType_t wait =
+      xTaskGetSchedulerState() == taskSCHEDULER_RUNNING ? portMAX_DELAY : 0U;
+  if (xSemaphoreTake(mutex, wait) != pdTRUE) {
+    return false;
+  }
+
+  taskENTER_CRITICAL();
+  s_busOwner = current;
+  s_transactionDepth = 0U;
+  s_busLocked = true;
+  taskEXIT_CRITICAL();
+  releaseRequired = true;
+  return true;
+}
+
+void releaseBusScoped(bool releaseRequired) {
+  if (!releaseRequired || !busOwnedByCurrentTask()) {
+    return;
+  }
+
+  taskENTER_CRITICAL();
+  const bool canRelease = s_transactionDepth == 0U;
+  if (canRelease) {
+    s_busOwner = nullptr;
+    s_busLocked = false;
+  }
+  taskEXIT_CRITICAL();
+  if (canRelease) {
+    xSemaphoreGive(s_busMutex);
+  }
+}
+
+bool acquireBusTransaction() {
+  bool releaseRequired = false;
+  if (!acquireBusScoped(releaseRequired)) {
+    return false;
+  }
+
+  taskENTER_CRITICAL();
+  ++s_transactionDepth;
+  taskEXIT_CRITICAL();
+  return true;
+}
+
+bool releaseBusTransaction() {
+  if (!busOwnedByCurrentTask()) {
+    return false;
+  }
+
+  taskENTER_CRITICAL();
+  if (s_transactionDepth == 0U) {
+    taskEXIT_CRITICAL();
+    return false;
+  }
+  --s_transactionDepth;
+  const bool fullyReleased = s_transactionDepth == 0U;
+  if (fullyReleased) {
+    s_busOwner = nullptr;
+    s_busLocked = false;
+  }
+  taskEXIT_CRITICAL();
+
+  if (fullyReleased) {
+    xSemaphoreGive(s_busMutex);
+  }
+  return fullyReleased;
+}
+
+class BusGuard {
+ public:
+  BusGuard() : _releaseRequired(false),
+               _locked(acquireBusScoped(_releaseRequired)) {}
+  ~BusGuard() { releaseBusScoped(_releaseRequired); }
+
+  BusGuard(const BusGuard &) = delete;
+  BusGuard &operator=(const BusGuard &) = delete;
+
+  bool locked() const { return _locked; }
+
+ private:
+  bool _releaseRequired;
+  bool _locked;
+};
 }  // namespace
 
 SPISettings::SPISettings()
@@ -81,6 +229,9 @@ bool SPIClass::distinctPins(int8_t sck, int8_t miso, int8_t mosi,
 }
 
 bool SPIClass::begin(int8_t sck, int8_t miso, int8_t mosi, int8_t ss) {
+  BusGuard lock;
+  if (!lock.locked()) return false;
+
   if (sck < 0 && miso < 0 && mosi < 0 && ss < 0) {
     sck = SCK;
     miso = MISO;
@@ -146,6 +297,9 @@ bool SPIClass::begin(int8_t sck, int8_t miso, int8_t mosi, int8_t ss) {
 }
 
 void SPIClass::end() {
+  BusGuard lock;
+  if (!lock.locked()) return;
+
   if (!_begun) {
     return;
   }
@@ -229,7 +383,12 @@ uint8_t SPIClass::clockIdleLevel() const {
 }
 
 void SPIClass::beginTransaction(const SPISettings &settings) {
+  if (!acquireBusTransaction()) {
+    _inTransaction = false;
+    return;
+  }
   if (!_begun && !begin()) {
+    (void)releaseBusTransaction();
     return;
   }
   setBitOrder(settings._bitOrder);
@@ -240,17 +399,24 @@ void SPIClass::beginTransaction(const SPISettings &settings) {
 }
 
 void SPIClass::endTransaction() {
+  if (!busOwnedByCurrentTask()) return;
   if (_begun) {
     digitalWrite(_sck, clockIdleLevel());
   }
-  _inTransaction = false;
+  if (releaseBusTransaction()) {
+    _inTransaction = false;
+  }
 }
 
 void SPIClass::setBitOrder(uint8_t bitOrder) {
+  BusGuard lock;
+  if (!lock.locked()) return;
   _bitOrder = bitOrder == LSBFIRST ? LSBFIRST : MSBFIRST;
 }
 
 void SPIClass::setDataMode(uint8_t dataMode) {
+  BusGuard lock;
+  if (!lock.locked()) return;
   _dataMode = dataMode & 0x03U;
   if (_begun) {
     digitalWrite(_sck, clockIdleLevel());
@@ -258,10 +424,14 @@ void SPIClass::setDataMode(uint8_t dataMode) {
 }
 
 void SPIClass::setFrequency(uint32_t frequency) {
+  BusGuard lock;
+  if (!lock.locked()) return;
   updateTiming(frequency);
 }
 
 uint8_t SPIClass::transfer(uint8_t data) {
+  BusGuard lock;
+  if (!lock.locked()) return 0;
   if (!_begun && !begin()) {
     return 0;
   }
@@ -311,29 +481,33 @@ uint8_t SPIClass::transferByteHot(uint8_t data) const {
 }
 
 uint16_t SPIClass::transfer16(uint16_t data) {
+  BusGuard lock;
+  if (!lock.locked() || (!_begun && !begin())) return 0;
   if (_bitOrder == LSBFIRST) {
-    const uint8_t low = transfer(static_cast<uint8_t>(data));
-    const uint8_t high = transfer(static_cast<uint8_t>(data >> 8));
+    const uint8_t low = transferByteHot(static_cast<uint8_t>(data));
+    const uint8_t high = transferByteHot(static_cast<uint8_t>(data >> 8));
     return static_cast<uint16_t>(low) |
            (static_cast<uint16_t>(high) << 8);
   }
-  const uint8_t high = transfer(static_cast<uint8_t>(data >> 8));
-  const uint8_t low = transfer(static_cast<uint8_t>(data));
+  const uint8_t high = transferByteHot(static_cast<uint8_t>(data >> 8));
+  const uint8_t low = transferByteHot(static_cast<uint8_t>(data));
   return (static_cast<uint16_t>(high) << 8) | low;
 }
 
 uint32_t SPIClass::transfer32(uint32_t data) {
+  BusGuard lock;
+  if (!lock.locked() || (!_begun && !begin())) return 0;
   uint32_t received = 0;
   if (_bitOrder == LSBFIRST) {
     for (uint8_t shift = 0; shift < 32; shift += 8) {
       received |= static_cast<uint32_t>(
-                      transfer(static_cast<uint8_t>(data >> shift)))
+                      transferByteHot(static_cast<uint8_t>(data >> shift)))
                   << shift;
     }
   } else {
     for (int8_t shift = 24; shift >= 0; shift -= 8) {
       received |= static_cast<uint32_t>(
-                      transfer(static_cast<uint8_t>(data >> shift)))
+                      transferByteHot(static_cast<uint8_t>(data >> shift)))
                   << shift;
     }
   }
@@ -347,6 +521,8 @@ void SPIClass::transfer(void *data, uint32_t size) {
 
 void SPIClass::transferBytes(const uint8_t *data, uint8_t *out,
                              uint32_t size) {
+  BusGuard lock;
+  if (!lock.locked()) return;
   if (!_begun && !begin()) return;
   for (uint32_t i = 0; i < size; ++i) {
     const uint8_t received =

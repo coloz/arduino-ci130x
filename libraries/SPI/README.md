@@ -5,7 +5,7 @@ These CI13XX profiles do not expose a general-purpose hardware SPI controller.
 library is therefore an explicit GPIO software SPI master, not a wrapper around
 the on-chip Flash bus.
 
-The default route for all three variants is:
+The generic CI1302/CI1303/CI1306 and CI-D06GT01D route is:
 
 | Signal | Arduino pin | Chip PAD |
 | --- | ---: | --- |
@@ -14,7 +14,17 @@ The default route for all three variants is:
 | MOSI | 4 | PA4 |
 | SS | 3 | PA3 |
 
-These pads share the board's IIS header and are free in the packaged
+easyVoice 1306 dev instead follows its printed S-SPI header labels:
+
+| Signal | Arduino pin | Chip PAD |
+| --- | ---: | --- |
+| SCK | 22 | PD0 |
+| MISO | 7 | PA7 |
+| MOSI | 23 | PD1 |
+| SS / CS0 | 8 | PB0 |
+| CS1 (board alias only) | 2 | PA2 |
+
+The generic-route pads share the board's IIS header and are free in the packaged
 `USE_NULL=1`, `USE_IIS1_OUT_PRE_RSLT_AUDIO=0` profile. They cannot be shared
 with IIS capture/record output if that SDK profile is changed. PA4 is sampled
 as `PG_EN` during reset, so an attached peripheral must not drive PA4 while the
@@ -42,8 +52,13 @@ clock lower than requested and add jitter.
 Buffer transfers stay in the register hot path and cooperatively yield every
 64 bytes by default. Define `SPI_COOPERATIVE_CHUNK_BYTES` to another positive
 value at build time to tune that interval. SD block transfers use this bulk
-path. There is no DMA, hardware chip select, slave mode, or transaction-level
-multi-task arbitration.
+path. A mutex is held from `beginTransaction()` through the matching
+`endTransaction()`, and standalone transfer/configuration calls take the same
+mutex for their duration. Transactions may be nested by their owning task;
+other FreeRTOS tasks wait without interleaving bus data. A nested transaction
+does not restore the outer settings when it ends, so the most recently applied
+settings remain active. SPI calls from an ISR are rejected. There is no DMA,
+hardware chip select, or slave mode.
 
 The packaged CI1302/CI1303/CI1306 routes were audited before this optimization:
 no general-purpose hardware SPI controller has both a safe pin route and a

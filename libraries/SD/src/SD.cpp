@@ -51,6 +51,8 @@
 */
 
 #include "SD.h"
+#include <SPI.h>
+#include "utility/SdLock.h"
 
 namespace SDLib {
 
@@ -339,8 +341,11 @@ namespace SDLib {
 
 
   bool SDClass::begin(uint8_t csPin) {
+    detail::FileSystemLock lock;
+    if (!lock.locked()) return false;
     if (root.isOpen()) {
       root.close();
+      card.end();
     }
 
     /*
@@ -350,25 +355,63 @@ namespace SDLib {
       Return true if initialization succeeds, false otherwise.
 
     */
-    return card.init(SPI_HALF_SPEED, csPin) &&
-           volume.init(card) &&
-           root.openRoot(volume);
+    const bool initialized = card.init(SPI_HALF_SPEED, csPin) &&
+                             volume.init(card) &&
+                             root.openRoot(volume);
+    if (!initialized) {
+      card.end();
+    }
+    return initialized;
   }
 
   bool SDClass::begin(uint32_t clock, uint8_t csPin) {
+    detail::FileSystemLock lock;
+    if (!lock.locked()) return false;
     if (root.isOpen()) {
       root.close();
+      card.end();
     }
 
-    return card.init(SPI_HALF_SPEED, csPin) &&
-           card.setSpiClock(clock) &&
-           volume.init(card) &&
-           root.openRoot(volume);
+    const bool initialized = card.init(SPI_HALF_SPEED, csPin) &&
+                             card.setSpiClock(clock) &&
+                             volume.init(card) &&
+                             root.openRoot(volume);
+    if (!initialized) {
+      card.end();
+    }
+    return initialized;
+  }
+
+  bool SDClass::begin(uint8_t sckPin, uint8_t misoPin, uint8_t mosiPin,
+                      uint8_t csPin) {
+    detail::FileSystemLock lock;
+    if (!lock.locked()) return false;
+    if (root.isOpen()) {
+      root.close();
+      card.end();
+    }
+
+    // Route the SPI bus before Sd2Card starts the protocol. Sd2Card::init()
+    // keeps an already configured bus instead of restoring variant defaults.
+    if (!SPI.begin(sckPin, misoPin, mosiPin, csPin)) {
+      return false;
+    }
+
+    const bool initialized = card.init(SPI_HALF_SPEED, csPin) &&
+                             volume.init(card) &&
+                             root.openRoot(volume);
+    if (!initialized) {
+      card.end();
+    }
+    return initialized;
   }
 
   //call this when a card is removed. It will allow you to insert and initialise a new card.
   void SDClass::end() {
+    detail::FileSystemLock lock;
+    if (!lock.locked()) return;
     root.close();
+    card.end();
   }
 
   // this little helper is used to traverse paths
@@ -432,6 +475,8 @@ namespace SDLib {
 
 
   File SDClass::open(const char *filepath, uint8_t mode) {
+    detail::FileSystemLock lock;
+    if (!lock.locked()) return File();
     /*
 
        Open the supplied file path for reading or writing.
@@ -536,6 +581,8 @@ namespace SDLib {
 
 
   bool SDClass::exists(const char *filepath) {
+    detail::FileSystemLock lock;
+    if (!lock.locked()) return false;
     /*
 
        Returns true if the supplied file path exists.
@@ -557,6 +604,8 @@ namespace SDLib {
 
 
   bool SDClass::mkdir(const char *filepath) {
+    detail::FileSystemLock lock;
+    if (!lock.locked()) return false;
     /*
 
       Makes a single directory or a hierarchy of directories.
@@ -568,6 +617,8 @@ namespace SDLib {
   }
 
   bool SDClass::rmdir(const char *filepath) {
+    detail::FileSystemLock lock;
+    if (!lock.locked()) return false;
     /*
 
       Remove a single directory or a hierarchy of directories.
@@ -579,12 +630,16 @@ namespace SDLib {
   }
 
   bool SDClass::remove(const char *filepath) {
+    detail::FileSystemLock lock;
+    if (!lock.locked()) return false;
     return walkPath(filepath, root, callback_remove);
   }
 
 
   // allows you to recurse into a directory
   File File::openNextFile(uint8_t mode) {
+    detail::FileSystemLock lock;
+    if (!lock.locked() || !_file) return File();
     dir_t p;
 
     //Serial.print("\t\treading dir...");
@@ -629,7 +684,9 @@ namespace SDLib {
   }
 
   void File::rewindDirectory(void) {
-    if (isDirectory()) {
+    detail::FileSystemLock lock;
+    if (!lock.locked()) return;
+    if (_file && _file->isDir()) {
       _file->rewind();
     }
   }

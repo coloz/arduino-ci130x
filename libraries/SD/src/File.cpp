@@ -13,6 +13,7 @@
 */
 
 #include <SD.h>
+#include "utility/SdLock.h"
 
 /* for debugging file open/close leaks
    uint8_t nfilecount=0;
@@ -50,6 +51,8 @@ char *File::name(void) {
 
 // a directory is a special type of file
 bool File::isDirectory(void) {
+  SDLib::detail::FileSystemLock lock;
+  if (!lock.locked()) return false;
   return (_file && _file->isDir());
 }
 
@@ -59,6 +62,11 @@ size_t File::write(uint8_t val) {
 }
 
 size_t File::write(const uint8_t *buf, size_t size) {
+  SDLib::detail::FileSystemLock lock;
+  if (!lock.locked()) {
+    setWriteError();
+    return 0;
+  }
   size_t t;
   if (!_file) {
     setWriteError();
@@ -74,6 +82,8 @@ size_t File::write(const uint8_t *buf, size_t size) {
 }
 
 int File::availableForWrite() {
+  SDLib::detail::FileSystemLock lock;
+  if (!lock.locked()) return 0;
   if (_file) {
     return _file->availableForWrite();
   }
@@ -81,6 +91,8 @@ int File::availableForWrite() {
 }
 
 int File::peek() {
+  SDLib::detail::FileSystemLock lock;
+  if (!lock.locked()) return 0;
   if (! _file) {
     return 0;
   }
@@ -93,6 +105,8 @@ int File::peek() {
 }
 
 int File::read() {
+  SDLib::detail::FileSystemLock lock;
+  if (!lock.locked()) return -1;
   if (_file) {
     return _file->read();
   }
@@ -101,6 +115,8 @@ int File::read() {
 
 // buffered read for more efficient, high speed reading
 int File::read(void *buf, uint16_t nbyte) {
+  SDLib::detail::FileSystemLock lock;
+  if (!lock.locked()) return 0;
   if (_file) {
     return _file->read(buf, nbyte);
   }
@@ -108,22 +124,28 @@ int File::read(void *buf, uint16_t nbyte) {
 }
 
 int File::available() {
+  SDLib::detail::FileSystemLock lock;
+  if (!lock.locked()) return 0;
   if (! _file) {
     return 0;
   }
 
-  uint32_t n = size() - position();
+  uint32_t n = _file->fileSize() - _file->curPosition();
 
   return n > 0X7FFF ? 0X7FFF : n;
 }
 
 void File::flush() {
+  SDLib::detail::FileSystemLock lock;
+  if (!lock.locked()) return;
   if (_file) {
     _file->sync();
   }
 }
 
 bool File::seek(uint32_t pos) {
+  SDLib::detail::FileSystemLock lock;
+  if (!lock.locked()) return false;
   if (! _file) {
     return false;
   }
@@ -132,6 +154,8 @@ bool File::seek(uint32_t pos) {
 }
 
 uint32_t File::position() {
+  SDLib::detail::FileSystemLock lock;
+  if (!lock.locked()) return static_cast<uint32_t>(-1);
   if (! _file) {
     return -1;
   }
@@ -139,6 +163,8 @@ uint32_t File::position() {
 }
 
 uint32_t File::size() {
+  SDLib::detail::FileSystemLock lock;
+  if (!lock.locked()) return 0;
   if (! _file) {
     return 0;
   }
@@ -146,6 +172,8 @@ uint32_t File::size() {
 }
 
 void File::close() {
+  SDLib::detail::FileSystemLock lock;
+  if (!lock.locked()) return;
   if (_file) {
     _file->close();
     free(_file);
@@ -160,6 +188,8 @@ void File::close() {
 }
 
 File::operator bool() {
+  SDLib::detail::FileSystemLock lock;
+  if (!lock.locked()) return false;
   if (_file) {
     return  _file->isOpen();
   }

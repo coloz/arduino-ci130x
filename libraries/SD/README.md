@@ -43,9 +43,22 @@ void setup() {
     file.println("hello CI130X");
     file.close();
   }
+
+  // Close the volume and release the software-SPI resource and all SD pins.
+  SD.end();
 }
 
 void loop() {}
+```
+
+自定义 GPIO software SPI 接线可直接传入四个引脚，参数顺序为
+`SCK, MISO, MOSI, CS`：
+
+```cpp
+if (!SD.begin(PA5, PA2, PA3, PA6)) {
+  Serial.print("SD init failed, code=");
+  Serial.println(SD.cardErrorCode());
+}
 ```
 
 支持 `SD.begin()`、`open()`、`exists()`、`mkdir()`、`remove()`、`rmdir()`，以及
@@ -61,8 +74,11 @@ SPI 整缓冲区热路径，并默认每 64 字节协作式让出一次 CPU，�
 - 默认 PA2/PA3 在 CI1302/CI1303 上也用于 `Wire`/`Serial1`，不能同时使用。
 - 默认四根 SPI 信号位于 IIS 引脚组；若更改原厂 SDK profile 启用相应 IIS
   输入/输出，需要先解决引脚冲突。
-- 文件系统对象和 SPI 总线没有跨 FreeRTOS task 的互斥保护；应由同一个 task
-  使用，或由应用自行加锁。
+- `SD`/`File` 操作使用文件系统互斥锁串行化，SPI transaction 使用独立的总线
+  互斥锁；多个 FreeRTOS task 可以安全调用这些 API，但同一个 `File` 对象仍不应
+  在一个 task 关闭的同时被另一个 task 使用。
+- `SD.end()` 会关闭卷并释放 software SPI、SCK/MISO/MOSI/SS 和自定义 CS；再次
+  使用前必须重新调用 `SD.begin()`。
 
 `CardInfo` 示例可用于区分接线、卡初始化和 FAT 分区问题，其余示例展示常用的
 文件与目录操作。

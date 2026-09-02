@@ -160,6 +160,8 @@ uint8_t const SD_CARD_ERROR_WRITE_PROGRAMMING = 0X14;
 uint8_t const SD_CARD_ERROR_WRITE_TIMEOUT = 0X15;
 /** incorrect rate selected */
 uint8_t const SD_CARD_ERROR_SCK_RATE = 0X16;
+/** SPI bus initialization failed */
+uint8_t const SD_CARD_ERROR_SPI_INIT = 0X17;
 //------------------------------------------------------------------------------
 // card types
 /** Standard capacity V1 SD card */
@@ -176,7 +178,15 @@ uint8_t const SD_CARD_TYPE_SDHC = 3;
 class Sd2Card {
   public:
     /** Construct an instance of Sd2Card. */
-    Sd2Card(void) : errorCode_(0), inBlock_(0), partialBlockRead_(0), type_(0) {}
+    Sd2Card(void)
+        : block_(0),
+          chipSelectPin_(SD_CHIP_SELECT_PIN),
+          errorCode_(0),
+          inBlock_(0),
+          offset_(0),
+          partialBlockRead_(0),
+          status_(0),
+          type_(0) {}
     uint32_t cardSize(void);
     uint8_t erase(uint32_t firstBlock, uint32_t lastBlock);
     uint8_t eraseSingleBlockEnable(void);
@@ -206,6 +216,7 @@ class Sd2Card {
       return init(sckRateID, SD_CHIP_SELECT_PIN);
     }
     uint8_t init(uint8_t sckRateID, uint8_t chipSelectPin);
+    void end();
     void partialBlockRead(uint8_t value);
     /** Returns the current value, true or false, for partial block read. */
     uint8_t partialBlockRead(void) const {

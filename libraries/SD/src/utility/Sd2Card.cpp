@@ -19,6 +19,7 @@
 */
 #define USE_SPI_LIB
 #include <Arduino.h>
+#include <PeripheralManager.h>
 #include "Sd2Card.h"
 //------------------------------------------------------------------------------
 #ifndef SOFTWARE_SPI
@@ -109,6 +110,39 @@ void spiSend(uint8_t data) {
 }
 #endif  // SOFTWARE_SPI
 //------------------------------------------------------------------------------
+// Calculate the command CRC7. SPI mode normally permits a dummy CRC after
+// CMD0, but some cards keep CRC checking enabled and reject CMD55/ACMD41 with
+// R1_COM_CRC_ERROR. Sending a valid CRC for every command is compatible with
+// both behaviours.
+static uint8_t commandCrc7(const uint8_t *data, uint8_t length) {
+  uint8_t crc = 0;
+  while (length--) {
+    uint8_t value = *data++;
+    for (uint8_t bit = 0; bit < 8; ++bit) {
+      crc <<= 1;
+      if ((value & 0X80) ^ (crc & 0X80)) {
+        crc ^= 0X09;
+      }
+      value <<= 1;
+    }
+  }
+  return (uint8_t)((crc << 1) | 1);
+}
+//------------------------------------------------------------------------------
+// SD data blocks use CRC16-CCITT (polynomial 0x1021, initial value zero).
+// Supplying the real CRC also supports cards that keep SPI CRC checking on.
+static uint16_t dataCrc16(const uint8_t *data, uint16_t length) {
+  uint16_t crc = 0;
+  while (length--) {
+    crc ^= (uint16_t)(*data++) << 8;
+    for (uint8_t bit = 0; bit < 8; ++bit) {
+      crc = (crc & 0X8000) ? (uint16_t)((crc << 1) ^ 0X1021)
+                           : (uint16_t)(crc << 1);
+    }
+  }
+  return crc;
+}
+//------------------------------------------------------------------------------
 // send command and return error code.  Return zero for OK
 uint8_t Sd2Card::cardCommand(uint8_t cmd, uint32_t arg) {
   // end read if in partialBlockRead mode
@@ -120,23 +154,16 @@ uint8_t Sd2Card::cardCommand(uint8_t cmd, uint32_t arg) {
   // wait up to 300 ms if busy
   waitNotBusy(300);
 
-  // send command
-  spiSend(cmd | 0x40);
-
-  // send argument
-  for (int8_t s = 24; s >= 0; s -= 8) {
-    spiSend(arg >> s);
+  uint8_t frame[5];
+  frame[0] = (uint8_t)(cmd | 0X40);
+  frame[1] = (uint8_t)(arg >> 24);
+  frame[2] = (uint8_t)(arg >> 16);
+  frame[3] = (uint8_t)(arg >> 8);
+  frame[4] = (uint8_t)arg;
+  for (uint8_t i = 0; i < sizeof(frame); ++i) {
+    spiSend(frame[i]);
   }
-
-  // send CRC
-  uint8_t crc = 0XFF;
-  if (cmd == CMD0) {
-    crc = 0X95;  // correct crc for CMD0 with arg 0
-  }
-  if (cmd == CMD8) {
-    crc = 0X87;  // correct crc for CMD8 with arg 0X1AA
-  }
-  spiSend(crc);
+  spiSend(commandCrc7(frame, sizeof(frame)));
 
   // wait for response
   for (uint8_t i = 0; ((status_ = spiRec()) & 0X80) && i != 0XFF; i++)
@@ -175,20 +202,34 @@ uint32_t Sd2Card::cardSize(void) {
 static uint8_t chip_select_asserted = 0;
 
 void Sd2Card::chipSelectHigh(void) {
+  #ifdef USE_SPI_LIB
+  // Always enter the bus lock before inspecting the shared select state. This
+  // also serializes direct Sd2Card users that bypass the higher-level SD API.
+  SDCARD_SPI.beginTransaction(settings);
+  #endif
   digitalWrite(chipSelectPin_, HIGH);
   #ifdef USE_SPI_LIB
   if (chip_select_asserted) {
     chip_select_asserted = 0;
     SDCARD_SPI.endTransaction();
   }
+  // Release the temporary lock acquired at the start of this function. When
+  // the card was selected, the endTransaction above released the persistent
+  // lock paired with chipSelectLow().
+  SDCARD_SPI.endTransaction();
   #endif
 }
 //------------------------------------------------------------------------------
 void Sd2Card::chipSelectLow(void) {
   #ifdef USE_SPI_LIB
+  SDCARD_SPI.beginTransaction(settings);
   if (!chip_select_asserted) {
     chip_select_asserted = 1;
-    SDCARD_SPI.beginTransaction(settings);
+  } else {
+    // A repeated select by the owning task does not add another persistent
+    // transaction level. A competing task could only reach here after the
+    // previous owner released the bus and cleared chip_select_asserted.
+    SDCARD_SPI.endTransaction();
   }
   #endif
   digitalWrite(chipSelectPin_, LOW);
@@ -280,7 +321,12 @@ uint8_t Sd2Card::init(uint8_t sckRateID, uint8_t chipSelectPin) {
   // clear double speed
   SPSR &= ~(1 << SPI2X);
   #else // USE_SPI_LIB
-  SDCARD_SPI.begin();
+  // Keep a route explicitly selected by SPI.begin(sck, miso, mosi, ss).
+  // Starting the bus again here would silently restore variant defaults.
+  if (SDCARD_SPI.pinSCK() < 0 && !SDCARD_SPI.begin()) {
+    error(SD_CARD_ERROR_SPI_INIT);
+    return false;
+  }
   settings = SPISettings(250000, MSBFIRST, SPI_MODE0);
   #endif // USE_SPI_LIB
   #endif // SOFTWARE_SPI
@@ -356,6 +402,26 @@ uint8_t Sd2Card::init(uint8_t sckRateID, uint8_t chipSelectPin) {
 fail:
   chipSelectHigh();
   return false;
+}
+//------------------------------------------------------------------------------
+/** Close any active transfer and release the software SPI bus and pins. */
+void Sd2Card::end(void) {
+#ifdef USE_SPI_LIB
+  // beginTransaction() auto-starts an idle SPI object. Avoid doing that while
+  // cleaning up an SPI.begin() failure.
+  if (SDCARD_SPI.pinSCK() >= 0) {
+    readEnd();
+    chipSelectHigh();
+    SDCARD_SPI.end();
+  }
+#else
+  readEnd();
+  chipSelectHigh();
+#endif
+  pinMode(chipSelectPin_, INPUT);
+  PeripheralManager.releasePin(PeripheralOwner::GPIO, chipSelectPin_);
+  block_ = offset_ = status_ = 0;
+  errorCode_ = inBlock_ = partialBlockRead_ = type_ = 0;
 }
 //------------------------------------------------------------------------------
 /**
@@ -680,6 +746,7 @@ uint8_t Sd2Card::writeData(const uint8_t* src) {
 //------------------------------------------------------------------------------
 // send one block of data for write block or write multiple blocks
 uint8_t Sd2Card::writeData(uint8_t token, const uint8_t* src) {
+  const uint16_t crc = dataCrc16(src, 512);
   #ifdef OPTIMIZE_HARDWARE_SPI
 
   // send data - optimized loop
@@ -709,8 +776,8 @@ uint8_t Sd2Card::writeData(uint8_t token, const uint8_t* src) {
   }
 #endif
   #endif  // OPTIMIZE_HARDWARE_SPI
-  spiSend(0xff);  // dummy crc
-  spiSend(0xff);  // dummy crc
+  spiSend((uint8_t)(crc >> 8));
+  spiSend((uint8_t)crc);
 
   status_ = spiRec();
   if ((status_ & DATA_RES_MASK) != DATA_RES_ACCEPTED) {

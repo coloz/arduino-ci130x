@@ -39,13 +39,15 @@ public:
   // profiles expose no second user SPI bus; every instance is a GPIO master.
   explicit SPIClass(uint8_t bus = 0);
 
-  // With no arguments, uses SCK=PA5(5), MISO=PA2(2), MOSI=PA4(4), SS=PA3(3).
-  // Supplying any argument selects a custom route; pass -1 for an unused
-  // MISO, MOSI, or SS signal. SS is configured but remains user-controlled.
+  // With no arguments, uses the selected variant's SCK/MISO/MOSI/SS aliases.
+  // Supplying any argument selects a custom route; pass -1 for an unused MISO,
+  // MOSI, or SS signal. SS is configured but remains user-controlled.
   bool begin(int8_t sck = -1, int8_t miso = -1, int8_t mosi = -1,
              int8_t ss = -1);
   void end();
 
+  // Transactions own the software-SPI mutex until endTransaction(). Nested
+  // transactions are supported for the owning FreeRTOS task.
   void beginTransaction(const SPISettings &settings);
   void endTransaction();
 

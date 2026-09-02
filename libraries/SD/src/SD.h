@@ -70,8 +70,14 @@ namespace SDLib {
       // before other methods are used.
       bool begin(uint8_t csPin = SD_CHIP_SELECT_PIN);
       bool begin(uint32_t clock, uint8_t csPin);
+      bool begin(uint8_t sckPin, uint8_t misoPin, uint8_t mosiPin,
+                 uint8_t csPin);
 
-      //call this when a card is removed. It will allow you to insert and initialise a new card.
+      uint8_t cardErrorCode() const { return card.errorCode(); }
+      uint8_t cardErrorData() const { return card.errorData(); }
+
+      // Close the volume and release the SPI bus and SD pins. Call begin()
+      // again before accessing an inserted or replaced card.
       void end();
 
       // Open the specified file/directory with the supplied mode (e.g. read or
