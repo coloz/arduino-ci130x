@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Arduino.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -7,12 +8,27 @@ class ChipIntelliIRFactory;
 
 class ChipIntelliIRClass {
 public:
+#if defined(CHIPINTELLI_IR_VARIANT_DEFAULTS)
+  static constexpr uint8_t DefaultTransmitPin = PIN_IR_TX;
+  static constexpr uint8_t DefaultReceivePin = PIN_IR_RX;
+  static constexpr uint8_t DefaultTimer = PIN_IR_TIMER;
+#else
+  // Compatibility fallback for CI13XX core releases predating the variant
+  // IR constants. Current bundled variants always use the branch above.
   static constexpr uint8_t DefaultTransmitPin = 2;
   static constexpr uint8_t DefaultReceivePin = 4;
   static constexpr uint8_t DefaultTimer = 2;
+#endif
   static constexpr uint16_t DefaultDatabaseResourceId = 50000;
   static constexpr uint32_t OfficialDatabaseSize = 70716;
+  static constexpr uint32_t OfficialDatabaseCrc32 = 0x07BCB65F;
+  static constexpr uint32_t DefaultOperationTimeoutMs = 30000;
   static constexpr size_t MaxRawEntries = 1024;
+  // The official driver stores durations as uint16_t values in 2 us units.
+  static constexpr uint32_t MaxRawDurationUs =
+      static_cast<uint32_t>(UINT16_MAX) * 2U;
+  static constexpr uint8_t DefaultNECTolerancePercent = 25;
+  static constexpr uint8_t MaximumNECTolerancePercent = 40;
 
   enum class Mode : uint8_t {
     None = 0,
@@ -39,6 +55,9 @@ public:
     AllocationFailed,
     MutexTimeout,
     AirCodeNotSelected,
+    // Keep new values appended so existing numeric error codes remain stable.
+    DatabaseCorrupt,
+    OperationTimeout,
   };
 
   enum class ReceiveStatus : uint8_t {
@@ -47,6 +66,22 @@ public:
     Ready,
     Timeout,
     Error,
+  };
+
+  enum class NECFrameType : uint8_t {
+    Unknown = 0,
+    Standard,
+    Extended,
+    Repeat,
+  };
+
+  struct NECDecodeResult {
+    NECFrameType type = NECFrameType::Unknown;
+    uint16_t address = 0;
+    uint8_t command = 0;
+    // Number of validated repeat frames following a full frame. A standalone
+    // repeat frame reports 1 and has no address or command of its own.
+    uint8_t repeatCount = 0;
   };
 
   // Values deliberately match the official SDK eAirBrand enumeration.
@@ -166,6 +201,18 @@ public:
     Stopped,
   };
 
+  // sendAir() is asynchronous. Queued covers the interval before the vendor
+  // worker starts the carrier, while Settling covers a possible second frame
+  // emitted by a few database entries. Failed reports an asynchronous driver
+  // rejection or a queued operation that never reached the driver.
+  enum class AirSendStatus : uint8_t {
+    Idle = 0,
+    Queued,
+    Sending,
+    Settling,
+    Failed,
+  };
+
   using AirSearchCallback = void (*)(AirSearchEvent event, int32_t codeId,
                                      void *context);
 
@@ -186,20 +233,43 @@ public:
       uint16_t resourceId = DefaultDatabaseResourceId);
 
   // Raw durations alternate mark/space and always begin with a mark. The
-  // official driver currently uses a fixed 38 kHz carrier.
+  // official driver currently uses a fixed 38 kHz carrier. Use the uint32_t
+  // overload when a space can exceed 65535 us; each duration must be between
+  // 200 us and MaxRawDurationUs inclusive.
   bool sendRaw(const uint16_t *durationsUs, size_t count);
+  bool sendRaw(const uint32_t *durationsUs, size_t count);
   bool sendNEC(uint8_t address, uint8_t command, uint8_t repeats = 0);
   bool sendExtendedNEC(uint16_t address, uint8_t command,
                        uint8_t repeats = 0);
   bool startReceive(uint32_t timeoutMs = 5000);
   bool stopReceive();
   ReceiveStatus receiveStatus();
+  // The legacy uint16_t overload leaves the capture available and reports
+  // InvalidArgument if any duration is longer than UINT16_MAX microseconds.
   bool readRaw(uint16_t *durationsUs, size_t capacity, size_t &count);
+  bool readRaw(uint32_t *durationsUs, size_t capacity, size_t &count);
+
+  // Decode a full NEC frame, an extended-address NEC frame, or a standalone
+  // repeat frame. Full frames may include the following repeat frames and an
+  // optional trailing idle gap. Command inverse bytes are always validated.
+  // tolerancePercent is inclusive and must not exceed
+  // MaximumNECTolerancePercent. The operation is stateless and allocation-free.
+  static bool decodeNEC(
+      const uint16_t *durationsUs, size_t count, NECDecodeResult &result,
+      uint8_t tolerancePercent = DefaultNECTolerancePercent);
+  static bool decodeNEC(
+      const uint32_t *durationsUs, size_t count, NECDecodeResult &result,
+      uint8_t tolerancePercent = DefaultNECTolerancePercent);
   bool isBusy() const;
+  // Tracks an accepted air command across the vendor queue and driver events,
+  // then waits through the official dual-frame settling window. Returns false
+  // with OperationTimeout or DriverFailure on asynchronous error.
+  bool waitUntilIdle(uint32_t timeoutMs = DefaultOperationTimeoutMs);
 
   bool selectAirBrand(AirBrand brand);
   bool selectAirCode(uint32_t codeId);
   uint32_t airCode() const;
+  AirSendStatus airSendStatus() const;
   bool sendAir(AirCommand command);
   bool setTemperature(uint8_t celsius);
   bool power(bool on);

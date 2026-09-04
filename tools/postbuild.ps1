@@ -73,6 +73,88 @@ function Get-ArduinoAssetRoot {
     return $sourceDirectory
 }
 
+function Find-UserFileOverlay {
+    param(
+        [Parameter(Mandatory = $true)][string]$EntriesDirectory,
+        [Parameter(Mandatory = $true)][uint16]$EntryId
+    )
+
+    if (-not (Test-Path -LiteralPath $EntriesDirectory -PathType Container)) {
+        return $null
+    }
+
+    foreach ($file in @(Get-ChildItem -LiteralPath $EntriesDirectory -File)) {
+        if ($file.Name -notmatch '^\[(?<id>[0-9]+)\].*\.bin$') {
+            continue
+        }
+
+        [System.Numerics.BigInteger]$parsedId = 0
+        if ([System.Numerics.BigInteger]::TryParse(
+                $Matches.id, [ref]$parsedId) -and
+            $parsedId -eq $EntryId) {
+            return $file
+        }
+    }
+    return $null
+}
+
+function Test-UserFileContainsEntry {
+    param(
+        [Parameter(Mandatory = $true)][string]$UserFile,
+        [Parameter(Mandatory = $true)][uint16]$EntryId
+    )
+
+    $buffer = [IO.File]::ReadAllBytes($UserFile)
+    $headerSize = 2
+    $entrySize = 10
+    if ($buffer.Length -lt $headerSize) {
+        return $false
+    }
+
+    $count = [BitConverter]::ToUInt16($buffer, 0)
+    $tableEnd = [long]$headerSize + ([long]$count * $entrySize)
+    if ($tableEnd -gt $buffer.LongLength) {
+        return $false
+    }
+
+    for ($index = 0; $index -lt $count; $index++) {
+        $entryOffset = $headerSize + ($index * $entrySize)
+        if ([BitConverter]::ToUInt16($buffer, $entryOffset) -eq $EntryId) {
+            return $true
+        }
+    }
+    return $false
+}
+
+function Assert-Ci1302IrDatabaseLayout {
+    param(
+        [Parameter(Mandatory = $true)][string]$SelectedChip,
+        [Parameter(Mandatory = $true)][string]$BaseUserFile,
+        [Parameter(Mandatory = $true)][string]$EntriesDirectory
+    )
+
+    if ($SelectedChip -ne 'ci1302') {
+        return
+    }
+
+    $irDatabaseId = [uint16]50000
+    $overlay = Find-UserFileOverlay `
+        -EntriesDirectory $EntriesDirectory `
+        -EntryId $irDatabaseId
+    if ($null -eq $overlay -and
+        -not (Test-UserFileContainsEntry `
+            -UserFile $BaseUserFile `
+            -EntryId $irDatabaseId)) {
+        return
+    }
+
+    throw ('CI1302 cannot package the reserved [50000] ChipIntelliIR ' +
+        'V2.7.14 air-conditioner database because the standard CI1302 ' +
+        'resource layout cannot accommodate it. Use CI1303 or CI1306 ' +
+        'for air-conditioner database mode. CI1302 raw/NEC infrared ' +
+        'mode remains available when user-file ID 50000 is absent.')
+}
+
 if ($env:OS -ne 'Windows_NT') {
     throw 'CI13XX post-build packaging is currently supported on Windows only.'
 }
@@ -129,6 +211,16 @@ foreach ($resource in $resourceFiles.GetEnumerator()) {
         throw "Missing project $Algorithm profile $($resource.Key) resource: $($resource.Value)"
     }
 }
+
+$userFileEntries = Join-Path $projectResourcesRoot 'user_file_entries'
+if ((Test-Path -LiteralPath $userFileEntries) -and
+    -not (Test-Path -LiteralPath $userFileEntries -PathType Container)) {
+    throw "Project user_file_entries path is not a directory: $userFileEntries"
+}
+Assert-Ci1302IrDatabaseLayout `
+    -SelectedChip $Chip `
+    -BaseUserFile $resourceFiles.UserFile `
+    -EntriesDirectory $userFileEntries
 
 $outputFullPath = [System.IO.Path]::GetFullPath($Output)
 $firmwareOutputFullPath = [System.IO.Path]::GetFullPath($FirmwareOutput)
@@ -198,17 +290,17 @@ if ($needsGeneratedResources) {
             throw "citool-cli generate did not create the expected $($resource.Key) resource: $($resource.Value)"
         }
     }
+    Assert-Ci1302IrDatabaseLayout `
+        -SelectedChip $Chip `
+        -BaseUserFile $resourceFiles.UserFile `
+        -EntriesDirectory $userFileEntries
 }
 else {
     Write-Host 'CI13XX generated resources are not required; using the sketch resource set.'
 }
 
 $effectiveUserFile = $resourceFiles.UserFile
-$userFileEntries = Join-Path $projectResourcesRoot 'user_file_entries'
 if (Test-Path -LiteralPath $userFileEntries) {
-    if (-not (Test-Path -LiteralPath $userFileEntries -PathType Container)) {
-        throw "Project user_file_entries path is not a directory: $userFileEntries"
-    }
     $effectiveUserFile = Join-Path $stagingRoot 'user_file.bin'
     & $mergeUserFileEntries `
         -BaseUserFile $resourceFiles.UserFile `

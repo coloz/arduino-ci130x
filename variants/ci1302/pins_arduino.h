@@ -62,6 +62,13 @@ static constexpr uint8_t RX1 = PA3; // UART1 RX
 static constexpr uint8_t TX2 = PA5; // UART2 TX
 static constexpr uint8_t RX2 = PA6; // UART2 RX
 
+// Default route used by ChipIntelliIR. TIMER3 is reserved by the SDK BLE
+// stack, so the library uses TIMER2.
+#define CHIPINTELLI_IR_VARIANT_DEFAULTS 1
+static constexpr uint8_t PIN_IR_TX = PA2; // PWM0
+static constexpr uint8_t PIN_IR_RX = PA4; // GPIO interrupt
+static constexpr uint8_t PIN_IR_TIMER = 2;
+
 static constexpr uint8_t LED_BUILTIN = 255;
 
 #endif

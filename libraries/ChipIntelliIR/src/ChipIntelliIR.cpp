@@ -8,6 +8,8 @@
 extern "C" {
 #include "FreeRTOS.h"
 #include "ci_flash_data_info.h"
+#include "crc.h"
+#include "flash_manage_outside_port.h"
 #include "ir_data.h"
 #include "ir_remote_driver.h"
 #include "semphr.h"
@@ -18,8 +20,23 @@ namespace {
 constexpr uint32_t kSdkReadyTimeoutMs = 10000;
 constexpr uint32_t kMutexTimeoutMs = 1000;
 constexpr uint32_t kMaximumReceiveTimeoutMs = 60000;
+constexpr uint32_t kAirQueueStartTimeoutMs = 10000;
+// The official V2.7.14 encoder has database entries that emit two frames with
+// vTaskDelay(300) between them. At the configured 500 Hz tick rate that is
+// 600 ms, so keep the operation pending until a full second has been quiet.
+constexpr uint32_t kAirMultiFrameSettleMs = 1000;
+constexpr uint32_t kAirMaximumHardwareTimeMs = 25000;
 constexpr uint16_t kMinimumRawDurationUs = 200;
 constexpr uint16_t kTrailingReceiveGapUnits = 50000;
+constexpr uint32_t kNecHeaderMarkUs = 9000;
+constexpr uint32_t kNecHeaderSpaceUs = 4500;
+constexpr uint32_t kNecRepeatSpaceUs = 2250;
+constexpr uint32_t kNecBitMarkUs = 562;
+constexpr uint32_t kNecZeroSpaceUs = 562;
+constexpr uint32_t kNecOneSpaceUs = 1688;
+constexpr uint32_t kNecFirstRepeatGapUs = 40000;
+constexpr uint32_t kNecFollowingRepeatGapUs = 96188;
+constexpr uint32_t kNecMinimumTrailingGapUs = 5000;
 constexpr uint8_t kMaximumBrand = 35;
 constexpr uint8_t kMaximumNecRepeats =
     static_cast<uint8_t>((ChipIntelliIRClass::MaxRawEntries - 67U) / 4U);
@@ -41,6 +58,15 @@ SearchState s_search = {nullptr, nullptr, nullptr,
                         ChipIntelliIRClass::AirSearchType::AllBrands, false,
                         false};
 ir_search_ctl s_searchControl = {};
+
+struct AirSendTracker {
+  ChipIntelliIRClass *owner;
+  volatile ChipIntelliIRClass::AirSendStatus status;
+  volatile uint32_t changedAtMs;
+};
+
+AirSendTracker s_airSend = {nullptr,
+                            ChipIntelliIRClass::AirSendStatus::Idle, 0};
 
 class SemaphoreGuard {
 public:
@@ -175,6 +201,163 @@ bool searchActiveFor(const ChipIntelliIRClass *owner) {
   return active;
 }
 
+bool isValidAirCommand(ChipIntelliIRClass::AirCommand command) {
+  const uint16_t value = static_cast<uint16_t>(command);
+  return (value >= 5U && value <= 32U) ||
+         (value >= 68U && value <= 75U) || value == 102U ||
+         value == 103U || (value >= 200U && value <= 206U) ||
+         value == 208U || (value >= 210U && value <= 223U);
+}
+
+bool decodeAirCode(uint32_t encoded, uint32_t &decoded) {
+  constexpr uint32_t kAirCodeMask = 0x00A5A5A5U;
+  const uint32_t packed = encoded ^ kAirCodeMask;
+  if ((packed & 0xFF000000U) != 0U) {
+    return false;
+  }
+
+  const uint32_t tripled = packed >> 8U;
+  const uint8_t checksum = static_cast<uint8_t>(packed);
+  if (static_cast<uint8_t>(tripled + (tripled >> 8U)) != checksum ||
+      (tripled % 3U) != 0U) {
+    return false;
+  }
+
+  decoded = tripled / 3U;
+  // For a model code V2.7.14 stores the database index in bits 15:3 and a
+  // candidate number in bits 2:0. Its search callback encodes that complete
+  // value, not the bare database index. find_valid_air_code_id() scans the
+  // database range [1000, 2199). Brand selectors instead encode the direct
+  // pseudo-index [3000, 3035].
+  const uint32_t databaseIndex = decoded >> 3U;
+  return (databaseIndex >= 1000U && databaseIndex < 2199U) ||
+         (decoded >= 3000U && decoded <= 3035U);
+}
+
+bool verifyOfficialDatabase(uint32_t address, uint32_t size) {
+  if (size != ChipIntelliIRClass::OfficialDatabaseSize ||
+      address > UINT32_MAX - size) {
+    return false;
+  }
+
+  uint8_t *buffer = reinterpret_cast<uint8_t *>(s_rawBuffer);
+  constexpr uint32_t kChunkSize = sizeof(s_rawBuffer);
+  uint32_t computed = 0;
+  uint32_t offset = 0;
+  while (offset < size) {
+    const uint32_t remaining = size - offset;
+    const uint32_t chunk = remaining < kChunkSize ? remaining : kChunkSize;
+    if (post_read_flash(reinterpret_cast<char *>(buffer), address + offset,
+                        chunk) != RETURN_OK) {
+      return false;
+    }
+    computed = crc32(computed, buffer, chunk);
+    offset += chunk;
+  }
+  return computed == ChipIntelliIRClass::OfficialDatabaseCrc32;
+}
+
+void resetAirSendTracker(ChipIntelliIRClass *owner) {
+  taskENTER_CRITICAL();
+  s_airSend.owner = owner;
+  s_airSend.changedAtMs = millis();
+  s_airSend.status = ChipIntelliIRClass::AirSendStatus::Idle;
+  taskEXIT_CRITICAL();
+}
+
+void beginAirSendTracking(ChipIntelliIRClass *owner) {
+  taskENTER_CRITICAL();
+  s_airSend.owner = owner;
+  s_airSend.changedAtMs = millis();
+  s_airSend.status = ChipIntelliIRClass::AirSendStatus::Queued;
+  taskEXIT_CRITICAL();
+}
+
+void cancelAirSendTracking(ChipIntelliIRClass *owner) {
+  taskENTER_CRITICAL();
+  if (s_airSend.owner == owner) {
+    s_airSend.changedAtMs = millis();
+    s_airSend.status = ChipIntelliIRClass::AirSendStatus::Idle;
+  }
+  taskEXIT_CRITICAL();
+}
+
+void airDriverCallback(IrRemoteState *state) {
+  if (state == nullptr || s_airSend.owner == nullptr) {
+    return;
+  }
+
+  const ChipIntelliIRClass::AirSendStatus current = s_airSend.status;
+  if (current == ChipIntelliIRClass::AirSendStatus::Idle ||
+      current == ChipIntelliIRClass::AirSendStatus::Failed) {
+    return;
+  }
+
+  switch (state->event) {
+    case IR_SEND_START:
+      s_airSend.changedAtMs = millis();
+      s_airSend.status = ChipIntelliIRClass::AirSendStatus::Sending;
+      break;
+    case IR_SEND_END:
+      s_airSend.changedAtMs = millis();
+      s_airSend.status = ChipIntelliIRClass::AirSendStatus::Settling;
+      break;
+    case IR_EVENT_ERR:
+    case IR_SEND_DATA_ERR:
+      s_airSend.changedAtMs = millis();
+      s_airSend.status = ChipIntelliIRClass::AirSendStatus::Failed;
+      break;
+    default:
+      break;
+  }
+}
+
+ChipIntelliIRClass::AirSendStatus refreshAirSendStatus(
+    const ChipIntelliIRClass *owner) {
+  taskENTER_CRITICAL();
+  if (s_airSend.owner != owner) {
+    taskEXIT_CRITICAL();
+    return ChipIntelliIRClass::AirSendStatus::Idle;
+  }
+  const ChipIntelliIRClass::AirSendStatus status = s_airSend.status;
+  const uint32_t changedAt = s_airSend.changedAtMs;
+  taskEXIT_CRITICAL();
+
+  const uint32_t elapsed = millis() - changedAt;
+  ChipIntelliIRClass::AirSendStatus next = status;
+  if (status == ChipIntelliIRClass::AirSendStatus::Queued &&
+      elapsed >= kAirQueueStartTimeoutMs) {
+    next = ChipIntelliIRClass::AirSendStatus::Failed;
+  } else if (status == ChipIntelliIRClass::AirSendStatus::Sending &&
+             elapsed >= kAirMaximumHardwareTimeMs) {
+    next = ChipIntelliIRClass::AirSendStatus::Failed;
+  } else if (status == ChipIntelliIRClass::AirSendStatus::Settling &&
+             elapsed >= kAirMultiFrameSettleMs) {
+    next = ChipIntelliIRClass::AirSendStatus::Idle;
+  }
+
+  if (next != status) {
+    taskENTER_CRITICAL();
+    // Do not overwrite a newer ISR event observed after the snapshot.
+    if (s_airSend.owner == owner && s_airSend.status == status &&
+        s_airSend.changedAtMs == changedAt) {
+      s_airSend.status = next;
+    } else {
+      next = s_airSend.status;
+    }
+    taskEXIT_CRITICAL();
+  }
+  return next;
+}
+
+bool airSendActiveFor(const ChipIntelliIRClass *owner) {
+  const ChipIntelliIRClass::AirSendStatus status =
+      refreshAirSendStatus(owner);
+  return status == ChipIntelliIRClass::AirSendStatus::Queued ||
+         status == ChipIntelliIRClass::AirSendStatus::Sending ||
+         status == ChipIntelliIRClass::AirSendStatus::Settling;
+}
+
 int airSearchCallback(eAirSearchCbType callbackType, int airCodeId) {
   ChipIntelliIRClass::AirSearchEvent event =
       ChipIntelliIRClass::AirSearchEvent::CodeSent;
@@ -240,6 +423,151 @@ bool appendNecFrame(uint16_t *buffer, size_t &count, uint8_t byte0,
     buffer[count++] = 1125;
     buffer[count++] = 281;
   }
+  return true;
+}
+
+bool matchesNecDuration(uint32_t actual, uint32_t expected,
+                        uint8_t tolerancePercent) {
+  const uint32_t tolerance =
+      (expected * static_cast<uint32_t>(tolerancePercent) + 99U) / 100U;
+  const uint32_t minimum = expected > tolerance ? expected - tolerance : 0U;
+  return actual >= minimum && actual <= expected + tolerance;
+}
+
+template <typename Duration>
+bool matchesNecRepeat(const Duration *durationsUs, size_t offset,
+                      uint8_t tolerancePercent) {
+  return matchesNecDuration(static_cast<uint32_t>(durationsUs[offset]),
+                            kNecHeaderMarkUs, tolerancePercent) &&
+         matchesNecDuration(static_cast<uint32_t>(durationsUs[offset + 1U]),
+                            kNecRepeatSpaceUs, tolerancePercent) &&
+         matchesNecDuration(static_cast<uint32_t>(durationsUs[offset + 2U]),
+                            kNecBitMarkUs, tolerancePercent);
+}
+
+bool isCapturedNecRepeat() {
+  if (get_receive_level_count() != 4U) {
+    return false;
+  }
+  const uint16_t *driverBuffer = get_ir_level_code_addr();
+  if (driverBuffer == nullptr ||
+      driverBuffer[3] != kTrailingReceiveGapUnits) {
+    return false;
+  }
+  return matchesNecDuration(static_cast<uint32_t>(driverBuffer[0]) * 2U,
+                            kNecHeaderMarkUs,
+                            ChipIntelliIRClass::DefaultNECTolerancePercent) &&
+         matchesNecDuration(static_cast<uint32_t>(driverBuffer[1]) * 2U,
+                            kNecRepeatSpaceUs,
+                            ChipIntelliIRClass::DefaultNECTolerancePercent) &&
+         matchesNecDuration(static_cast<uint32_t>(driverBuffer[2]) * 2U,
+                            kNecBitMarkUs,
+                            ChipIntelliIRClass::DefaultNECTolerancePercent);
+}
+
+template <typename Duration>
+bool decodeNecDurations(const Duration *durationsUs, size_t count,
+                        ChipIntelliIRClass::NECDecodeResult &result,
+                        uint8_t tolerancePercent) {
+  result.type = ChipIntelliIRClass::NECFrameType::Unknown;
+  result.address = 0;
+  result.command = 0;
+  result.repeatCount = 0;
+
+  if (durationsUs == nullptr || count == 0U ||
+      tolerancePercent >
+          ChipIntelliIRClass::MaximumNECTolerancePercent) {
+    return false;
+  }
+
+  // Accept both the canonical three-element repeat and captures/slices that
+  // retained one long idle gap on either side.
+  if (count == 3U &&
+      matchesNecRepeat(durationsUs, 0U, tolerancePercent)) {
+    result.type = ChipIntelliIRClass::NECFrameType::Repeat;
+    result.repeatCount = 1;
+    return true;
+  }
+  if (count == 4U) {
+    const bool trailingGap =
+        static_cast<uint32_t>(durationsUs[3]) >= kNecMinimumTrailingGapUs;
+    const bool leadingGap =
+        static_cast<uint32_t>(durationsUs[0]) >= kNecMinimumTrailingGapUs;
+    if ((trailingGap &&
+         matchesNecRepeat(durationsUs, 0U, tolerancePercent)) ||
+        (leadingGap &&
+         matchesNecRepeat(durationsUs, 1U, tolerancePercent))) {
+      result.type = ChipIntelliIRClass::NECFrameType::Repeat;
+      result.repeatCount = 1;
+      return true;
+    }
+  }
+
+  size_t effectiveCount = count;
+  // readRaw() removes the official driver's 100 ms terminator, but callers
+  // may also pass captures from another source that retain a final idle gap.
+  if (effectiveCount >= 68U && ((effectiveCount - 68U) % 4U) == 0U &&
+      static_cast<uint32_t>(durationsUs[effectiveCount - 1U]) >=
+          kNecMinimumTrailingGapUs) {
+    --effectiveCount;
+  }
+  if (effectiveCount < 67U || ((effectiveCount - 67U) % 4U) != 0U ||
+      !matchesNecDuration(static_cast<uint32_t>(durationsUs[0]),
+                          kNecHeaderMarkUs, tolerancePercent) ||
+      !matchesNecDuration(static_cast<uint32_t>(durationsUs[1]),
+                          kNecHeaderSpaceUs, tolerancePercent)) {
+    return false;
+  }
+
+  uint8_t bytes[4] = {};
+  for (size_t bit = 0; bit < 32U; ++bit) {
+    const size_t markIndex = 2U + bit * 2U;
+    if (!matchesNecDuration(
+            static_cast<uint32_t>(durationsUs[markIndex]), kNecBitMarkUs,
+            tolerancePercent)) {
+      return false;
+    }
+    const uint32_t space =
+        static_cast<uint32_t>(durationsUs[markIndex + 1U]);
+    if (matchesNecDuration(space, kNecZeroSpaceUs, tolerancePercent)) {
+      continue;
+    }
+    if (!matchesNecDuration(space, kNecOneSpaceUs, tolerancePercent)) {
+      return false;
+    }
+    bytes[bit / 8U] |= static_cast<uint8_t>(1U << (bit % 8U));
+  }
+  if (!matchesNecDuration(static_cast<uint32_t>(durationsUs[66]),
+                          kNecBitMarkUs, tolerancePercent) ||
+      bytes[3] != static_cast<uint8_t>(~bytes[2])) {
+    return false;
+  }
+
+  const size_t repeatCount = (effectiveCount - 67U) / 4U;
+  if (repeatCount > UINT8_MAX) {
+    return false;
+  }
+  for (size_t repeat = 0; repeat < repeatCount; ++repeat) {
+    const size_t offset = 67U + repeat * 4U;
+    const uint32_t expectedGap =
+        repeat == 0U ? kNecFirstRepeatGapUs : kNecFollowingRepeatGapUs;
+    if (!matchesNecDuration(static_cast<uint32_t>(durationsUs[offset]),
+                            expectedGap, tolerancePercent) ||
+        !matchesNecRepeat(durationsUs, offset + 1U, tolerancePercent)) {
+      return false;
+    }
+  }
+
+  if (bytes[1] == static_cast<uint8_t>(~bytes[0])) {
+    result.type = ChipIntelliIRClass::NECFrameType::Standard;
+    result.address = bytes[0];
+  } else {
+    result.type = ChipIntelliIRClass::NECFrameType::Extended;
+    result.address = static_cast<uint16_t>(bytes[0]) |
+                     (static_cast<uint16_t>(bytes[1]) << 8U);
+  }
+  result.command = bytes[2];
+  result.repeatCount = static_cast<uint8_t>(repeatCount);
   return true;
 }
 }  // namespace
@@ -447,10 +775,14 @@ bool ChipIntelliIRClass::beginAirConditioner(uint8_t transmitPin,
     setError(Error::DatabaseMissing);
     return false;
   }
-  (void)databaseAddress;
   if (databaseSize != OfficialDatabaseSize) {
     releaseHardwareOwner(this);
-    setError(Error::DatabaseMissing);
+    setError(Error::DatabaseCorrupt);
+    return false;
+  }
+  if (!verifyOfficialDatabase(databaseAddress, databaseSize)) {
+    releaseHardwareOwner(this);
+    setError(Error::DatabaseCorrupt);
     return false;
   }
 
@@ -485,6 +817,8 @@ bool ChipIntelliIRClass::beginAirConditioner(uint8_t transmitPin,
     setError(Error::DriverFailure);
     return false;
   }
+  resetAirSendTracker(this);
+  registe_ir_remote_callback(airDriverCallback);
 
   taskENTER_CRITICAL();
   _mode = Mode::AirConditioner;
@@ -540,6 +874,48 @@ bool ChipIntelliIRClass::sendRaw(const uint16_t *durationsUs, size_t count) {
   set_receive_level_count(0);
   for (size_t index = 0; index < count; ++index) {
     driverBuffer[index] = static_cast<uint16_t>((durationsUs[index] + 1U) / 2U);
+  }
+  if (send_ir_code_start(static_cast<uint32_t>(count)) != RETURN_OK) {
+    setError(Error::DriverFailure);
+    return false;
+  }
+  setError(Error::None);
+  return true;
+}
+
+bool ChipIntelliIRClass::sendRaw(const uint32_t *durationsUs, size_t count) {
+  if (!ensureMutex()) {
+    return false;
+  }
+  SemaphoreGuard guard(_mutex);
+  if (!guard.locked()) {
+    setError(Error::MutexTimeout);
+    return false;
+  }
+  if (!requireMode(Mode::Raw)) {
+    return false;
+  }
+  if (durationsUs == nullptr || count == 0U || count > MaxRawEntries) {
+    setError(Error::InvalidArgument);
+    return false;
+  }
+  for (size_t index = 0; index < count; ++index) {
+    if (durationsUs[index] < kMinimumRawDurationUs ||
+        durationsUs[index] > MaxRawDurationUs) {
+      setError(Error::InvalidArgument);
+      return false;
+    }
+  }
+  uint16_t *driverBuffer = get_ir_driver_buf();
+  if (driverBuffer == nullptr) {
+    setError(Error::Busy);
+    return false;
+  }
+  _receiveStatus = ReceiveStatus::Idle;
+  set_receive_level_count(0);
+  for (size_t index = 0; index < count; ++index) {
+    driverBuffer[index] =
+        static_cast<uint16_t>((durationsUs[index] + 1U) / 2U);
   }
   if (send_ir_code_start(static_cast<uint32_t>(count)) != RETURN_OK) {
     setError(Error::DriverFailure);
@@ -687,6 +1063,11 @@ ChipIntelliIRClass::ReceiveStatus ChipIntelliIRClass::pollReceiveStatus() {
   }
   if (check_ir_receive() == RETURN_OK) {
     _receiveStatus = ReceiveStatus::Ready;
+  } else if (isCapturedNecRepeat()) {
+    // The vendor driver labels every capture shorter than 16 entries as an
+    // error. A standalone NEC repeat is valid but has only three waveform
+    // entries plus the driver's terminating gap, so recover it explicitly.
+    _receiveStatus = ReceiveStatus::Ready;
   } else if (get_receive_level_count() == 0U) {
     _receiveStatus = ReceiveStatus::Timeout;
   } else {
@@ -758,6 +1139,61 @@ bool ChipIntelliIRClass::readRaw(uint16_t *durationsUs, size_t capacity,
   return true;
 }
 
+bool ChipIntelliIRClass::readRaw(uint32_t *durationsUs, size_t capacity,
+                                 size_t &count) {
+  count = 0;
+  if (!ensureMutex()) {
+    return false;
+  }
+  SemaphoreGuard guard(_mutex);
+  if (!guard.locked()) {
+    setError(Error::MutexTimeout);
+    return false;
+  }
+  if (!requireMode(Mode::Raw)) {
+    return false;
+  }
+  if (pollReceiveStatus() != ReceiveStatus::Ready) {
+    setError(Error::NotReady);
+    return false;
+  }
+
+  uint32_t received = get_receive_level_count();
+  uint16_t *driverBuffer = get_ir_level_code_addr();
+  if (driverBuffer == nullptr || received == 0U || received > MaxRawEntries) {
+    _receiveStatus = ReceiveStatus::Error;
+    setError(Error::DriverFailure);
+    return false;
+  }
+  if (driverBuffer[received - 1U] == kTrailingReceiveGapUnits) {
+    --received;
+  }
+  count = static_cast<size_t>(received);
+  if (durationsUs == nullptr || capacity < count) {
+    setError(Error::BufferTooSmall);
+    return false;
+  }
+  for (size_t index = 0; index < count; ++index) {
+    durationsUs[index] = static_cast<uint32_t>(driverBuffer[index]) * 2U;
+  }
+  set_receive_level_count(0);
+  _receiveStatus = ReceiveStatus::Idle;
+  setError(Error::None);
+  return true;
+}
+
+bool ChipIntelliIRClass::decodeNEC(const uint16_t *durationsUs, size_t count,
+                                   NECDecodeResult &result,
+                                   uint8_t tolerancePercent) {
+  return decodeNecDurations(durationsUs, count, result, tolerancePercent);
+}
+
+bool ChipIntelliIRClass::decodeNEC(const uint32_t *durationsUs, size_t count,
+                                   NECDecodeResult &result,
+                                   uint8_t tolerancePercent) {
+  return decodeNecDurations(durationsUs, count, result, tolerancePercent);
+}
+
 bool ChipIntelliIRClass::isBusy() const {
   taskENTER_CRITICAL();
   const bool ready = _ready;
@@ -770,7 +1206,43 @@ bool ChipIntelliIRClass::isBusy() const {
   if (!guard.locked()) {
     return true;
   }
-  return check_ir_busy_state() == RETURN_OK || searchActiveFor(this);
+  return check_ir_busy_state() == RETURN_OK || searchActiveFor(this) ||
+         airSendActiveFor(this);
+}
+
+bool ChipIntelliIRClass::waitUntilIdle(uint32_t timeoutMs) {
+  if (!ensureMutex()) {
+    return false;
+  }
+  {
+    SemaphoreGuard guard(_mutex);
+    if (!guard.locked()) {
+      setError(Error::MutexTimeout);
+      return false;
+    }
+    if (!_ready) {
+      setError(Error::NotReady);
+      return false;
+    }
+  }
+
+  const uint32_t startedAt = millis();
+  while (true) {
+    const AirSendStatus airStatus = airSendStatus();
+    if (airStatus == AirSendStatus::Failed) {
+      setError(Error::DriverFailure);
+      return false;
+    }
+    if (!isBusy()) {
+      setError(Error::None);
+      return true;
+    }
+    if ((millis() - startedAt) >= timeoutMs) {
+      setError(Error::OperationTimeout);
+      return false;
+    }
+    delay(1);
+  }
 }
 
 bool ChipIntelliIRClass::selectAirBrand(AirBrand brand) {
@@ -790,12 +1262,16 @@ bool ChipIntelliIRClass::selectAirBrand(AirBrand brand) {
     setError(Error::InvalidArgument);
     return false;
   }
-  if (searchActiveFor(this) || check_ir_busy_state() == RETURN_OK) {
+  if (searchActiveFor(this) || airSendActiveFor(this) ||
+      check_ir_busy_state() == RETURN_OK) {
     setError(Error::Busy);
     return false;
   }
   const int code = get_airc_brand_id(static_cast<eAirBrand>(value));
-  if (code == RETURN_ERR) {
+  uint32_t decoded = 0;
+  if (code == RETURN_ERR ||
+      !decodeAirCode(static_cast<uint32_t>(code), decoded) ||
+      decoded != 3000U + value) {
     setError(Error::DriverFailure);
     return false;
   }
@@ -820,7 +1296,13 @@ bool ChipIntelliIRClass::selectAirCode(uint32_t codeId) {
   if (!requireMode(Mode::AirConditioner)) {
     return false;
   }
-  if (searchActiveFor(this) || check_ir_busy_state() == RETURN_OK) {
+  uint32_t decoded = 0;
+  if (!decodeAirCode(codeId, decoded)) {
+    setError(Error::InvalidArgument);
+    return false;
+  }
+  if (searchActiveFor(this) || airSendActiveFor(this) ||
+      check_ir_busy_state() == RETURN_OK) {
     setError(Error::Busy);
     return false;
   }
@@ -840,17 +1322,31 @@ uint32_t ChipIntelliIRClass::airCode() const {
   return code;
 }
 
+ChipIntelliIRClass::AirSendStatus ChipIntelliIRClass::airSendStatus() const {
+  taskENTER_CRITICAL();
+  const bool airReady = _ready && _mode == Mode::AirConditioner;
+  taskEXIT_CRITICAL();
+  return airReady ? refreshAirSendStatus(this) : AirSendStatus::Idle;
+}
+
 bool ChipIntelliIRClass::sendAirUnlocked(AirCommand command) {
+  if (!isValidAirCommand(command)) {
+    setError(Error::InvalidArgument);
+    return false;
+  }
   if (!_airCodeSelected) {
     setError(Error::AirCodeNotSelected);
     return false;
   }
-  if (searchActiveFor(this) || check_ir_busy_state() == RETURN_OK) {
+  if (searchActiveFor(this) || airSendActiveFor(this) ||
+      check_ir_busy_state() == RETURN_OK) {
     setError(Error::Busy);
     return false;
   }
+  beginAirSendTracking(this);
   if (ir_data_Air_Send_Ctl(static_cast<int>(_airCode),
                            static_cast<int>(command)) == RETURN_ERR) {
+    cancelAirSendTracking(this);
     setError(Error::DriverFailure);
     return false;
   }
@@ -908,11 +1404,17 @@ bool ChipIntelliIRClass::startAirSearch(AirSearchType type,
     setError(Error::InvalidArgument);
     return false;
   }
+  if (type != AirSearchType::AllBrands &&
+      type != AirSearchType::CurrentBrandModels) {
+    setError(Error::InvalidArgument);
+    return false;
+  }
   if (type == AirSearchType::CurrentBrandModels && !_airCodeSelected) {
     setError(Error::AirCodeNotSelected);
     return false;
   }
-  if (searchActiveFor(this) || check_ir_busy_state() == RETURN_OK) {
+  if (searchActiveFor(this) || airSendActiveFor(this) ||
+      check_ir_busy_state() == RETURN_OK) {
     setError(Error::Busy);
     return false;
   }
@@ -1030,10 +1532,12 @@ const char *ChipIntelliIRClass::errorString(Error error) {
     case Error::SdkStartFailed: return "ChipIntelli SDK startup failed";
     case Error::FlashTimeout: return "timed out waiting for SDK flash resources";
     case Error::DatabaseMissing: return "compatible air-conditioner database is missing";
+    case Error::DatabaseCorrupt: return "air-conditioner database failed integrity validation";
     case Error::AliasBusy: return "user-file compatibility alias is busy";
     case Error::AllocationFailed: return "unable to allocate the infrared mutex";
     case Error::MutexTimeout: return "timed out waiting for the infrared mutex";
     case Error::AirCodeNotSelected: return "select an air-conditioner code first";
+    case Error::OperationTimeout: return "timed out waiting for the infrared operation";
   }
   return "unknown infrared error";
 }

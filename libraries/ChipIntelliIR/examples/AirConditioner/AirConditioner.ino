@@ -1,12 +1,17 @@
 #include <ChipIntelliIR.h>
 
 static void printResult(bool ok) {
-  if (ok) {
-    Serial.println("Command accepted.");
-  } else {
+  if (!ok) {
     Serial.print("IR command failed: ");
     Serial.println(ChipIntelliIR.errorString());
+    return;
   }
+  if (!ChipIntelliIR.waitUntilIdle()) {
+    Serial.print("IR command did not complete: ");
+    Serial.println(ChipIntelliIR.errorString());
+    return;
+  }
+  Serial.println("Command transmitted.");
 }
 
 void setup() {

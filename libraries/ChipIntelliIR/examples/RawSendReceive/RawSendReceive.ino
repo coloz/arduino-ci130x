@@ -1,7 +1,21 @@
 #include <ChipIntelliIR.h>
 
-static uint16_t learned[ChipIntelliIRClass::MaxRawEntries];
+// uint32_t preserves NEC repeat gaps and other intervals above 65,535 us.
+static uint32_t learned[ChipIntelliIRClass::MaxRawEntries];
 static size_t learnedCount = 0;
+
+static const char *frameTypeName(ChipIntelliIRClass::NECFrameType type) {
+  switch (type) {
+    case ChipIntelliIRClass::NECFrameType::Standard:
+      return "standard";
+    case ChipIntelliIRClass::NECFrameType::Extended:
+      return "extended";
+    case ChipIntelliIRClass::NECFrameType::Repeat:
+      return "repeat";
+    default:
+      return "unknown";
+  }
+}
 
 static void startListening() {
   if (!ChipIntelliIR.startReceive(5000)) {
@@ -68,6 +82,20 @@ void loop() {
           Serial.print(learned[index]);
         }
         Serial.println();
+
+        ChipIntelliIRClass::NECDecodeResult decoded;
+        if (ChipIntelliIRClass::decodeNEC(learned, learnedCount, decoded)) {
+          Serial.print("NEC ");
+          Serial.print(frameTypeName(decoded.type));
+          if (decoded.type != ChipIntelliIRClass::NECFrameType::Repeat) {
+            Serial.print(" address=0x");
+            Serial.print(decoded.address, HEX);
+            Serial.print(" command=0x");
+            Serial.print(decoded.command, HEX);
+          }
+          Serial.print(" repeats=");
+          Serial.println(decoded.repeatCount);
+        }
       } else {
         Serial.print("Raw read failed: ");
         Serial.println(ChipIntelliIR.errorString());

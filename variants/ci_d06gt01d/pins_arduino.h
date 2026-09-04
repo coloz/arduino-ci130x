@@ -87,8 +87,10 @@ static constexpr uint8_t PIN_RGB_LED_GREEN = PB1; // PWM2
 static constexpr uint8_t PIN_RGB_LED_BLUE = PA7;  // PWM0
 static constexpr uint8_t PIN_KEY_ADC = A0;
 static constexpr uint8_t PIN_BUZZER = PB4; // PWM5
+#define CHIPINTELLI_IR_VARIANT_DEFAULTS 1
 static constexpr uint8_t PIN_IR_TX = PA2;  // PWM0
 static constexpr uint8_t PIN_IR_RX = PA4;
+static constexpr uint8_t PIN_IR_TIMER = 2; // TIMER3 is reserved by SDK BLE
 static constexpr uint8_t PIN_POWER_AMPLIFIER_ENABLE = PD0;
 static constexpr uint8_t PIN_OLED_RESET = PD3;
 static constexpr uint8_t PIN_OLED_DC = PD4;

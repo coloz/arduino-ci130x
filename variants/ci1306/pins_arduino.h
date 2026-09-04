@@ -79,6 +79,13 @@ static constexpr uint8_t RX1 = PC0; // UART1
 static constexpr uint8_t TX2 = PB1; // UART2
 static constexpr uint8_t RX2 = PB2; // UART2
 
+// Default route used by ChipIntelliIR. TIMER3 is reserved by the SDK BLE
+// stack, so the library uses TIMER2.
+#define CHIPINTELLI_IR_VARIANT_DEFAULTS 1
+static constexpr uint8_t PIN_IR_TX = PA2; // PWM0
+static constexpr uint8_t PIN_IR_RX = PA4; // GPIO interrupt
+static constexpr uint8_t PIN_IR_TIMER = 2;
+
 // CI1306 PDM input shares the IIC0/UART1 pads.
 static constexpr uint8_t PIN_PDM_CLK = PC0;
 static constexpr uint8_t PIN_PDM_DATA = PB7;

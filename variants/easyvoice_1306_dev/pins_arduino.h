@@ -90,6 +90,14 @@ static constexpr uint8_t PIN_USB_UART_RX = PB6;
 static constexpr uint8_t PIN_SPI_CS0 = SS;
 static constexpr uint8_t PIN_SPI_CS1 = SS1;
 
+// PA4, the vendor IR receive default, is not routed to this board's header.
+// PA3 is exposed, supports GPIO interrupts, and is the nearest usable route;
+// it shares the header pad with IIS0 LRCLK. TX remains on PWM0/PA2.
+#define CHIPINTELLI_IR_VARIANT_DEFAULTS 1
+static constexpr uint8_t PIN_IR_TX = PA2;
+static constexpr uint8_t PIN_IR_RX = PA3;
+static constexpr uint8_t PIN_IR_TIMER = 2; // TIMER3 is reserved by SDK BLE
+
 // PC3/PC2 are the adjacent PDM DATA/CLK route on the header. PC1 is the
 // alternate PDM DATA pad shown by the pin map.
 static constexpr uint8_t PIN_PDM_DATA = PC3;

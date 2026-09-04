@@ -14,6 +14,10 @@ import shutil
 import tempfile
 from pathlib import Path
 
+IR_DATABASE_USER_FILE_ID = 50000
+USER_FILE_HEADER_SIZE = 2
+USER_FILE_ENTRY_SIZE = 10
+
 
 def run_command(args, description="Command"):
     """Run a command and check for errors."""
@@ -52,6 +56,67 @@ def arduino_asset_root(source_path):
             and temporary_directory.name.lower() == '.temp'):
         return temporary_directory.parent
     return source_directory
+
+
+def find_user_file_overlay(entries_directory, entry_id):
+    """Return an overlay whose bracketed decimal ID equals entry_id."""
+    if not entries_directory.is_dir():
+        return None
+    entry_pattern = re.compile(
+        r'^\[(?P<id>[0-9]+)\].*\.bin$',
+        re.IGNORECASE,
+    )
+    for path in entries_directory.iterdir():
+        if not path.is_file():
+            continue
+        match = entry_pattern.match(path.name)
+        if match and int(match.group('id'), 10) == entry_id:
+            return path
+    return None
+
+
+def user_file_contains_entry(user_file_path, entry_id):
+    """Inspect a valid-looking CI13XX user-file table for a numeric ID."""
+    buffer = user_file_path.read_bytes()
+    if len(buffer) < USER_FILE_HEADER_SIZE:
+        return False
+
+    count = struct.unpack_from('<H', buffer, 0)[0]
+    table_end = USER_FILE_HEADER_SIZE + count * USER_FILE_ENTRY_SIZE
+    if table_end > len(buffer):
+        return False
+
+    for index in range(count):
+        entry_offset = USER_FILE_HEADER_SIZE + index * USER_FILE_ENTRY_SIZE
+        current_id = struct.unpack_from('<H', buffer, entry_offset)[0]
+        if current_id == entry_id:
+            return True
+    return False
+
+
+def reject_ci1302_ir_database(chip, base_user_file, entries_directory):
+    """Reject the vendor IR database before CI1302 firmware composition."""
+    if chip != 'ci1302':
+        return
+
+    overlay = find_user_file_overlay(
+        entries_directory,
+        IR_DATABASE_USER_FILE_ID,
+    )
+    if (overlay is None
+            and not user_file_contains_entry(
+                base_user_file,
+                IR_DATABASE_USER_FILE_ID,
+            )):
+        return
+
+    raise ValueError(
+        "CI1302 cannot package the reserved [50000] ChipIntelliIR "
+        "V2.7.14 air-conditioner database because the standard CI1302 "
+        "resource layout cannot accommodate it. Use CI1303 or CI1306 "
+        "for air-conditioner database mode. CI1302 raw/NEC infrared "
+        "mode remains available when user-file ID 50000 is absent."
+    )
 
 
 def variable_number_playback_is_linked(elf_path, objcopy_path):
@@ -197,6 +262,16 @@ def main():
         if not path.is_file():
             raise ValueError(f"Missing project {args.algorithm} profile {name} resource: {path}")
 
+    user_file_entries = project_resources_root / 'user_file_entries'
+    if user_file_entries.exists() and not user_file_entries.is_dir():
+        raise ValueError(f"Project user_file_entries path is not a directory: {user_file_entries}")
+
+    reject_ci1302_ir_database(
+        args.chip,
+        resource_files['UserFile'],
+        user_file_entries,
+    )
+
     output_full_path = Path(args.output).resolve()
 
     if str(output_full_path).lower() == str(firmware_output_path).lower():
@@ -260,16 +335,18 @@ def main():
                     f"citool-cli generate did not create the expected {name} "
                     f"resource: {resource_path}"
                 )
+        reject_ci1302_ir_database(
+            args.chip,
+            resource_files['UserFile'],
+            user_file_entries,
+        )
     else:
         print('CI13XX generated resources are not required; using the sketch resource set.')
 
     # Handle user_file_entries
     effective_user_file = resource_files['UserFile']
-    user_file_entries = project_resources_root / 'user_file_entries'
 
     if user_file_entries.exists():
-        if not user_file_entries.is_dir():
-            raise ValueError(f"Project user_file_entries path is not a directory: {user_file_entries}")
         effective_user_file = staging_root / 'user_file.bin'
         run_command([
             sys.executable, str(merge_user_file_entries),

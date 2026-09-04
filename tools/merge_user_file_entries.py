@@ -5,6 +5,7 @@ Port of merge_user_file_entries.ps1
 """
 
 import argparse
+import hashlib
 import os
 import re
 import struct
@@ -14,10 +15,32 @@ from pathlib import Path
 HEADER_SIZE = 2
 ENTRY_SIZE = 10
 ALIGNMENT = 16
+ARDUINO_IR_DATABASE_ID = 50000
+ARDUINO_IR_DATABASE_SIZE = 70716
+ARDUINO_IR_DATABASE_SHA256 = (
+    'f7e3680b45f9abe56c6d3e16d1bbffd7336e286d0b0dabed20e1d2b4854b97d0'
+)
 
 
 def get_aligned_offset(value: int) -> int:
     return ((value + ALIGNMENT - 1) // ALIGNMENT) * ALIGNMENT
+
+
+def validate_reserved_entry(entry_id: int, data: bytes, source: str) -> None:
+    """Reject corrupt/incompatible payloads for Arduino-reserved file IDs."""
+    if entry_id != ARDUINO_IR_DATABASE_ID:
+        return
+
+    digest = hashlib.sha256(data).hexdigest()
+    if (len(data) != ARDUINO_IR_DATABASE_SIZE
+            or digest != ARDUINO_IR_DATABASE_SHA256):
+        raise ValueError(
+            f"User-file ID {ARDUINO_IR_DATABASE_ID} is reserved for the "
+            "ChipIntelliIR V2.7.14 air-conditioner database; "
+            f"'{source}' has size {len(data)} and SHA-256 {digest}, expected "
+            f"size {ARDUINO_IR_DATABASE_SIZE} and SHA-256 "
+            f"{ARDUINO_IR_DATABASE_SHA256}."
+        )
 
 
 def get_user_file_entries(buffer: bytes) -> list:
@@ -47,6 +70,7 @@ def get_user_file_entries(buffer: bytes) -> list:
             raise ValueError(f"Base user_file.bin entry {entry_id} points outside the container.")
 
         data = buffer[data_offset:data_offset + data_size] if data_size > 0 else b''
+        validate_reserved_entry(entry_id, data, 'base user_file.bin')
         entries.append({
             'id': entry_id,
             'data': data,
@@ -103,6 +127,7 @@ def main():
         data = file.read_bytes()
         if len(data) == 0:
             raise ValueError(f"User-file overlay entry is empty: {file.name}")
+        validate_reserved_entry(parsed_id, data, str(file))
 
         overlays.append({
             'id': parsed_id,

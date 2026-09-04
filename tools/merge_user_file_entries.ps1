@@ -16,11 +16,37 @@ Set-StrictMode -Version Latest
 $headerSize = 2
 $entrySize = 10
 $alignment = 16
+$arduinoIrDatabaseId = 50000
+$arduinoIrDatabaseSize = 70716
+$arduinoIrDatabaseSha256 = 'F7E3680B45F9ABE56C6D3E16D1BBFFD7336E286D0B0DABED20E1D2B4854B97D0'
 
 function Get-AlignedOffset {
     param([Parameter(Mandatory = $true)][long]$Value)
 
     return [long]([Math]::Floor(($Value + $alignment - 1) / $alignment) * $alignment)
+}
+
+function Assert-ReservedEntry {
+    param(
+        [Parameter(Mandatory = $true)][int]$Id,
+        [Parameter(Mandatory = $true)][byte[]]$Data,
+        [Parameter(Mandatory = $true)][string]$Source
+    )
+
+    if ($Id -ne $arduinoIrDatabaseId) {
+        return
+    }
+
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $digest = [BitConverter]::ToString($sha256.ComputeHash($Data)).Replace('-', '')
+    }
+    finally {
+        $sha256.Dispose()
+    }
+    if ($Data.Length -ne $arduinoIrDatabaseSize -or $digest -ne $arduinoIrDatabaseSha256) {
+        throw "User-file ID $arduinoIrDatabaseId is reserved for the ChipIntelliIR V2.7.14 air-conditioner database; '$Source' has size $($Data.Length) and SHA-256 $digest, expected size $arduinoIrDatabaseSize and SHA-256 $arduinoIrDatabaseSha256."
+    }
 }
 
 function Get-UserFileEntries {
@@ -60,6 +86,7 @@ function Get-UserFileEntries {
         if ($dataSize -ne 0) {
             [Array]::Copy($Buffer, [long]$dataOffset, $data, 0L, [long]$dataSize)
         }
+        Assert-ReservedEntry -Id $id -Data $data -Source 'base user_file.bin'
         [void]$entries.Add([PSCustomObject]@{
             Id = [int]$id
             Data = $data
@@ -114,6 +141,7 @@ foreach ($file in $entryFiles) {
     if ($data.Length -eq 0) {
         throw "User-file overlay entry is empty: $($file.Name)"
     }
+    Assert-ReservedEntry -Id $id -Data $data -Source $file.FullName
     [void]$overlays.Add([PSCustomObject]@{
         Id = $id
         Data = $data
