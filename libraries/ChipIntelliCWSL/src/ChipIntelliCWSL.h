@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <stddef.h>
 #include <stdint.h>
 
 enum ChipIntelliCWSLWordType : uint8_t {
@@ -57,12 +58,28 @@ public:
   using EventCallback = void (*)(const Event &event);
   using ContextCallback = void (*)(const Event &event, void *context);
 
-  ChipIntelliCWSLClass();
+  enum class Error : uint8_t {
+    None = 0,
+    ProfileDisabled,
+    SDKStartFailed,
+    SDKFailed,
+    Timeout,
+    RequestRejected,
+  };
+
+  // CWSL is a single hardware engine with one Core callback slot.
+  static ChipIntelliCWSLClass &instance();
+
+  ChipIntelliCWSLClass(const ChipIntelliCWSLClass &) = delete;
+  ChipIntelliCWSLClass &operator=(const ChipIntelliCWSLClass &) = delete;
+  ChipIntelliCWSLClass(ChipIntelliCWSLClass &&) = delete;
+  ChipIntelliCWSLClass &operator=(ChipIntelliCWSLClass &&) = delete;
 
   // Returns false when the Standard offline ASR profile is selected.
   bool begin(uint32_t timeoutMs = 10000U);
   void end();
   bool profileEnabled() const;
+  bool isBegun() const;
 
   // Call begin/learn/cancel/erase/query APIs only from task context (for
   // example setup(), loop(), or an RTOS task), never from an ISR or hardware
@@ -89,35 +106,59 @@ public:
   int remainingTemplates() const;
   int maxTemplates() const;
 
+  Error lastError() const;
+  const char *errorString() const;
+  static const char *errorString(Error error);
+  static const char *stateName(ChipIntelliCWSLState state);
+  static const char *eventName(ChipIntelliCWSLEventType type);
+  static const char *resultName(ChipIntelliCWSLLearnResult result);
+  static const char *wordTypeName(ChipIntelliCWSLWordType type);
+
   void onEvent(EventCallback callback);
   void onEvent(ContextCallback callback, void *context);
   bool available() const;
   bool read(Event &event);
+  size_t pendingEvents() const;
+  void clearEvents();
+  // Total delivery failures across the independent read and callback queues.
   uint32_t droppedEvents() const;
+  uint32_t droppedReadEvents() const;
+  uint32_t droppedCallbackEvents() const;
 
 private:
-  static constexpr uint8_t kQueueSize = 8;
+  // Power-of-two storage keeps ring operations small on CI1302. One slot is
+  // the empty/full sentinel, leaving 15 usable event records per queue.
+  static constexpr uint8_t kStorageSize = 16;
+
+  ChipIntelliCWSLClass();
 
   static void receiveFromCore(const chipintelli_cwsl_event_t *event,
                               void *context);
   static void dispatchEvent(void *context, uint32_t value);
   void dispatchCallbacks();
   void enqueue(const chipintelli_cwsl_event_t &event);
+  static void enqueueOne(Event *queue, volatile uint8_t &head,
+                         volatile uint8_t &tail,
+                         volatile uint32_t &dropped, const Event &event);
   bool begun() const;
+  void setLastError(Error error);
 
-  Event _queue[kQueueSize];
-  Event _callbackQueue[kQueueSize];
+  static ChipIntelliCWSLClass _instance;
+  Event _queue[kStorageSize];
+  Event _callbackQueue[kStorageSize];
   volatile uint8_t _head;
   volatile uint8_t _tail;
   volatile uint8_t _callbackHead;
   volatile uint8_t _callbackTail;
-  volatile uint32_t _dropped;
+  volatile uint32_t _droppedRead;
+  volatile uint32_t _droppedCallbacks;
   EventCallback _callback;
   ContextCallback _contextCallback;
   void *_callbackContext;
+  volatile Error _lastError;
   volatile bool _begun;
   volatile bool _accepting;
   volatile bool _callbackDispatchPending;
 };
 
-extern ChipIntelliCWSLClass ChipIntelliCWSL;
+extern ChipIntelliCWSLClass &ChipIntelliCWSL;

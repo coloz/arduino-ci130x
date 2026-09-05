@@ -7,32 +7,24 @@ extern "C" {
 #include "task.h"
 }
 
-ChipIntelliCWSLClass ChipIntelliCWSL;
+ChipIntelliCWSLClass ChipIntelliCWSLClass::_instance;
+ChipIntelliCWSLClass &ChipIntelliCWSL = ChipIntelliCWSLClass::instance();
 
-static bool validExactTemplate(uint32_t commandId, uint16_t groupId) {
-  return commandId <= UINT16_MAX && groupId <= UINT8_MAX;
-}
+ChipIntelliCWSLClass &ChipIntelliCWSLClass::instance() { return _instance; }
 
-ChipIntelliCWSLClass::ChipIntelliCWSLClass()
-    : _head(0),
-      _tail(0),
-      _callbackHead(0),
-      _callbackTail(0),
-      _dropped(0),
-      _callback(nullptr),
-      _contextCallback(nullptr),
-      _callbackContext(nullptr),
-      _begun(false),
-      _accepting(false),
-      _callbackDispatchPending(false) {}
+// The only instance has static storage and is zero-initialized before dynamic
+// initialization. Error::None is zero, so no startup code is needed here.
+ChipIntelliCWSLClass::ChipIntelliCWSLClass() {}
 
 bool ChipIntelliCWSLClass::begin(uint32_t timeoutMs) {
   if (!chipintelli_cwsl_profile_enabled()) {
+    setLastError(Error::ProfileDisabled);
     return false;
   }
 
   taskENTER_CRITICAL();
   if (_begun) {
+    _lastError = Error::None;
     taskEXIT_CRITICAL();
     return true;
   }
@@ -41,13 +33,16 @@ bool ChipIntelliCWSLClass::begin(uint32_t timeoutMs) {
   _callbackHead = 0;
   _callbackTail = 0;
   _callbackDispatchPending = false;
-  _dropped = 0;
+  _droppedRead = 0;
+  _droppedCallbacks = 0;
   _accepting = true;
+  _lastError = Error::None;
   taskEXIT_CRITICAL();
 
   chipintelli_cwsl_set_callback(receiveFromCore, this);
   if (!chipintelli_sdk_begin()) {
     end();
+    setLastError(Error::SDKStartFailed);
     return false;
   }
 
@@ -56,6 +51,7 @@ bool ChipIntelliCWSLClass::begin(uint32_t timeoutMs) {
   while (sdkState == CHIPINTELLI_SDK_STARTING) {
     if ((millis() - startedAt) >= timeoutMs) {
       end();
+      setLastError(Error::Timeout);
       return false;
     }
     delay(1);
@@ -63,11 +59,13 @@ bool ChipIntelliCWSLClass::begin(uint32_t timeoutMs) {
   }
   if (sdkState != CHIPINTELLI_SDK_READY) {
     end();
+    setLastError(Error::SDKFailed);
     return false;
   }
 
   taskENTER_CRITICAL();
   _begun = true;
+  _lastError = Error::None;
   taskEXIT_CRITICAL();
   return true;
 }
@@ -81,7 +79,9 @@ void ChipIntelliCWSLClass::end() {
   _callbackHead = 0;
   _callbackTail = 0;
   _callbackDispatchPending = false;
-  _dropped = 0;
+  _droppedRead = 0;
+  _droppedCallbacks = 0;
+  _lastError = Error::None;
   taskEXIT_CRITICAL();
   chipintelli_cwsl_set_callback(nullptr, nullptr);
 }
@@ -90,6 +90,8 @@ bool ChipIntelliCWSLClass::profileEnabled() const {
   return chipintelli_cwsl_profile_enabled();
 }
 
+bool ChipIntelliCWSLClass::isBegun() const { return begun(); }
+
 bool ChipIntelliCWSLClass::begun() const {
   taskENTER_CRITICAL();
   const bool isBegun = _begun;
@@ -97,54 +99,79 @@ bool ChipIntelliCWSLClass::begun() const {
   return isBegun;
 }
 
+void ChipIntelliCWSLClass::setLastError(Error error) {
+  _lastError = error;
+}
+
 bool ChipIntelliCWSLClass::learnCommand(uint32_t commandId,
                                         uint16_t groupId) {
-  return validExactTemplate(commandId, groupId) && begun() &&
-         chipintelli_cwsl_learn(
-                        commandId, groupId, CHIPINTELLI_CWSL_COMMAND_WORD);
+  const bool accepted = commandId <= UINT16_MAX && groupId <= UINT8_MAX &&
+                        begun() && chipintelli_cwsl_learn(
+                            commandId, groupId,
+                            CHIPINTELLI_CWSL_COMMAND_WORD);
+  setLastError(accepted ? Error::None : Error::RequestRejected);
+  return accepted;
 }
 
 bool ChipIntelliCWSLClass::learnWakeWord(uint32_t commandId,
                                          uint16_t groupId) {
-  return validExactTemplate(commandId, groupId) && begun() &&
-         chipintelli_cwsl_learn(
-                        commandId, groupId, CHIPINTELLI_CWSL_WAKE_WORD);
+  const bool accepted = commandId <= UINT16_MAX && groupId <= UINT8_MAX &&
+                        begun() && chipintelli_cwsl_learn(
+                            commandId, groupId,
+                            CHIPINTELLI_CWSL_WAKE_WORD);
+  setLastError(accepted ? Error::None : Error::RequestRejected);
+  return accepted;
 }
 
 bool ChipIntelliCWSLClass::cancelLearning() {
-  return begun() && chipintelli_cwsl_cancel();
+  const bool accepted = begun() && chipintelli_cwsl_cancel();
+  setLastError(accepted ? Error::None : Error::RequestRejected);
+  return accepted;
 }
 
 bool ChipIntelliCWSLClass::eraseCommand(uint32_t commandId,
                                         uint16_t groupId) {
-  return validExactTemplate(commandId, groupId) && begun() &&
-         chipintelli_cwsl_erase(
-                        commandId, groupId, CHIPINTELLI_CWSL_COMMAND_WORD);
+  const bool accepted = commandId <= UINT16_MAX && groupId <= UINT8_MAX &&
+                        begun() && chipintelli_cwsl_erase(
+                            commandId, groupId,
+                            CHIPINTELLI_CWSL_COMMAND_WORD);
+  setLastError(accepted ? Error::None : Error::RequestRejected);
+  return accepted;
 }
 
 bool ChipIntelliCWSLClass::eraseWakeWord(uint32_t commandId,
                                          uint16_t groupId) {
-  return validExactTemplate(commandId, groupId) && begun() &&
-         chipintelli_cwsl_erase(
-                        commandId, groupId, CHIPINTELLI_CWSL_WAKE_WORD);
+  const bool accepted = commandId <= UINT16_MAX && groupId <= UINT8_MAX &&
+                        begun() && chipintelli_cwsl_erase(
+                            commandId, groupId,
+                            CHIPINTELLI_CWSL_WAKE_WORD);
+  setLastError(accepted ? Error::None : Error::RequestRejected);
+  return accepted;
 }
 
 bool ChipIntelliCWSLClass::eraseCommands() {
-  return begun() && chipintelli_cwsl_erase(
-                        UINT32_MAX, UINT16_MAX, CHIPINTELLI_CWSL_COMMAND_WORD);
+  const bool accepted = begun() && chipintelli_cwsl_erase(
+      UINT32_MAX, UINT16_MAX, CHIPINTELLI_CWSL_COMMAND_WORD);
+  setLastError(accepted ? Error::None : Error::RequestRejected);
+  return accepted;
 }
 
 bool ChipIntelliCWSLClass::eraseWakeWords() {
-  return begun() && chipintelli_cwsl_erase(
-                        UINT32_MAX, UINT16_MAX, CHIPINTELLI_CWSL_WAKE_WORD);
+  const bool accepted = begun() && chipintelli_cwsl_erase(
+      UINT32_MAX, UINT16_MAX, CHIPINTELLI_CWSL_WAKE_WORD);
+  setLastError(accepted ? Error::None : Error::RequestRejected);
+  return accepted;
 }
 
 bool ChipIntelliCWSLClass::eraseAll() {
-  return begun() && chipintelli_cwsl_erase(
-                        UINT32_MAX, UINT16_MAX, CHIPINTELLI_CWSL_ALL_WORDS);
+  const bool accepted = begun() && chipintelli_cwsl_erase(
+      UINT32_MAX, UINT16_MAX, CHIPINTELLI_CWSL_ALL_WORDS);
+  setLastError(accepted ? Error::None : Error::RequestRejected);
+  return accepted;
 }
 
 ChipIntelliCWSLState ChipIntelliCWSLClass::state() const {
+  if (!begun()) return CWSLUnavailable;
   return static_cast<ChipIntelliCWSLState>(chipintelli_cwsl_state());
 }
 
@@ -170,6 +197,78 @@ int ChipIntelliCWSLClass::remainingTemplates() const {
 
 int ChipIntelliCWSLClass::maxTemplates() const {
   return begun() ? chipintelli_cwsl_max_templates() : -1;
+}
+
+ChipIntelliCWSLClass::Error ChipIntelliCWSLClass::lastError() const {
+  // Error is one byte on this 32-bit target. It is diagnostic state shared by
+  // all callers, so a volatile atomic-width load is sufficient and smaller.
+  return _lastError;
+}
+
+const char *ChipIntelliCWSLClass::errorString() const {
+  return errorString(lastError());
+}
+
+const char *ChipIntelliCWSLClass::errorString(Error error) {
+  switch (error) {
+    case Error::None: return "no error";
+    case Error::ProfileDisabled: return "CWSL is disabled by the selected firmware profile";
+    case Error::SDKStartFailed: return "ChipIntelli SDK startup failed";
+    case Error::SDKFailed: return "ChipIntelli SDK initialization failed";
+    case Error::Timeout: return "timed out waiting for ChipIntelli SDK initialization";
+    case Error::RequestRejected:
+      return "CWSL rejected the request; call begin first and check ID ranges, reserved IDs 199..208, command type, template, capacity, and state";
+  }
+  return "unknown CWSL error";
+}
+
+const char *ChipIntelliCWSLClass::stateName(ChipIntelliCWSLState state) {
+  switch (state) {
+    case CWSLIdle: return "idle";
+    case CWSLRecognizing: return "recognizing";
+    case CWSLLearning: return "learning";
+    case CWSLDeleting: return "deleting";
+    case CWSLUnavailable: return "unavailable";
+  }
+  return "unknown";
+}
+
+const char *ChipIntelliCWSLClass::eventName(ChipIntelliCWSLEventType type) {
+  switch (type) {
+    case CWSLLearningStarted: return "learning-started";
+    case CWSLRecordingStarted: return "recording-started";
+    case CWSLAttemptResult: return "attempt-result";
+    case CWSLLearningSucceeded: return "learning-succeeded";
+    case CWSLLearningFailed: return "learning-failed";
+    case CWSLLearningCancelled: return "learning-cancelled";
+    case CWSLDeleteSucceeded: return "delete-succeeded";
+    case CWSLRecognized: return "recognized";
+    case CWSLDeleteFailed: return "delete-failed";
+  }
+  return "unknown";
+}
+
+const char *ChipIntelliCWSLClass::resultName(
+    ChipIntelliCWSLLearnResult result) {
+  switch (result) {
+    case CWSLRecordSucceeded: return "record-succeeded";
+    case CWSLRecordFailed: return "record-failed";
+    case CWSLRegistrationFinished: return "registration-finished";
+    case CWSLRegistrationAborted: return "registration-aborted";
+    case CWSLNotEnoughFrames: return "not-enough-frames";
+    case CWSLInvalidData: return "invalid-data";
+    case CWSLDefaultCommandConflict: return "default-command-conflict";
+  }
+  return "unknown";
+}
+
+const char *ChipIntelliCWSLClass::wordTypeName(ChipIntelliCWSLWordType type) {
+  switch (type) {
+    case CWSLCommandWord: return "command";
+    case CWSLWakeWord: return "wake-word";
+    case CWSLAllWords: return "all";
+  }
+  return "unknown";
 }
 
 void ChipIntelliCWSLClass::onEvent(EventCallback callback) {
@@ -199,6 +298,19 @@ void ChipIntelliCWSLClass::receiveFromCore(
   }
 }
 
+__attribute__((noinline)) void ChipIntelliCWSLClass::enqueueOne(
+    Event *queue, volatile uint8_t &head, volatile uint8_t &tail,
+    volatile uint32_t &dropped, const Event &event) {
+  const uint8_t writeAt = head;
+  const uint8_t next = static_cast<uint8_t>((writeAt + 1U) % kStorageSize);
+  if (next == tail) {
+    ++dropped;
+    return;
+  }
+  queue[writeAt] = event;
+  head = next;
+}
+
 void ChipIntelliCWSLClass::enqueue(const chipintelli_cwsl_event_t &source) {
   const Event delivered = {
       static_cast<ChipIntelliCWSLEventType>(source.type),
@@ -216,27 +328,13 @@ void ChipIntelliCWSLClass::enqueue(const chipintelli_cwsl_event_t &source) {
     taskEXIT_CRITICAL();
     return;
   }
-  const uint8_t head = _head;
-  const uint8_t next = static_cast<uint8_t>((head + 1U) % kQueueSize);
-  if (next == _tail) {
-    ++_dropped;
-  } else {
-    _queue[head] = delivered;
-    _head = next;
-  }
+  enqueueOne(_queue, _head, _tail, _droppedRead, delivered);
   if (_contextCallback != nullptr || _callback != nullptr) {
-    const uint8_t callbackHead = _callbackHead;
-    const uint8_t callbackNext =
-        static_cast<uint8_t>((callbackHead + 1U) % kQueueSize);
-    if (callbackNext == _callbackTail) {
-      ++_dropped;
-    } else {
-      _callbackQueue[callbackHead] = delivered;
-      _callbackHead = callbackNext;
-      if (!_callbackDispatchPending) {
-        _callbackDispatchPending = true;
-        scheduleCallback = true;
-      }
+    enqueueOne(_callbackQueue, _callbackHead, _callbackTail,
+               _droppedCallbacks, delivered);
+    if (!_callbackDispatchPending) {
+      _callbackDispatchPending = true;
+      scheduleCallback = true;
     }
   }
   taskEXIT_CRITICAL();
@@ -246,9 +344,9 @@ void ChipIntelliCWSLClass::enqueue(const chipintelli_cwsl_event_t &source) {
     taskENTER_CRITICAL();
     // No dispatcher token exists for these records. Drop the callback-side
     // backlog atomically so a later event cannot deliver stale notifications.
+    ++_droppedCallbacks;
     _callbackTail = _callbackHead;
     _callbackDispatchPending = false;
-    ++_dropped;
     taskEXIT_CRITICAL();
   }
   chipintelli_arduino_wake();
@@ -271,7 +369,7 @@ void ChipIntelliCWSLClass::dispatchCallbacks() {
     }
     const Event delivered = _callbackQueue[_callbackTail];
     _callbackTail =
-        static_cast<uint8_t>((_callbackTail + 1U) % kQueueSize);
+        static_cast<uint8_t>((_callbackTail + 1U) % kStorageSize);
     ContextCallback contextCallback = _contextCallback;
     EventCallback callback = _callback;
     void *callbackContext = _callbackContext;
@@ -300,14 +398,42 @@ bool ChipIntelliCWSLClass::read(Event &event) {
     return false;
   }
   event = _queue[tail];
-  _tail = static_cast<uint8_t>((tail + 1U) % kQueueSize);
+  _tail = static_cast<uint8_t>((tail + 1U) % kStorageSize);
   taskEXIT_CRITICAL();
   return true;
 }
 
+size_t ChipIntelliCWSLClass::pendingEvents() const {
+  taskENTER_CRITICAL();
+  const size_t pending =
+      static_cast<uint8_t>((_head + kStorageSize - _tail) % kStorageSize);
+  taskEXIT_CRITICAL();
+  return pending;
+}
+
+void ChipIntelliCWSLClass::clearEvents() {
+  taskENTER_CRITICAL();
+  _tail = _head;
+  taskEXIT_CRITICAL();
+}
+
 uint32_t ChipIntelliCWSLClass::droppedEvents() const {
   taskENTER_CRITICAL();
-  const uint32_t dropped = _dropped;
+  const uint32_t dropped = _droppedRead + _droppedCallbacks;
+  taskEXIT_CRITICAL();
+  return dropped;
+}
+
+uint32_t ChipIntelliCWSLClass::droppedReadEvents() const {
+  taskENTER_CRITICAL();
+  const uint32_t dropped = _droppedRead;
+  taskEXIT_CRITICAL();
+  return dropped;
+}
+
+uint32_t ChipIntelliCWSLClass::droppedCallbackEvents() const {
+  taskENTER_CRITICAL();
+  const uint32_t dropped = _droppedCallbacks;
   taskEXIT_CRITICAL();
   return dropped;
 }

@@ -481,12 +481,12 @@ dynamic memory 包含重叠的
   `ChipIntelliAudio` 已在 CI1302、CI1303、CI1306 完成单库及合并编译、链接和完整
   固件后处理；CI1303 已通过 Timer/Ticker、Watchdog 控制、EEPROM/Preferences 跨复位
   保持、音频初始化和提示音完成回调，Watchdog 实际超时复位及其余芯片仍待验证；
-- Windows 上的 `ChipIntelliCWSL/SerialLearning` 已在 CI1302、CI1303、CI1306
-  的标准离线 ASR 与 CWSL 两种 profile 完成 6/6 编译、链接、双核合并、`compose`
-  和 `inspect`。macOS/Linux 使用函数级 section 的非 LTO 厂家库，程序会比 Windows
-  LTO 构建稍大；CI1302 CWSL 应使用最小的 `BasicLearning` 起步，完整
-  `SerialLearning` 适用于 CI1303/CI1306。CI1303 CWSL 已完成实体启动和模板容量
-  查询，自学习录音、模板持久化和识别仍待受控说词验证；
+- `ChipIntelliCWSL/BasicLearning` 可在 CI1302 的 CWSL 与 CWSL+AEC profile
+  完成编译、链接与固件后处理；包含完整串口诊断和提示音的 `SerialLearning`
+  适用于 CI1303/CI1306。
+  后者即使使用 Windows LTO 工具链也会超过 CI1302 的合并 user-code/SRAM 限制。
+  CI1303 CWSL 已完成实体启动和模板容量查询，自学习录音、模板持久化和识别仍待
+  受控说词验证；
 - `v1.0.0` Boards Manager 发布包已在隔离 Arduino CLI 环境完成安装；CI1306 的
   16 个安装后示例以及 CI1302/CI1303 的综合冒烟示例均编译通过，共 18/18；
 - CI1302、CI1303 与 CI1306 已在隔离 Arduino CLI 环境验证资源准备、完整编译、

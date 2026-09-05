@@ -32,19 +32,10 @@ static void onPromptFinished(void *context) {
   promptFinished = true;
 }
 
-static const char *eventName(ChipIntelliCWSLEventType type) {
-  switch (type) {
-    case CWSLLearningStarted: return "learning-started";
-    case CWSLRecordingStarted: return "recording-started";
-    case CWSLAttemptResult: return "attempt-result";
-    case CWSLLearningSucceeded: return "learning-succeeded";
-    case CWSLLearningFailed: return "learning-failed";
-    case CWSLLearningCancelled: return "learning-cancelled";
-    case CWSLDeleteSucceeded: return "delete-succeeded";
-    case CWSLRecognized: return "recognized";
-    case CWSLDeleteFailed: return "delete-failed";
-    default: return "unknown";
-  }
+static void printError(const char *message) {
+  Serial.print(message);
+  Serial.print(": ");
+  Serial.println(ChipIntelliCWSL.errorString());
 }
 
 static void printHelp() {
@@ -57,12 +48,18 @@ static void printHelp() {
 }
 
 static void printStatus() {
-  Serial.print("templates=");
+  Serial.print("state=");
+  Serial.print(ChipIntelliCWSL.stateName(ChipIntelliCWSL.state()));
+  Serial.print(" templates=");
   Serial.print(ChipIntelliCWSL.templateCount());
   Serial.print(" remaining=");
   Serial.print(ChipIntelliCWSL.remainingTemplates());
   Serial.print(" max=");
-  Serial.println(ChipIntelliCWSL.maxTemplates());
+  Serial.print(ChipIntelliCWSL.maxTemplates());
+  Serial.print(" dropped-read=");
+  Serial.print(ChipIntelliCWSL.droppedReadEvents());
+  Serial.print(" dropped-callback=");
+  Serial.println(ChipIntelliCWSL.droppedCallbackEvents());
 }
 
 static void requestPromptedLearning(PendingLearning request) {
@@ -111,13 +108,17 @@ static void servicePromptedLearning() {
   promptStage = PromptIdle;
 
   if (request == PendingCommand) {
-    Serial.println(ChipIntelliCWSL.learnCommand(kLearnedCommandId)
-                       ? "Prompts finished. Say the new command now."
-                       : "Could not start command learning.");
+    if (ChipIntelliCWSL.learnCommand(kLearnedCommandId)) {
+      Serial.println("Prompts finished. Say the new command now.");
+    } else {
+      printError("Could not start command learning");
+    }
   } else if (request == PendingWakeWord) {
-    Serial.println(ChipIntelliCWSL.learnWakeWord(kWakeWordCommandId)
-                       ? "Prompt finished. Say the new wake word now."
-                       : "Could not start wake-word learning.");
+    if (ChipIntelliCWSL.learnWakeWord(kWakeWordCommandId)) {
+      Serial.println("Prompt finished. Say the new wake word now.");
+    } else {
+      printError("Could not start wake-word learning");
+    }
   }
 }
 
@@ -128,7 +129,7 @@ void setup() {
     return;
   }
   if (!ChipIntelliCWSL.begin()) {
-    Serial.println("CWSL initialization failed or timed out.");
+    printError("CWSL initialization failed");
     return;
   }
   if (!ChipIntelliAudio.begin()) {
@@ -146,7 +147,7 @@ void loop() {
 
   ChipIntelliCWSLEvent event;
   while (ChipIntelliCWSL.read(event)) {
-    Serial.print(eventName(event.type));
+    Serial.print(ChipIntelliCWSL.eventName(event.type));
     Serial.print(" command=");
     Serial.print(event.commandId);
     Serial.print(" attempt=");
@@ -173,20 +174,26 @@ void loop() {
           ChipIntelliAudio.stop();
           Serial.println("Pending learning cancelled.");
         } else {
-          Serial.println(ChipIntelliCWSL.cancelLearning()
-                             ? "Learning cancelled."
-                             : "No active learning operation.");
+          if (ChipIntelliCWSL.cancelLearning()) {
+            Serial.println("Learning cancellation requested.");
+          } else {
+            printError("Could not cancel learning");
+          }
         }
         break;
       case 'd':
-        Serial.println(ChipIntelliCWSL.eraseCommand(kLearnedCommandId)
-                           ? "Delete requested."
-                           : "Could not delete the command template.");
+        if (ChipIntelliCWSL.eraseCommand(kLearnedCommandId)) {
+          Serial.println("Delete requested.");
+        } else {
+          printError("Could not delete the command template");
+        }
         break;
       case 'x':
-        Serial.println(ChipIntelliCWSL.eraseAll()
-                           ? "Delete-all requested."
-                           : "Could not delete templates.");
+        if (ChipIntelliCWSL.eraseAll()) {
+          Serial.println("Delete-all requested.");
+        } else {
+          printError("Could not delete templates");
+        }
         break;
       case 's':
         printStatus();
