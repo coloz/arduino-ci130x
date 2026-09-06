@@ -126,8 +126,10 @@ https://github.com/coloz/arduino-ci130x/releases/download/v1.0.15/package_chipin
    **Tools > Algorithm Profile** 中
    选择 Standard 或 CWSL profile。模拟双麦以及所有 PDM 方案只能搭配名称中标有
    “无 AEC”的算法；AEC profile 必须选择模拟单麦，否则编译期会拒绝该无效组合。
-3. CI1302/CI1303 默认选择 **Internal RC (no crystal)**；只有板上确实安装
-   12.288 MHz 晶振时才选择 **External 12.288 MHz crystal**。
+3. 所有板型均可在 **Tools > Clock Source** 切换时钟源。CI1302/CI1303 默认选择
+   **Internal RC (no crystal)**；CI1306、CI-D06GT01D 和 easyVoice 1306 dev 默认选择
+   **External 12.288 MHz crystal**。内部 RC 的主频配置为 200 MHz，外部晶振为
+   246 MHz；只有板上确实安装 12.288 MHz 晶振时才选择外部时钟。修改后需重新编译、烧录。
 4. PA4 接有 LED 时可打开 **文件 > 示例 > CI13XX > GPIO > PA4BlinkSerial**，
    并以 115200 波特率观察 UART0；其他接线可使用 **Blink** 并修改 LED 引脚。
 5. 按照开发板原理图确认 LED 极性与限流电阻。
@@ -140,6 +142,10 @@ arduino-cli compile --fqbn chipintelli:ci13xx:ci_d06gt01d `
   examples\CI13XXSmoke
 
 arduino-cli compile --fqbn chipintelli:ci13xx:ci1306 `
+  examples\CI13XXSmoke
+
+# 通用 CI1306：切换为内部 RC（200 MHz）
+arduino-cli compile --fqbn chipintelli:ci13xx:ci1306:Clock=internal `
   examples\CI13XXSmoke
 
 # CI-D06GT01D：切换为单麦 + AEC
@@ -378,9 +384,11 @@ Arduino IDE 的 **文件 > 示例** 菜单中包含：
 
 ### 外设与资源冲突
 
-- CI1302/CI1303 默认使用内部 RC，系统主频为 200 MHz。选择外部 12.288 MHz
-  晶振后主频为 246 MHz，且 PA0/PA1 被晶振占用。无晶振硬件若误选外部时钟，
+- 所有板型支持内部 RC（主频配置 200 MHz）和外部 12.288 MHz 晶振（主频配置
+  246 MHz）。CI1302/CI1303 默认使用内部 RC，三个 CI1306 板型默认使用外部晶振。
+  CI1302/CI1303 选择外部晶振后 PA0/PA1 被占用。无晶振硬件若误选外部时钟，
   SDK 会在进入 Arduino `setup()` 前失去有效时钟，GPIO 和 UART 都不会运行。
+  三个 CI1306 板型仍保留 PA0/PA1 给板载晶振，切换到内部 RC 不会自动开放这两个 GPIO。
 - CI1302、CI1303、CI1306 均没有可供 Arduino 用户复用的通用硬件 SPI；片内
   `QSPI0` 用于启动、模型和用户 Flash，因此 `SPI` 是 GPIO software SPI，
   不支持 DMA、硬件片选或从机模式。

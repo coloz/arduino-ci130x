@@ -165,6 +165,13 @@ ci1306.menu.Microphone.pdm_single.build.mic_flags=-DHOST_MIC_USE_NUMBER=1 -DAUDI
 ci1306.menu.Microphone.pdm_dual=PDM Digital Dual Microphones (Non-AEC Profiles Only)
 ci1306.menu.Microphone.pdm_dual.build.mic_flags=-DHOST_MIC_USE_NUMBER=2 -DAUDIO_IN_FROM_DMIC=1
 
+ci1306.menu.Clock.external=External 12.288 MHz crystal
+ci1306.menu.Clock.external.build.f_cpu=246000000L
+ci1306.menu.Clock.external.build.clock_flags=-DUSE_EXTERNAL_CRYSTAL_OSC=1
+ci1306.menu.Clock.internal=Internal RC (no crystal)
+ci1306.menu.Clock.internal.build.f_cpu=200000000L
+ci1306.menu.Clock.internal.build.clock_flags=-DUSE_EXTERNAL_CRYSTAL_OSC=0
+
 ci_d06gt01d.name=ChipIntelli CI-D06GT01D Dev Board (CI1306, 4 MB)
 
 ci_d06gt01d.upload.tool=citool-cli
@@ -221,6 +228,13 @@ ci_d06gt01d.menu.Microphone.pdm_dual.build.mic_flags=-DHOST_MIC_USE_NUMBER=2 -DA
 ci_d06gt01d.menu.Microphone.pdm_single=PDM Digital Single Microphone (Left Channel, Non-AEC Profiles Only)
 ci_d06gt01d.menu.Microphone.pdm_single.build.mic_flags=-DHOST_MIC_USE_NUMBER=1 -DAUDIO_IN_FROM_DMIC=1
 
+ci_d06gt01d.menu.Clock.external=External 12.288 MHz crystal
+ci_d06gt01d.menu.Clock.external.build.f_cpu=246000000L
+ci_d06gt01d.menu.Clock.external.build.clock_flags=-DUSE_EXTERNAL_CRYSTAL_OSC=1
+ci_d06gt01d.menu.Clock.internal=Internal RC (no crystal)
+ci_d06gt01d.menu.Clock.internal.build.f_cpu=200000000L
+ci_d06gt01d.menu.Clock.internal.build.clock_flags=-DUSE_EXTERNAL_CRYSTAL_OSC=0
+
 easyvoice_1306_dev.name=easyVoice 1306 dev (CI1306, 4 MB)
 
 easyvoice_1306_dev.upload.tool=citool-cli
@@ -273,3 +287,10 @@ easyvoice_1306_dev.menu.Microphone.pdm_single=PDM Digital Single Microphone (PC3
 easyvoice_1306_dev.menu.Microphone.pdm_single.build.mic_flags=-DHOST_MIC_USE_NUMBER=1 -DAUDIO_IN_FROM_DMIC=1
 easyvoice_1306_dev.menu.Microphone.pdm_dual=PDM Digital Dual Microphones (PC3 Data / PC2 Clock, Non-AEC Profiles Only)
 easyvoice_1306_dev.menu.Microphone.pdm_dual.build.mic_flags=-DHOST_MIC_USE_NUMBER=2 -DAUDIO_IN_FROM_DMIC=1
+
+easyvoice_1306_dev.menu.Clock.external=External 12.288 MHz crystal
+easyvoice_1306_dev.menu.Clock.external.build.f_cpu=246000000L
+easyvoice_1306_dev.menu.Clock.external.build.clock_flags=-DUSE_EXTERNAL_CRYSTAL_OSC=1
+easyvoice_1306_dev.menu.Clock.internal=Internal RC (no crystal)
+easyvoice_1306_dev.menu.Clock.internal.build.f_cpu=200000000L
+easyvoice_1306_dev.menu.Clock.internal.build.clock_flags=-DUSE_EXTERNAL_CRYSTAL_OSC=0
