@@ -83,10 +83,18 @@ public:
     explicit HardwareSerial(uint8_t uartNumber);
     void begin(unsigned long baud = 921600, uint32_t config = SERIAL_8N1);
     void end();
+    // Caller-owned storage, configured only while stopped. nullptr restores
+    // the core static buffer. Storage must remain alive until reset/end.
+    bool setRxBuffer(uint8_t *buffer, size_t size);
+    bool waitReadable(uint32_t timeoutMs) { return waitForData(timeoutMs); }
     int available() override;
     int availableForWrite();
     int peek() override;
     int read() override;
+    static constexpr size_t RxReadChunkSize = 64U;
+    // Nonblocking batch read, returning at most RxReadChunkSize buffered bytes.
+    // One bounded critical section protects the ring and buffer lifetime.
+    size_t readAvailable(uint8_t *buffer, size_t size);
     void flush() override;
     bool flush(uint32_t timeoutMs);
     size_t write(uint8_t value) override;

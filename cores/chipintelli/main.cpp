@@ -13,6 +13,8 @@ extern "C" {
 void set_state_enter_wakeup(uint32_t exit_wakeup_ms);
 }
 
+extern "C" void chipintelli_wifi_poll_hook(void) __attribute__((weak));
+
 static TaskHandle_t s_arduinoTask;
 static volatile chipintelli_sdk_state_t s_sdkState = CHIPINTELLI_SDK_NOT_STARTED;
 static volatile chipintelli_loop_mode_t s_loopMode =
@@ -80,6 +82,7 @@ static void arduinoTask(void *) {
         do {
             chipintelli_arduino_dispatch_events(ARDUINO_EVENT_BUDGET,
                                                 ARDUINO_LOOP_EXECUTION_BUDGET_US);
+            if (chipintelli_wifi_poll_hook) chipintelli_wifi_poll_hook();
             loop();
             serialEventRun();
             if (chipintelli_watchdog_liveness_mask() != 0U) {

@@ -21,6 +21,7 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 - [快速开始](#快速开始)
 - [支持的芯片](#支持的芯片)
 - [Arduino API 与库](#arduino-api-与库)
+- [外接 ESP32-C3 WiFi 与 BLE](#外接-esp32-c3-wifi-与-ble)
 - [示例](#示例)
 - [重要限制](#重要限制)
 - [验证状态](#验证状态)
@@ -524,3 +525,25 @@ dynamic memory 包含重叠的
 
 Arduino 兼容 core 中继承的代码按 [LGPL-2.1 或更高版本]提供。  
 启英泰伦 SDK、算法库、第二核镜像、编译器和 Windows 工具仍受各自许可与再分发条款约束。  
+
+## 外接 ESP32-C3 WiFi 与 BLE
+
+WiFi、BLE 和共享 ESPLink 是面向 Arduino 主控的外接 ESP32-C3 库，可通过 TX/RX/GND
+为没有无线功能的开发板添加网络和蓝牙。CI1306 与 STM32 是首批适配目标，库的接口和协议
+不限定 ChipIntelli。Wi-Fi/TCP/IP/TLS 在 C3，MQTT 等应用协议、
+基于 ArduinoBLE 的 BLE Host 和用户回调在主控。首版为开发预览，无线互通、语音共存及
+高速串口稳定性仍待实机验收；BLE 当前限制单连接。
+
+入口头文件为 `<WiFi.h>`、`<BLE.h>` 和 `<ESPLink.h>`。应用必须显式选择链路串口，例如
+`ESPLink.begin(Serial2, 115200)`；其他板替换为实际可用的串口对象（STM32duino 3.x 使用 `Uart`）。也可以先自行
+配置串口，再调用 `ESPLink.begin(static_cast<Stream&>(port))`。没有隐式绑定 `Serial2`；
+无参数 `begin()` 仅重新使用已有绑定。通用后端在 `loop()` 中定期调用 `ESPLink.poll()`、
+`WiFi.poll()` 和 `BLE.poll()`；CI13XX 另有 FreeRTOS 串口后端。
+
+- [WiFi 使用说明](libraries/WiFi/README.md) · [BLE 使用说明](libraries/BLE/README.md)
+- [ESPLink 使用说明与 CI1306 性能配置](libraries/ESPLink/README.md) · [通信协议](libraries/ESPLink/PROTOCOL.md)
+- [CI1306 构建脚本](tools/test_wireless.ps1) · [STM32 构建脚本](tools/test_wireless_stm32.ps1)
+- [串口最大帧诊断](libraries/ESPLink/examples/LinkDiagnostics/LinkDiagnostics.ino) · [通用主控 MQTT/BLE 回调示例](libraries/WiFi/examples/PortableMQTTBLE/PortableMQTTBLE.ino)
+
+配套固件项目在相邻 `../wifi_c3`，提供 115200 与 921600 两套镜像及构建/烧录脚本。
+两端必须使用同一波特率。长时间同步 TCP/TLS 建连会延迟 HCI 读取，具体限制见库的使用说明。MQTT 示例另外依赖官方 ArduinoMqttClient 0.1.8。

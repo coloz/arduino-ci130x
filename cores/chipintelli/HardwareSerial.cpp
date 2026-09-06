@@ -189,6 +189,27 @@ HardwareSerial::HardwareSerial(uint8_t uartNumber)
       _txDMAThreshold(64U),
       _dmaWaiter(nullptr) {}
 
+bool HardwareSerial::setRxBuffer(uint8_t *buffer, size_t size) {
+    if (_started) {
+        _lastError = HardwareSerialStartError::Busy;
+        return false;
+    }
+    if (buffer == nullptr) {
+        buffer = rxBufferForNumber(_uartNumber);
+        size = rxSizeForNumber(_uartNumber);
+    }
+    if (size < 2U || size > 32768U || (size & (size - 1U)) != 0U) {
+        _lastError = HardwareSerialStartError::UnsupportedConfig;
+        return false;
+    }
+    _rxBuffer = buffer;
+    _rxBufferSize = static_cast<uint16_t>(size);
+    _rxMask = static_cast<uint16_t>(size - 1U);
+    _rxHead = _rxTail = 0;
+    _lastError = HardwareSerialStartError::None;
+    return true;
+}
+
 void HardwareSerial::begin(unsigned long baud, uint32_t config) {
     if (!supportedBaud(baud)) {
         _lastError = HardwareSerialStartError::UnsupportedBaud;
@@ -321,6 +342,31 @@ int HardwareSerial::read() {
     _rxTail = static_cast<uint16_t>((_rxTail + 1U) & _rxMask);
     taskEXIT_CRITICAL();
     return value;
+}
+
+size_t HardwareSerial::readAvailable(uint8_t *buffer, size_t size) {
+    if (buffer == nullptr || size == 0U) return 0U;
+    // UART IRQ and end()/setRxBuffer() must not invalidate a captured ring
+    // pointer while copying. Bound each call to 64 bytes so a large caller
+    // buffer cannot extend interrupt masking across an entire serial frame.
+    if (size > RxReadChunkSize) size = RxReadChunkSize;
+    taskENTER_CRITICAL();
+    if (!_started) {
+        taskEXIT_CRITICAL();
+        return 0U;
+    }
+    const uint16_t tail = _rxTail;
+    const size_t available = static_cast<uint16_t>((_rxHead - tail) & _rxMask);
+    if (size > available) size = available;
+    if (size != 0U) {
+        const size_t contiguous = static_cast<size_t>(_rxBufferSize - tail);
+        const size_t first = size < contiguous ? size : contiguous;
+        memcpy(buffer, _rxBuffer + tail, first);
+        if (size > first) memcpy(buffer + first, _rxBuffer, size - first);
+        _rxTail = static_cast<uint16_t>((tail + size) & _rxMask);
+    }
+    taskEXIT_CRITICAL();
+    return size;
 }
 
 void HardwareSerial::pumpTxLocked() {
