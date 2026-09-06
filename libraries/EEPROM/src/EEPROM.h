@@ -11,8 +11,13 @@ public:
   EEPROMClass();
   ~EEPROMClass();
 
+  EEPROMClass(const EEPROMClass &) = delete;
+  EEPROMClass &operator=(const EEPROMClass &) = delete;
+
+  // Size selects the accessible range; resizing preserves buffered bytes.
   bool begin(size_t size = 128);
-  void end();
+  // A failed commit leaves the instance open so the caller can retry.
+  bool end();
   bool commit();
 
   uint8_t read(int address) const;
@@ -44,6 +49,8 @@ private:
 
   uint8_t *_data;
   size_t _size;
+  // Maximum of the saved length and all ranges opened in this session.
+  size_t _storageSize;
   bool _dirty;
 };
 

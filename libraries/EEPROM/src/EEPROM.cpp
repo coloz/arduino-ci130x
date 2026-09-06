@@ -4,11 +4,10 @@
 #include <stdlib.h>
 
 extern "C" {
+#include "ci130x_core_misc.h"
 #include "ci_nvdata_manage.h"
 
-// ci_flash_data_info_init() initializes NVDM from the firmware partition
-// table. Arduino setup() may begin while the higher-priority SDK init task is
-// still running, so EEPROM.begin() waits for this readiness flag.
+// NVDM is initialized from the firmware partition table by the SDK init task.
 void is_ci_flash_data_info_inited(bool *state);
 }
 
@@ -18,88 +17,120 @@ constexpr uint32_t kInitTimeoutMs = 10000;
 
 EEPROMClass EEPROM;
 
-EEPROMClass::EEPROMClass() : _data(nullptr), _size(0), _dirty(false) {}
+EEPROMClass::EEPROMClass()
+    : _data(nullptr), _size(0), _storageSize(0), _dirty(false) {}
 
 EEPROMClass::~EEPROMClass() {
-  end();
+  // Destruction cannot report failure or retain a retryable buffer. Call
+  // commit()/end() explicitly and check the result when persistence matters.
+  if (_data != nullptr) {
+    commit();
+    free(_data);
+  }
 }
 
 bool EEPROMClass::begin(size_t size) {
-  if (size == 0 || size > kMaxSize) {
+  if (check_curr_trap() != 0 || size == 0 || size > kMaxSize) {
     return false;
   }
-  if (_data != nullptr && _size == size) {
+  if (_data != nullptr) {
+    // A logical resize never discards uncommitted changes or the hidden tail.
+    _size = size;
+    if (size > _storageSize) {
+      _storageSize = size;
+    }
     return true;
   }
-  if (_data != nullptr) {
-    end();
+  if (!chipintelli_sdk_begin()) {
+    return false;
   }
 
   bool flashReady = false;
-  uint32_t started = millis();
+  const uint32_t started = millis();
   do {
     is_ci_flash_data_info_inited(&flashReady);
     if (!flashReady) {
+      if (chipintelli_sdk_state() == CHIPINTELLI_SDK_FAILED) {
+        return false;
+      }
       delay(1);
     }
-  } while (!flashReady && (millis() - started) < kInitTimeoutMs);
+  } while (!flashReady && static_cast<uint32_t>(millis() - started) < kInitTimeoutMs);
   if (!flashReady) {
     return false;
   }
 
-  _data = static_cast<uint8_t *>(malloc(size));
-  if (_data == nullptr) {
+  // The SDK reads only the requested length but verifies the checksum over
+  // the entire stored item. Always read the maximum payload, even when the
+  // caller exposes a smaller range or an older firmware saved a shorter item.
+  uint8_t *data = static_cast<uint8_t *>(malloc(kMaxSize));
+  if (data == nullptr) {
     return false;
   }
-  _size = size;
-  _dirty = false;
-  memset(_data, 0xff, _size);
+  memset(data, 0xff, kMaxSize);
 
-  cinv_item_ret_t initialized =
-      cinv_item_init(kNvItemId, static_cast<uint16_t>(_size), _data);
-  if (initialized == CINV_OPER_FAILED || initialized == CINV_ITEM_LEN_ERR) {
-    free(_data);
-    _data = nullptr;
-    _size = 0;
+  const cinv_item_ret_t initialized =
+      cinv_item_init(kNvItemId, static_cast<uint16_t>(size), data);
+  if (initialized != CINV_OPER_SUCCESS && initialized != CINV_ITEM_UNINIT) {
+    free(data);
     return false;
   }
 
   uint16_t actual = 0;
-  cinv_item_ret_t readResult = cinv_item_read(
-      kNvItemId, static_cast<uint16_t>(_size), _data, &actual);
-  if (readResult != CINV_OPER_SUCCESS && readResult != CINV_ITEM_UNINIT) {
-    free(_data);
-    _data = nullptr;
-    _size = 0;
+  const cinv_item_ret_t readResult = cinv_item_read(
+      kNvItemId, static_cast<uint16_t>(kMaxSize), data, &actual);
+  // UNINIT means the item is missing here, not that a read succeeded.
+  if (readResult != CINV_OPER_SUCCESS || actual == 0 || actual > kMaxSize) {
+    free(data);
     return false;
   }
-  if (actual < _size) {
-    memset(_data + actual, 0xff, _size - actual);
+  if (actual < kMaxSize) {
+    memset(data + actual, 0xff, kMaxSize - actual);
   }
+
+  _data = data;
+  _size = size;
+  _storageSize = actual > size ? actual : size;
+  _dirty = false;
   return true;
 }
 
-void EEPROMClass::end() {
+bool EEPROMClass::end() {
   if (_data == nullptr) {
-    return;
+    return true;
   }
-  commit();
+  if (!commit()) {
+    return false;
+  }
   free(_data);
   _data = nullptr;
   _size = 0;
+  _storageSize = 0;
   _dirty = false;
+  return true;
 }
 
 bool EEPROMClass::commit() {
-  if (_data == nullptr) {
+  if (check_curr_trap() != 0 || _data == nullptr) {
     return false;
   }
   if (!_dirty) {
     return true;
   }
-  cinv_item_ret_t result = cinv_item_write(
-      kNvItemId, static_cast<uint16_t>(_size), _data);
+  // Persist the hidden tail too, so shrinking the accessible range cannot
+  // truncate data. Keep short records short to avoid needless Flash wear.
+  const cinv_item_ret_t result = cinv_item_write(
+      kNvItemId, static_cast<uint16_t>(_storageSize), _data);
   if (result != CINV_OPER_SUCCESS) {
+    return false;
+  }
+  // The SDK does not propagate every internal item-status write failure.
+  // Verify the visible record before reporting success or dropping dirty data.
+  uint8_t verified[kMaxSize];
+  uint16_t actual = 0;
+  if (cinv_item_read(kNvItemId, static_cast<uint16_t>(kMaxSize), verified,
+                     &actual) != CINV_OPER_SUCCESS ||
+      actual != _storageSize || memcmp(verified, _data, _storageSize) != 0) {
     return false;
   }
   _dirty = false;
@@ -110,7 +141,7 @@ bool EEPROMClass::validRange(int address, size_t size) const {
   if (_data == nullptr || address < 0) {
     return false;
   }
-  size_t start = static_cast<size_t>(address);
+  const size_t start = static_cast<size_t>(address);
   return start <= _size && size <= (_size - start);
 }
 
@@ -119,7 +150,7 @@ uint8_t EEPROMClass::read(int address) const {
 }
 
 void EEPROMClass::write(int address, uint8_t value) {
-  if (!validRange(address, 1)) {
+  if (!validRange(address, 1) || _data[address] == value) {
     return;
   }
   _data[address] = value;
@@ -127,9 +158,7 @@ void EEPROMClass::write(int address, uint8_t value) {
 }
 
 void EEPROMClass::update(int address, uint8_t value) {
-  if (read(address) != value) {
-    write(address, value);
-  }
+  write(address, value);
 }
 
 size_t EEPROMClass::readBytes(int address, void *value, size_t size) const {
@@ -158,4 +187,3 @@ size_t EEPROMClass::length() const {
 bool EEPROMClass::isBegun() const {
   return _data != nullptr;
 }
-
