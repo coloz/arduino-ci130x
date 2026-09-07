@@ -9,17 +9,18 @@ allows integration across cores; it does not mean every board has been tested.
 The companion firmware is in `../wifi_c3` relative to the Arduino platform
 root. [PROTOCOL.md](PROTOCOL.md) specifies the service layout.
 
-## Select the serial port
+## Default serial port
 
-Include `<ESPLink.h>` and explicitly choose the port connected to the C3.
-For a board that provides `Serial1`:
+`WiFi.h` and `BLE.h` include ESPLink automatically. The first WiFi/BLE startup
+selects the last available hardware UART at **921600 baud**; no extra include or
+`ESPLink.begin()` call is required. For transport diagnostics alone:
 
 ```cpp
 #include <ESPLink.h>
 
 void setup() {
   Serial.begin(115200);  // Logs use a different port from the C3 link.
-  if (!ESPLink.begin(Serial1, 115200, 10000)) {
+  if (!ESPLink.begin()) {
     Serial.println(ESPLink.lastError());
     return;
   }
@@ -33,12 +34,31 @@ void loop() {
 }
 ```
 
-Replace `Serial1` with the port and pins available on your board. The
-[LinkDiagnostics example](examples/LinkDiagnostics/LinkDiagnostics.ino)
-selects CI1306 `Serial2`, STM32duino PA10 RX / PA9 TX, or another board's
-`Serial1`. STM32duino 3.x uses concrete `Uart` from `<Serial.h>`; the example falls back to `HardwareSerial` for 2.x. Check pin routing and UART voltage compatibility before connecting.
-The baud must match the firmware build; there is no automatic baud detection
-or switching.
+To change the port or baud, call `ESPLink.begin(Serial2, 115200)` before starting
+WiFi or BLE. Later implicit or explicit calls to `ESPLink.begin()` reuse that
+binding, including after `end()` or a failed handshake.
+
+| Core | Automatic UART selection |
+| --- | --- |
+| CI1306 | `Serial2`, using the optimized HardwareSerial backend. |
+| STM32duino 2.x/3.x | Highest numbered UART/USART with RX and TX entries in the board's PinMap. Reuses a core-enabled `SerialN`; otherwise creates one persistent `HardwareSerial` (2.x) or `Uart` (3.x) internally. LPUART is a separate numbering family, used as a fallback when no ordinary UART has RX/TX routing. |
+| NUCLEO-F411RE (STM32duino 3.0.0) | USART6: TX **PA11**, RX **PA12**, following the variant's first PinMap entries. |
+| ESP32 Arduino | Highest `SerialN` exposed by `SOC_UART_NUM`, including the core's low-power UART instances. |
+| Other cores | Highest numbered `HAVE_HWSERIALn` or `SERIAL_PORT_HARDWAREn`, then the core's hardware-port alias. Unrecognized cores require an explicit binding or build override; ESPLink never guesses that USB `Serial` is a UART. |
+
+STM32 uses the core's peripheral constructor, so `PIN_SERIALn_RX/TX` overrides
+remain effective. Board defaults identify pin routing, not whether an application
+has reserved those pins for another peripheral (for example, USB on PA11/PA12).
+An explicit binding can choose another port or pin pair. Do not create another
+serial object on the same peripheral while the automatic binding is active.
+On boards with only one hardware UART, reserve that UART for ESPLink and put logs
+on another interface. Verify the board's exposed pins, supported baud and voltage.
+
+The baud must match the C3 firmware build. The default firmware is 921600;
+115200 firmware requires an explicit 115200 binding. There is no automatic baud
+detection or switching. `ESPLINK_DEFAULT_SERIAL` and `ESPLINK_DEFAULT_BAUD` may
+override the defaults as build-wide compiler flags. They do not reconfigure an
+already remembered binding.
 
 Two binding modes are available:
 
@@ -46,7 +66,7 @@ Two binding modes are available:
 | --- | --- |
 | `ESPLink.begin(port, baud, timeoutMs)` | Starts the serial object with `begin(baud)` and calls its `end()` when releasing the binding. |
 | `ESPLink.begin(static_cast<Stream&>(port), timeoutMs)` | Borrows an already configured Stream; never calls that object's `begin()` or `end()`. |
-| `ESPLink.begin()` | Reuses the previous explicit binding with a 10-second startup budget; fails if none has been configured. |
+| `ESPLink.begin()` | Reuses the previous binding, or selects the default UART/baud on first use, with a 10-second startup budget. |
 
 Use borrowed mode when the application needs to configure pins, receive
 buffers or other driver options itself:
@@ -56,7 +76,7 @@ port.begin(115200);  // Apply any core-specific configuration first.
 ESPLink.begin(static_cast<Stream&>(port), 10000);
 ```
 
-There is no implicit `Serial`, `Serial1` or `Serial2` binding. Keep ESPLink alive until all calls have completed; its selected serial object
+Keep ESPLink alive until all calls have completed; its selected serial object
 must outlive the ESPLink object, including destruction. Use
 the shared global `ESPLink` instance for WiFi and BLE; do not read, write or
 reconfigure its serial port while a binding is active. Borrowed mode leaves
@@ -107,8 +127,8 @@ Measure heap and stack headroom with the actual application workload.
 
 ## CI1306 performance configuration
 
-On CI1306, use the concrete HardwareSerial binding, for example
-`ESPLink.begin(Serial2, 115200)`, to enable the UART optimizations. Borrowing it as
+On CI1306, the default initialization enables the UART optimizations. An explicit
+concrete binding such as `ESPLink.begin(Serial2, 115200)` also enables them. Borrowing it as
 a `Stream` preserves its driver configuration and does not automatically select
 bulk reads, resize RX storage or enable DMA. Match the baud to the C3 firmware.
 
@@ -117,8 +137,11 @@ Defaults and limits are defined in [ESPLinkConfig.h](src/ESPLinkConfig.h) and
 
 | Macro | Default | Purpose |
 | --- | --- | --- |
+| `ESPLINK_DEFAULT_SERIAL` | Automatic core-specific selection | Override the managed hardware serial object for the first implicit binding. |
+| `ESPLINK_DEFAULT_BAUD` | `921600` | Baud for the first implicit binding; must match the C3 firmware. |
 | `ESPLINK_CI13XX_RTOS` | `1` on CI13XX; otherwise `0` | Background I/O task; disabling it requires frequent `poll()`. |
 | `ESPLINK_CI13XX_UART_BULK_RX`, `ESPLINK_CI13XX_TX_DMA`, `ESPLINK_CI13XX_TASK_NOTIFY` | Each `1` | Bounded bulk reads, opportunistic TX DMA and task notification wakeups. Set individually to `0` to disable. |
+| `ESPLINK_CI13XX_TX_DRAIN` | `1` | Drain the managed CI UART before each encoded frame, sharing the write timeout. Set to `0` only for a CI configuration verified to handle consecutive frames without it. |
 | `ESPLINK_CI13XX_RX_BUFFER_SIZE` | `4096` bytes | Managed UART ring; power of two from 2048 to 32768. |
 | `ESPLINK_CI13XX_RX_CHUNK_SIZE` | `64` bytes | Maximum batch read; range 1 to 64 to bound interrupt masking. |
 | `ESPLINK_CI13XX_DMA_THRESHOLD` | `64` bytes | Minimum encoded write length eligible for DMA; must be positive. |
@@ -130,6 +153,14 @@ Defaults and limits are defined in [ESPLinkConfig.h](src/ESPLinkConfig.h) and
 The CI-specific UART/task settings apply only with `ESPLINK_CI13XX_RTOS=1`.
 DMA acquisition uses `PeripheralManager`; if its channel is unavailable, TX
 falls back to interrupts. The managed UART releases its DMA resource on shutdown.
+
+CI1306 hardware testing at 115200 baud observed truncated frames when ACKs and
+requests were sent consecutively. Draining the UART before each encoded frame
+prevented those truncations in the tested workload. The hardware cause has not
+been established. This default keeps the DMA, bulk RX and notification paths,
+but waits for preceding TX data to drain before starting another frame, reducing
+TX overlap. Revalidate reliability and throughput before disabling it on another
+CI board or configuration. Generic and borrowed Stream bindings are unaffected.
 
 Pass overrides to **all C++ translation units**, including the library sources.
 A `#define` in the sketch alone does not configure separately compiled files and
@@ -167,7 +198,9 @@ restart the total deadline. Arduino Stream has no universal timed-write API,
 so an individual `Stream.write()` must itself return within a finite bound.
 ESPLink cannot interrupt a custom Stream that blocks inside `write()`;
 `Stream.setTimeout()` alone does not guarantee a write deadline on every core.
-The managed CI13XX binding uses its driver's explicit timed-write API.
+The managed CI13XX binding uses its driver's explicit timed-write API. With the
+default frame drain enabled, draining and writing share one timeout budget;
+drain failure or budget exhaustion prevents the new frame from being written.
 
 Session changes invalidate socket, certificate and BLE handles. The firmware
 does not persist request results across power loss. CRC is not authentication

@@ -1,22 +1,6 @@
-// ESPLink networking with an explicitly selected UART on a 32-bit Arduino board.
-// Change the UART/pins below to match your board; keep the console UART separate.
-#include <ESPLink.h>
+// ESP32-C3 uses the board's last hardware UART at 921600 baud.
+// Keep the console UART separate from the C3 link.
 #include <WiFi.h>
-
-#if defined(ARDUINO_ARCH_STM32)
-// STM32duino HardwareSerial constructor uses RX, TX (here USART1 on PA10/PA9).
-// These pins are an example for boards exposing USART1, including F411/F446.
-#if __has_include(<Serial.h>)
-Uart ESPSerial(PA10, PA9); // STM32duino 3.x
-#else
-HardwareSerial ESPSerial(PA10, PA9); // STM32duino 2.x
-#endif
-#elif defined(ARDUINO_ARCH_CI13XX)
-#define ESPSerial Serial2
-#else
-// Boards such as SAMD and RP2040 commonly expose a separate Serial1 hardware UART.
-#define ESPSerial Serial1
-#endif
 
 WiFiClient client;
 
@@ -28,11 +12,6 @@ void onWiFiEvent(WiFiEvent_t event) {
 
 void setup() {
   Serial.begin(115200);
-  // TX -> C3 RX, RX <- C3 TX, shared GND; both ends must use the same baud.
-  if (!ESPLink.begin(ESPSerial, 115200)) {
-    Serial.println("ESPLink handshake failed");
-    return;
-  }
   WiFi.onEvent(onWiFiEvent);
   WiFi.begin("YOUR_SSID", "YOUR_PASSWORD");
   if (WiFi.waitForConnectResult(20000) != WL_CONNECTED) return;

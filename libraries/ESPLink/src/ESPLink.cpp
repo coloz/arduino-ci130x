@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "ESPLink.h"
 #include <new>
+#include "ESPLinkDefaultSerial.h"
 #if ESPLINK_CI13XX_RTOS
 extern "C" {
 #include "FreeRTOS.h"
@@ -112,8 +113,8 @@ bool ESPLinkClass::begin(Stream& serial, uint32_t timeoutMs) {
   return beginBinding(binding, timeoutMs);
 }
 bool ESPLinkClass::begin() {
-  if (!remembered_.serial) return false;
-  return beginBinding(remembered_, 10000);
+  if (remembered_.serial) return beginBinding(remembered_, 10000);
+  return esplink_detail::beginDefaultSerial(*this);
 }
 #if ESPLINK_CI13XX_RTOS
 bool ESPLinkClass::begin(HardwareSerial& serial, uint32_t baud, uint32_t timeoutMs) {
@@ -137,7 +138,17 @@ bool ESPLinkClass::begin(HardwareSerial& serial, uint32_t baud, uint32_t timeout
     uart.end(); uart.setRxBuffer(nullptr, 0);
   };
   binding.write = [](Stream* port, const uint8_t* data, size_t size, uint32_t timeout) {
-    return static_cast<HardwareSerial*>(port)->write(data, size, timeout);
+    auto& uart = *static_cast<HardwareSerial*>(port);
+#if ESPLINK_CI13XX_TX_DRAIN
+    // CI1306 hardware tests require a drained TX path between encoded frames.
+    // Draining and writing share one budget; never start a frame after it expires.
+    const uint32_t started = millis();
+    if (!uart.flush(timeout)) return size_t(0);
+    const uint32_t elapsed = millis() - started;
+    if (elapsed >= timeout) return size_t(0);
+    timeout -= elapsed;
+#endif
+    return uart.write(data, size, timeout);
   };
 #if ESPLINK_CI13XX_UART_BULK_RX
   binding.read = [](Stream* port, uint8_t* data, size_t size) {

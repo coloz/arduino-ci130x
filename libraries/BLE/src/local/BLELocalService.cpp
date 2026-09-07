@@ -29,13 +29,6 @@ BLELocalService::BLELocalService(const char* uuid) :
 }
 
 void BLELocalService::clear() {
-  _characteristics.clear();
-  _startHandle = 0;
-  _endHandle = 0;
-}
-
-BLELocalService::~BLELocalService()
-{
   for (unsigned int i = 0; i < characteristicCount(); i++) {
     BLELocalCharacteristic* c = characteristic(i);
 
@@ -43,6 +36,13 @@ BLELocalService::~BLELocalService()
       delete c;
     }
   }
+  _characteristics.clear();
+  _startHandle = 0;
+  _endHandle = 0;
+}
+
+BLELocalService::~BLELocalService()
+{
   clear();
 }
 

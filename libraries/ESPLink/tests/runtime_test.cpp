@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Runs the real ESPLink worker and transaction code with serial and RTOS fakes.
 #define ESPLINK_CI13XX_RTOS 1
+#define ARDUINO_ARCH_CI13XX 1
 #include <Arduino.h>
+HardwareSerial Serial2;
 #include <C3Protocol.h>
 #include <atomic>
 #include <algorithm>
@@ -129,10 +131,25 @@ size_t HardwareSerial::readAvailable(uint8_t* buffer, size_t maximum) {
   maxBulkBytes = std::max(maxBulkBytes.load(), unsigned(count));
   return count;
 }
-size_t HardwareSerial::write(const uint8_t* data, size_t size, uint32_t) {
+bool HardwareSerial::flush(uint32_t timeout) {
+  if (++flushCalls == 1) firstFlushBudget = timeout;
+  const bool complete = !onFlush || onFlush(timeout);
+  if (complete) pendingTx = false;
+  else error = HardwareSerialStartError::Timeout;
+  return complete;
+}
+size_t HardwareSerial::write(const uint8_t* data, size_t size, uint32_t timeout) {
   if (!active) return 0;
+  if (++writeCalls == 1) firstWriteBudget = timeout;
+  const uint32_t stall = writeWaitMs;
+  if (stall) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(std::min(stall, timeout)));
+    if (stall >= timeout) { error = HardwareSerialStartError::Timeout; return 0; }
+  }
   error = HardwareSerialStartError::None;
   if (dmaEnabled && size >= dmaThreshold) ++dmaWrites; else ++irqWrites;
+  if (requireDrain && pendingTx.exchange(true)) { ++undrainedWrites; return size; }
+  writtenBytes += unsigned(size);
   if (onWrite) onWrite(data, size);
   // Core DMA/TX waits share this task notification slot with request wakes.
   if (drainNotificationAfterWrite) drainedWriteNotifications += ulTaskNotifyTake(pdTRUE, 0);
@@ -377,7 +394,6 @@ static void testReconfigureAndCreationFailure() {
 
 static void testExplicitAndBorrowedBindings() {
   HardwareSerial serial; Controller c(serial); ESPLinkClass link;
-  CHECK(!link.begin() && !link.ready()); // no hidden Serial/Serial2 fallback
   serial.begin(115200);
   Stream& borrowed = serial;
   CHECK(link.begin(borrowed, 500)); echo(link);
@@ -385,6 +401,7 @@ static void testExplicitAndBorrowedBindings() {
   CHECK(bool(serial)); // end() must not close a caller-managed Stream
   CHECK(link.begin()); echo(link); stop(link);
   CHECK(bool(serial)); serial.end();
+  CHECK(serial.flushCalls == 0); // borrowed streams keep their existing write policy
 
   // A custom Arduino serial type takes the generic managed-serial template,
   // even when the surrounding build enables the RTOS scheduling backend.
@@ -393,6 +410,44 @@ static void testExplicitAndBorrowedBindings() {
   CHECK(custom.begin(managed, 460800, 500)); echo(custom);
   stop(custom); CHECK(!bool(managed));
   CHECK(custom.begin()); echo(custom); stop(custom); CHECK(!bool(managed));
+  CHECK(managed.flushCalls == 0); // generic serial templates do not require CI flush()
+}
+static void testDefaultPortAndExplicitOverride() {
+  Controller defaultController(Serial2);
+  HardwareSerial selected; Controller selectedController(selected);
+  ESPLinkClass link;
+  CHECK(link.begin());
+  CHECK(Serial2.configuredBaud == ESPLINK_DEFAULT_BAUD);
+  CHECK(ESPLINK_DEFAULT_BAUD == 921600 && c3::DefaultBaud == 921600);
+  CHECK(Serial2.configuredRxBufferSize == ESPLINK_CI13XX_RX_BUFFER_SIZE);
+#if ESPLINK_CI13XX_TX_DMA
+  CHECK(Serial2.dmaEnableCalls > 0 && Serial2.txDMAEnabled());
+#endif
+  echo(link);
+#if ESPLINK_CI13XX_UART_BULK_RX
+  CHECK(Serial2.bulkReads > 0 && Serial2.byteReads == 0);
+#endif
+  const unsigned hellos = defaultController.hellos;
+  CHECK(link.begin() && defaultController.hellos == hellos);
+  stop(link);
+  CHECK(!bool(Serial2) && Serial2.configuredRxBufferSize == 0);
+  CHECK(link.begin() && defaultController.hellos == hellos + 1);
+  CHECK(link.begin(selected, 115200, 500));
+  CHECK(!bool(Serial2) && selected.configuredBaud == 115200);
+  stop(link);
+  CHECK(link.begin() && selected.configuredBaud == 115200);
+  CHECK(!bool(Serial2) && defaultController.hellos == hellos + 1);
+  echo(link); stop(link);
+
+  // Even a failed explicit handshake is remembered; reconnect must not return
+  // to the automatic default port/baud behind the user's back.
+  selectedController.malformedHello = true;
+  CHECK(!link.begin(selected, 230400, 100));
+  selectedController.malformedHello = false;
+  CHECK(link.begin() && selected.configuredBaud == 230400);
+  CHECK(!bool(Serial2) && defaultController.hellos == hellos + 1);
+  stop(link);
+  Serial2.onWrite = nullptr;
 }
 static size_t deletedSemaphores() {
   size_t count = 0;
@@ -436,6 +491,56 @@ static void awaitCondition(Predicate ready, uint32_t timeout = 1500) {
   while (!ready() && uint32_t(millis() - started) < timeout)
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   CHECK(ready());
+}
+static void testFrameDrain() {
+  HardwareSerial serial; Controller c(serial); ESPLinkClass link;
+#if ESPLINK_CI13XX_TX_DRAIN
+  // Model a TX path that accepts a subsequent write but loses it unless the
+  // preceding frame was drained. ACKs and requests share that same path.
+  serial.requireDrain = true;
+#endif
+  CHECK(link.begin(serial, 115200, 500));
+  echo(link); echo(link);
+  CHECK(link.stats().retries == 0);
+  stop(link);
+  CHECK(c.hellos == 1 && c.requests == 2 && c.executions == 2);
+  CHECK(serial.undrainedWrites == 0);
+#if ESPLINK_CI13XX_TX_DRAIN
+  CHECK(serial.flushCalls == serial.writeCalls && serial.flushCalls >= 3);
+#else
+  CHECK(serial.flushCalls == 0 && serial.writeCalls >= 3);
+#endif
+}
+static void testDrainFailureAndDeadline() {
+#if ESPLINK_CI13XX_TX_DRAIN
+  for (unsigned mode = 0; mode < 3; ++mode) {
+    HardwareSerial serial; Controller c(serial); ESPLinkClass link;
+    serial.onFlush = [mode](uint32_t timeout) {
+      if (mode == 0) return false;
+      // Also cover a successful drain that consumed the entire allowance.
+      const uint32_t delay = mode == 1 ? timeout : 60;
+      std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+      return true;
+    };
+    if (mode == 2) serial.writeWaitMs = 400;
+    const uint32_t started = millis();
+    CHECK(!link.begin(serial, 115200, 200));
+    CHECK(link.lastError() == c3::Timeout);
+    stop(link);
+    const uint32_t elapsed = millis() - started;
+    CHECK(serial.flushCalls > 0 && serial.firstFlushBudget <= 200);
+    CHECK(serial.writtenBytes == 0 && c.hellos == 0);
+    CHECK(elapsed >= 190 && elapsed < 400);
+    if (mode < 2) {
+      // Neither drain failure nor an exhausted budget may start a new frame.
+      CHECK(serial.writeCalls == 0 && serial.firstWriteBudget == 0);
+    } else {
+      CHECK(serial.writeCalls == 1 && serial.firstWriteBudget > 0);
+      CHECK(serial.firstFlushBudget > 60);
+      CHECK(serial.firstWriteBudget <= serial.firstFlushBudget - 60);
+    }
+  }
+#endif
 }
 static void testBulkReceiveAndDmaFallback() {
   for (unsigned fail = 0; fail < 2; ++fail) {
@@ -554,7 +659,8 @@ int main() {
   testHandshakeAndMatching(); testRejectedHellos(); testReliableRetry();
   testUnknownAndRecovery(); testReplyCapacity();
   testStopTimeoutRecovery(); testConcurrentEndAndReaders(); testReconfigureAndCreationFailure();
-  testExplicitAndBorrowedBindings(); testScopedDestruction();
+  testExplicitAndBorrowedBindings(); testScopedDestruction(); testDefaultPortAndExplicitOverride();
+  testFrameDrain(); testDrainFailureAndDeadline();
   testBulkReceiveAndDmaFallback(); testNotifiedIdleAndRx(); testNoNotificationToExitedWorker(); testRequestSurvivesConsumedTxNotification();
   CHECK(deadSemaphoreUses == 0 && deadTaskNotifyUses == 0);
   std::cout << "ESPLink actual runtime: " << checks << " assertions passed\n";

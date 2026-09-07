@@ -24,6 +24,10 @@ public:
 class HardwareSerial : public Stream {
 public:
   std::function<void(const uint8_t*, size_t)> onWrite;
+  std::function<bool(uint32_t)> onFlush;
+  std::atomic<unsigned> flushCalls{0}, writeCalls{0}, writtenBytes{0}, undrainedWrites{0};
+  std::atomic<uint32_t> firstFlushBudget{0}, firstWriteBudget{0}, writeWaitMs{0};
+  std::atomic<bool> requireDrain{false}, pendingTx{false};
   std::atomic<uint32_t> stallWaitMs{0};
   std::atomic<bool> stallEntered{false}, stallExited{false};
   std::atomic<bool> dmaRequestFails{false}, drainNotificationAfterWrite{false};
@@ -32,7 +36,8 @@ public:
   std::atomic<unsigned> dmaEnableCalls{0}, dmaWrites{0}, irqWrites{0};
   std::atomic<unsigned> waits{0}, waiting{0}, shortWaits{0}, maxWaitMs{0}, rxNotifies{0};
   std::atomic<size_t> configuredRxBufferSize{0}, dmaThreshold{0};
-  void begin(uint32_t, uint32_t = SERIAL_8N1) { active = true; error = HardwareSerialStartError::None; }
+  std::atomic<uint32_t> configuredBaud{0};
+  void begin(uint32_t baud, uint32_t = SERIAL_8N1) { configuredBaud = baud; active = true; error = HardwareSerialStartError::None; }
   void end() { active = false; dmaEnabled = false; }
   explicit operator bool() const { return active; }
   bool setRxBuffer(uint8_t* buffer, size_t size) {
@@ -55,6 +60,7 @@ public:
   size_t write(uint8_t byte) override { return write(&byte, 1, 1000); }
   size_t write(const uint8_t* data, size_t size) override { return write(data, size, 1000); }
   size_t write(const uint8_t*, size_t, uint32_t);
+  bool flush(uint32_t);
   bool waitReadable(uint32_t);
   void inject(const uint8_t*, size_t);
   bool injectWhenWaiting(const uint8_t*, size_t, uint32_t timeoutMs);

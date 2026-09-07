@@ -1,11 +1,5 @@
 // Use a second ESPLinkPeripheral board, or a peer exposing the same UUIDs.
-#include <ESPLink.h>
 #include <BLE.h>
-#include <BLEESPLink.h>
-
-// Select the hardware UART wired to C3 RX/TX/GND. Change Serial1 for your board.
-// UART pins, baud and RX buffering remain the application/core responsibility.
-#define LINK_UART Serial1
 
 const char serviceUuid[] = "19B10000-E8F2-537E-4F6C-D104768A1214";
 const char counterUuid[] = "19B10001-E8F2-537E-4F6C-D104768A1214";
@@ -15,8 +9,7 @@ bool active = false;
 
 void setup() {
   Serial.begin(115200);
-  LINK_UART.begin(115200);
-  if (!ESPLink.begin(static_cast<Stream&>(LINK_UART)) || !BLE.begin()) return;
+  if (!BLE.begin()) return;
   BLE.setTimeout(3000);
   active = BLE.scanForUuid(serviceUuid);
 }

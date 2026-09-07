@@ -1,11 +1,13 @@
 param(
     [string]$ArduinoCli = 'arduino-cli',
     [string]$ArduinoData = "$env:LOCALAPPDATA/Arduino15",
+    [string]$BuildDirectory = '',
+    [string]$Fqbn = 'ciwireless:ci13xx:ci1306:Algorithm=null',
     [string[]]$Examples = @('LinkDiagnostics', 'WiFiBasics', 'WiFiUDP', 'WiFiTLSTest', 'MQTTClient', 'MQTTBLE', 'CI1306Peripheral', 'CI1306Central', 'CI1306ReadCallback', 'CI1306EncryptedValue')
 )
 $ErrorActionPreference = 'Stop'
 $platformRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$testRoot = Join-Path $platformRoot '.build/wireless'
+$testRoot = if ($BuildDirectory) { [IO.Path]::GetFullPath($BuildDirectory) } else { Join-Path $platformRoot '.build/wireless' }
 $sketchbook = Join-Path $testRoot 'sketchbook'
 $hardware = Join-Path $sketchbook 'hardware/ciwireless'
 New-Item -ItemType Directory -Force $hardware | Out-Null
@@ -32,7 +34,7 @@ foreach ($name in $Examples) {
     New-Item -ItemType Directory -Force $sketch | Out-Null
     Copy-Item -LiteralPath $source -Destination (Join-Path $sketch "$name.ino") -Force
     $log = Join-Path $testRoot "$name.log"
-    & $ArduinoCli compile --config-file $config --fqbn 'ciwireless:ci13xx:ci1306:Algorithm=null' --build-property "runtime.tools.riscv-gcc.path=$($compilerRoot.Replace('\','/'))" --build-path (Join-Path $testRoot "$name-build") $sketch *> $log
+    & $ArduinoCli compile --config-file $config --fqbn $Fqbn --build-property "runtime.tools.riscv-gcc.path=$($compilerRoot.Replace('\','/'))" --build-path (Join-Path $testRoot "$name-build") $sketch *> $log
     $result = $LASTEXITCODE
     Get-Content -LiteralPath $log -Tail 25
     if ($result) { throw "Build failed: $name; log: $log" }

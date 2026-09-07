@@ -1,12 +1,13 @@
 param(
     [string]$ArduinoCli = 'arduino-cli',
     [string]$ArduinoData = "$env:LOCALAPPDATA/Arduino15",
+    [string]$BuildDirectory = '',
     [string]$Fqbn = 'STMicroelectronics:stm32:Nucleo_64:pnum=NUCLEO_F411RE',
     [string[]]$Examples = @('LinkDiagnostics', 'PortableWiFi', 'PortableMQTTBLE', 'STM32Peripheral')
 )
 $ErrorActionPreference = 'Stop'
 $platformRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$testRoot = Join-Path $platformRoot '.build/wireless'
+$testRoot = if ($BuildDirectory) { [IO.Path]::GetFullPath($BuildDirectory) } else { Join-Path $platformRoot '.build/wireless' }
 $sketchbook = Join-Path $testRoot 'sketchbook'
 New-Item -ItemType Directory -Force $sketchbook | Out-Null
 

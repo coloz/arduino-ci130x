@@ -18,7 +18,7 @@ struct ESPLinkStats {
 };
 
 // Shared transport for Arduino boards with an external ESP32-C3.
-// Explicitly choose a serial port before using WiFi/BLE. Generic ports use
+// begin() selects the last hardware UART by default. Generic ports use
 // cooperative poll(); the CI13XX HardwareSerial backend has an RTOS worker.
 // The object and selected Stream must outlive all use. State is retained after
 // end(); destruction releases it after all callers have stopped. Do not destroy
@@ -47,7 +47,8 @@ class ESPLinkClass {
   // Optional optimized backend; never required by another Arduino core.
   bool begin(HardwareSerial& serial, uint32_t baud, uint32_t timeoutMs = 10000);
 #endif
-  // Reconnect the last explicitly configured binding. No default Serial/Serial2.
+  // Reuse the previous binding; otherwise select the last hardware UART at
+  // ESPLINK_DEFAULT_BAUD (921600). Never guess an unknown core's USB Serial.
   bool begin();
   void end();
   void poll();

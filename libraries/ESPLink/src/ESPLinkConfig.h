@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: MIT
 #pragma once
+// Override these for the entire build, including separately compiled libraries.
+// ESPLINK_DEFAULT_SERIAL may name a board-provided hardware serial object.
+// Without it, the implementation chooses the last available hardware UART.
+#ifndef ESPLINK_DEFAULT_BAUD
+#define ESPLINK_DEFAULT_BAUD 921600UL
+#endif
+static_assert(ESPLINK_DEFAULT_BAUD > 0, "Default UART baud must be positive");
 // The wire protocol is platform independent. This flag only selects scheduling
 // and an optional UART buffer optimization for the existing CI13XX core.
 #ifndef ESPLINK_CI13XX_RTOS
@@ -15,6 +22,9 @@
 #endif
 #ifndef ESPLINK_CI13XX_TX_DMA
 #define ESPLINK_CI13XX_TX_DMA 1
+#endif
+#ifndef ESPLINK_CI13XX_TX_DRAIN
+#define ESPLINK_CI13XX_TX_DRAIN 1
 #endif
 #ifndef ESPLINK_CI13XX_TASK_NOTIFY
 #define ESPLINK_CI13XX_TASK_NOTIFY 1
@@ -44,6 +54,8 @@
 #define ESPLINK_RX_PUMP_BUDGET 4096
 #endif
 #if ESPLINK_CI13XX_RTOS
+static_assert(ESPLINK_CI13XX_TX_DRAIN == 0 || ESPLINK_CI13XX_TX_DRAIN == 1,
+  "CI frame drain must be 0 or 1");
 static_assert(ESPLINK_CI13XX_RX_BUFFER_SIZE >= 2048 && ESPLINK_CI13XX_RX_BUFFER_SIZE <= 32768 &&
   (ESPLINK_CI13XX_RX_BUFFER_SIZE & (ESPLINK_CI13XX_RX_BUFFER_SIZE - 1)) == 0,
   "CI RX storage must be a power of two between 2048 and 32768 bytes");

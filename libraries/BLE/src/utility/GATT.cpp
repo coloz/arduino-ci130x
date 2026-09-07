@@ -43,6 +43,8 @@ GATTClass::~GATTClass()
 
 void GATTClass::begin()
 {
+  end();
+
   _genericAccessService = new BLELocalService("1800");
   _deviceNameCharacteristic = new BLELocalCharacteristic("2a00", BLERead, 20);
   _appearanceCharacteristic = new BLELocalCharacteristic("2a01", BLERead, 2);
@@ -62,40 +64,38 @@ void GATTClass::begin()
   setDeviceName("Arduino");
   setAppearance(0x000);
 
-  clearAttributes();
-
   addService(_genericAccessService);
   addService(_genericAttributeService);
 }
 
 void GATTClass::end()
 {
+  clearAttributes();
+
   if (_genericAccessService && _genericAccessService->release() == 0) {
     delete(_genericAccessService);
-    _genericAccessService = NULL;
   }
+  _genericAccessService = NULL;
 
   if (_deviceNameCharacteristic && _deviceNameCharacteristic->release() == 0) {
     delete(_deviceNameCharacteristic);
-    _deviceNameCharacteristic = NULL;
   }
+  _deviceNameCharacteristic = NULL;
 
   if (_appearanceCharacteristic && _appearanceCharacteristic->release() == 0) {
     delete(_appearanceCharacteristic);
-    _appearanceCharacteristic = NULL;
   }
+  _appearanceCharacteristic = NULL;
 
   if (_genericAttributeService && _genericAttributeService->release() == 0) {
     delete(_genericAttributeService);
-    _genericAttributeService = NULL;
   }
+  _genericAttributeService = NULL;
 
   if (_servicesChangedCharacteristic && _servicesChangedCharacteristic->release() == 0) {
     delete(_servicesChangedCharacteristic);
-    _servicesChangedCharacteristic = NULL;
   }
-
-  clearAttributes();
+  _servicesChangedCharacteristic = NULL;
 }
 
 void GATTClass::setDeviceName(const char* deviceName)
@@ -188,6 +188,13 @@ void GATTClass::addService(BLELocalService* service)
 
 void GATTClass::clearAttributes()
 {
+  // The attribute table owns the service references. Clear their definitions
+  // while those references still keep each service alive.
+  for (unsigned int i = 0; i < _services.size(); i++) {
+    _services.get(i)->clear();
+  }
+  _services.clear();
+
   for (unsigned int i = 0; i < attributeCount(); i++) {
     BLELocalAttribute* a = attribute(i);
 
@@ -196,12 +203,6 @@ void GATTClass::clearAttributes()
     }
   }
   _attributes.clear();
-
-  for (unsigned int i = 0; i < _services.size(); i++) {
-    _services.get(i)->clear();
-  }
-  _services.clear();
-
 }
 
 #if !defined(FAKE_GATT)

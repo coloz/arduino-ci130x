@@ -26,7 +26,7 @@ static constexpr size_t HeaderSize = 20;
 static constexpr size_t MaxDecoded = HeaderSize + MaxPayload + 4;
 static constexpr size_t MaxEncoded = MaxDecoded + MaxDecoded / 254 + 2;
 static constexpr size_t MaxWire = MaxEncoded + 2;
-static constexpr uint32_t DefaultBaud = 115200;
+static constexpr uint32_t DefaultBaud = 921600;
 static constexpr uint32_t RetryMs = 300;
 
 enum Status : int32_t {

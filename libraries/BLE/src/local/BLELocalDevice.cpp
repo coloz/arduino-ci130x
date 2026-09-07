@@ -19,6 +19,7 @@
 
 #include "BLEConfig.h"
 #include "utility/ATT.h"
+#include "utility/BLEAddress.h"
 #include "utility/HCI.h"
 #include "utility/GAP.h"
 #include "utility/GATT.h"
@@ -263,7 +264,7 @@ String BLELocalDevice::address() const
   HCI.readBdAddr(addr);
 
   char result[18];
-  sprintf(result, "%02x:%02x:%02x:%02x:%02x:%02x", addr[5], addr[4], addr[3], addr[2], addr[1], addr[0]);
+  ble_detail::formatAddress(addr, result);
 
   return result;
 }

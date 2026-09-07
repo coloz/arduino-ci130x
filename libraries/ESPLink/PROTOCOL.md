@@ -14,7 +14,7 @@ v1采用**单个应用RPC在途（接收额度1）+主机按需拉取**；不是
 
 HELLO的session=0、id=主机非零nonce。尚未执行应用请求时，相同nonce重发返回同session；新nonce或已经执行过业务后的HELLO在服务线程安全清理旧资源后生成新session。这样CI重启后即便nonce重复，也不会复活旧对象。HELLO_REPLY负载：u16 maxPayload、u32 features、u32 bootID、u8 maxSockets、u8 maxBLEConnections、u16 maxHciPacket、string firmwareVersion。握手完成前应用RPC不执行。新会话使全部socket/证书/HCI状态失效。
 
-请求每300ms可重发，受操作总deadline约束。超过deadline后主机使会话失效；已发送操作返回OutcomeUnknown，不能自动重放。PING/PONG为空负载，id=0，由串口任务处理，不经过可能阻塞的网络worker。无硬复位线；C3看门狗负责自身故障恢复。v1默认固定115200；双方显式配置同一921600/2M/3M可以测试，但**动态波特率协商尚不属于v1**。
+请求每300ms可重发，受操作总deadline约束。超过deadline后主机使会话失效；已发送操作返回OutcomeUnknown，不能自动重放。PING/PONG为空负载，id=0，由串口任务处理，不经过可能阻塞的网络worker。无硬复位线；C3看门狗负责自身故障恢复。v1默认固定921600；双方显式配置同一115200/2M/3M可以测试，但**动态波特率协商尚不属于v1**。
 
 status: 0 OK; -1 InvalidArgument; -2 Unsupported; -3 NoMemory; -4 Busy; -5 Timeout; -6 NotConnected; -7 IoError; -8 ProtocolError; -9 OutcomeUnknown; -10 StaleHandle; -11 BufferTooSmall; -12 ResultExpired; -13 SecurityError; -14 WouldBlock; -15 LinkLost; -16 NotFound。
 

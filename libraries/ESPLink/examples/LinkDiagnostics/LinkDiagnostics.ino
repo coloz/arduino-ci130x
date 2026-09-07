@@ -1,28 +1,14 @@
-// Set LINK_BAUD to the baud used by the C3 image: 115200 or 921600.
+// Default: last hardware UART at 921600 baud; flash the matching C3 image.
 #include <ESPLink.h>
 
-// Choose pins/ports available on your board; keep Serial free for diagnostics.
-#if defined(ARDUINO_ARCH_STM32)
-// STM32duino NUCLEO-F411RE: USART1 RX=PA10, TX=PA9.
-#if __has_include(<Serial.h>)
-#include <Serial.h>
-Uart LinkSerial(PA10, PA9);  // STM32duino 3.x concrete UART type.
+#if defined(ARDUINO_ARCH_CI13XX)
+#if defined(ESPLINK_DEFAULT_SERIAL)
+auto &diagnosticUart = ESPLINK_DEFAULT_SERIAL;
 #else
-HardwareSerial LinkSerial(PA10, PA9);  // STM32duino 2.x.
+auto &diagnosticUart = Serial2; // CI1306 default: TX=PB1, RX=PB2.
 #endif
-#define LINK_UART LinkSerial
-#elif defined(ARDUINO_ARCH_CI13XX)
-// CI1306 UART2: RX=PB2, TX=PB1. Keep the concrete type for its fast backend.
-#define LINK_UART Serial2
-#else
-// Replace Serial1 if your Arduino board uses another hardware UART.
-#define LINK_UART Serial1
 #endif
-#ifndef LINK_BAUD
-#define LINK_BAUD 115200UL
-#endif
-static_assert(LINK_BAUD == 115200UL || LINK_BAUD == 921600UL,
-              "Select the baud of the matching ESP32-C3 firmware image");
+
 uint32_t passed = 0, failed = 0, lastReportMs = 0;
 uint32_t windowRequests = 0, windowMaxUs = 0;
 uint64_t windowPayloadBytes = 0, windowRequestUs = 0;
@@ -31,19 +17,19 @@ uint8_t pattern[c3::MaxPayload], reply[c3::MaxPayload];
 
 void setup() {
   Serial.begin(115200);
-  if (!ESPLink.begin(LINK_UART, LINK_BAUD)) {
+  if (!ESPLink.begin()) {
     Serial.println("ESPLink handshake failed: check UART pins, shared GND and baud");
     Serial.println(ESPLink.lastError());
     return;
   }
   Serial.println(ESPLink.capabilities().firmwareVersion);
-  Serial.print("baud="); Serial.print(LINK_BAUD);
+  Serial.print("baud="); Serial.print(ESPLINK_DEFAULT_BAUD);
   Serial.print(" crcTable="); Serial.print(C3_CRC32C_USE_TABLE);
 #if defined(ARDUINO_ARCH_CI13XX)
   Serial.print(" rtos="); Serial.print(ESPLINK_CI13XX_RTOS);
   Serial.print(" bulkRx="); Serial.print(ESPLINK_CI13XX_UART_BULK_RX);
   Serial.print(" taskNotify="); Serial.print(ESPLINK_CI13XX_TASK_NOTIFY);
-  Serial.print(" txDMA="); Serial.print(Serial2.txDMAEnabled());
+  Serial.print(" txDMA="); Serial.print(diagnosticUart.txDMAEnabled());
 #endif
   Serial.println();
   Serial.println("payload_Bps counts successful Echo TX+RX; avg_us/max_us cover all requests in this window");
@@ -88,8 +74,8 @@ void loop() {
     Serial.print(" retries="); Serial.print(stats.retries);
     Serial.print(" timeouts="); Serial.print(stats.timeouts);
 #if defined(ARDUINO_ARCH_CI13XX)
-    const auto errors = Serial2.errorCounts();
-    Serial.print(" txDMA="); Serial.print(Serial2.txDMAEnabled());
+    const auto errors = diagnosticUart.errorCounts();
+    Serial.print(" txDMA="); Serial.print(diagnosticUart.txDMAEnabled());
     Serial.print(" uartOverrun="); Serial.print(errors.hardwareOverrun);
     Serial.print(" rxOverflow="); Serial.print(errors.bufferOverflow);
 #endif

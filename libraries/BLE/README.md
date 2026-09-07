@@ -15,65 +15,61 @@ public classes and globals.
 ## Host portability
 
 The same ESPLink HCI transport and Host validation guards are selected on all
-Arduino architectures, including STM32 and CI1306. The library does not choose a
-UART from the board name, touch board-specific BLE reset pins, or select an
-onboard NINA/AT/Cordio controller. `architectures=*` permits other Arduino cores
+Arduino architectures, including STM32 and CI1306. ESPLink selects the default
+UART; BLE does not touch board-specific reset pins or select an onboard
+NINA/AT/Cordio controller. `architectures=*` permits other Arduino cores
 to build it; it does not establish that every board has enough RAM or has passed
 hardware tests. Target 32-bit hosts with sufficient free RAM for the BLE Host,
 ESPLink buffers, sketch and any WiFi clients. Small AVR boards are not a validated
 target.
 
-Install the sibling **ESPLink** library as well. Choose the UART, pins, baud and
-RX buffering explicitly in the sketch. Connect host TX to C3 RX, host RX to C3 TX,
-and common GND. Both ends must use the same baud. Do not mix debug output into
-the link UART. Use a UART with buffering sufficient for complete protocol frames;
-check the ESPLink portability notes before increasing the baud.
+Install the sibling **ESPLink** library as well. `BLE.h` includes both
+`ESPLink.h` and `BLEESPLink.h`, so sketches need only include `BLE.h`.
+`BLE.begin()` automatically starts the board's last available hardware UART at
+**921600 baud**, or reuses the existing ESPLink binding. CI1306 uses `Serial2`
+(TX=PB1, RX=PB2); STM32 selects the highest-numbered UART with usable board
+TX/RX mappings. Connect host TX to C3 RX, host RX to C3 TX, and common GND.
+Both ends must use the same baud. Keep debug output on a separate console.
 
 ```cpp
-#include <ESPLink.h>
 #include <BLE.h>
 
-// Example only: choose an available UART on your board.
-#define LINK_UART Serial1
-
 void setup() {
-  LINK_UART.begin(115200);
-  if (!ESPLink.begin(static_cast<Stream&>(LINK_UART))) return;
   if (!BLE.begin()) return;
   // Register services/characteristics and call BLE.advertise() or BLE.scan().
 }
 void loop() {
-  ESPLink.poll();
   BLE.poll();
   delay(1);
 }
 ```
 
-The `Stream` overload uses an already configured stream and preserves application
-pin/UART configuration. `ESPLink.begin(hardwareSerial, baud)` is the convenience
-overload that starts a hardware serial port. `BLE.begin()` can reconnect a
-previous ESPLink binding; it cannot guess a UART. Bind ESPLink before the first
-`BLE.begin()`.
+To change the UART or baud, call `ESPLink.begin(Serial2, 115200)` before
+`BLE.begin()` or `WiFi.begin()`. The `Stream` overload uses an already configured
+stream and preserves application pin/UART configuration. Build-wide
+`ESPLINK_DEFAULT_SERIAL` and `ESPLINK_DEFAULT_BAUD` overrides and UART selection
+rules are described in the [ESPLink README](../ESPLink/README.md).
 
 See [ESPLinkPeripheral](examples/ESPLinkPeripheral/ESPLinkPeripheral.ino) and
 [ESPLinkCentral](examples/ESPLinkCentral/ESPLinkCentral.ino) for paired examples.
-[STM32Peripheral](examples/STM32Peripheral/STM32Peripheral.ino) explicitly creates
-USART1 on PA10/PA9 for STM32duino / NUCLEO-F411RE; other STM32 boards may need a
-different pin pair. The four `CI1306*` examples remain useful board-specific
+[STM32Peripheral](examples/STM32Peripheral/STM32Peripheral.ino) uses the STM32
+board's automatically selected UART and its default pins. On NUCLEO-F411RE
+(STM32duino 3.0.0), this is USART6 with TX=PA11 and RX=PA12. Other boards follow
+their UART pin maps. The four `CI1306*` examples remain useful board-specific
 variants; see [CI1306 notes](README-CI13XX.md).
 
 ## Scheduling and recovery
 
 Call BLE APIs from one application task. The ArduinoBLE Host is not reentrant.
-On cooperative ESPLink backends, call `ESPLink.poll()` regularly while idle;
-`BLE.poll()` also services the link through its transport. Keep BLE polling
+`BLE.poll()` also services the cooperative ESPLink transport, so a separate
+`ESPLink.poll()` call is unnecessary while BLE is running. Keep BLE polling
 frequent even on CI1306, whose ESPLink backend has a FreeRTOS I/O task. Application
 callbacks execute in the task polling the BLE Host, never on the C3. Long WiFi
 requests, blocking callbacks and long sketch delays postpone BLE processing.
 Keep read/write callbacks short and avoid nested BLE/network operations that wait
 for another controller response.
 
-`BLEESPLink.healthy()` and `BLEESPLink.lastError()` (from `<BLEESPLink.h>`) expose
+`BLEESPLink.healthy()` and `BLEESPLink.lastError()` (included by `<BLE.h>`) expose
 transport health. A session change, uncertain HCI write, malformed reply or C3
 queue overflow makes the transport fail until explicitly restarted. Polling the
 Host clears stale peers. After restoring the UART, call `BLE.end()`, reconnect

@@ -34,3 +34,21 @@ In an MSVC developer shell, `powershell -File ./run_native.ps1` runs both the
 architecture-neutral transport test and the old-backend selection stress build.
 The latter compiles all eight old transport sources with conflicting board
 selectors and verifies only ESPLink defines the HCI transport.
+
+## GATT lifecycle
+
+From the repository root in Linux/WSL with GCC:
+
+```sh
+sh libraries/BLE/tests/lifecycle_run.sh
+```
+
+This compiles the production GATT table, service/characteristic/descriptor
+implementations and public handles with address, undefined-behavior and leak
+sanitizers. Only Arduino helpers and radio-facing calls are replaced. Cases cover
+service-only ownership, clearing a standalone service, retained built-in
+characteristics, repeated begin/end/destruction, and 100 cycles of registering a
+read/write/notify characteristic with its CCCD. `end()` still clears service
+definitions, so each restart must add the characteristics before adding the
+service again. The test checks registration, values and reference counts; it
+does not simulate peer discovery or notification delivery over a radio.

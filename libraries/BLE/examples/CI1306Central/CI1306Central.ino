@@ -1,7 +1,5 @@
 // Use a second CI1306Peripheral board, or a peer exposing the same UUIDs.
-#include <ESPLink.h>
 #include <BLE.h>
-#include <BLEESPLink.h>
 
 const char serviceUuid[] = "19B10000-E8F2-537E-4F6C-D104768A1214";
 const char counterUuid[] = "19B10001-E8F2-537E-4F6C-D104768A1214";
@@ -11,7 +9,7 @@ bool active = false;
 
 void setup() {
   Serial.begin(115200);
-  if (!ESPLink.begin(Serial2, 115200) || !BLE.begin()) return;
+  if (!BLE.begin()) return;
   BLE.setTimeout(3000);
   active = BLE.scanForUuid(serviceUuid);
 }

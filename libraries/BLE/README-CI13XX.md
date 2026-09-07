@@ -10,19 +10,17 @@ Host; the ESP32-C3 runs the controller using the companion `wifi_c3` firmware.
 
 ## Connect and start
 
-Connect CI1306 UART TX to C3 UART RX, CI1306 UART RX to C3 UART TX, and GND to GND.
+By default, connect CI1306 Serial2 TX (PB1) to C3 UART RX, Serial2 RX (PB2) to C3
+UART TX, and GND to GND. The link uses 921600 baud.
 Supply the C3 separately as required by its board. Use the configured pins in
 the companion firmware. The communication path uses only TX/RX/GND.
 Do not write logs or application bytes directly to the selected link UART.
 
 ```cpp
-#include <ESPLink.h>
 #include <BLE.h>
-#include <BLEESPLink.h>
 
 void setup() {
-  Serial.begin(115200);                       // diagnostic UART
-  if (!ESPLink.begin(Serial2, 115200)) return; // shared WiFi/BLE UART
+  Serial.begin(115200); // diagnostic UART
   if (!BLE.begin()) return;
   // Define services, add characteristics, then BLE.advertise() or BLE.scan().
 }
@@ -32,10 +30,11 @@ void loop() {
 }
 ```
 
-Choose the UART and baud through `ESPLink.begin()` before `BLE.begin()`.
-There is no implicit UART selection. Without a previous explicit binding,
-`BLE.begin()` fails. A configured, ready ESPLink is reused. WiFi and
-BLE use the same RPC link without switching its physical protocol.
+`BLE.begin()` starts Serial2 at 921600 automatically. `BLE.h` includes both
+`ESPLink.h` and `BLEESPLink.h`. To change the link configuration, call
+`ESPLink.begin(Serial2, 115200)` before `BLE.begin()` or `WiFi.begin()` and use
+matching C3 firmware. A configured ESPLink is reused, including its CI1306
+UART/DMA and FreeRTOS optimizations. WiFi and BLE share the same RPC link.
 
 Use the four CI1306 examples supplied here. `CI1306Peripheral` and
 `CI1306Central` form a counter/notification pair.

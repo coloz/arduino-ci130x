@@ -1,8 +1,6 @@
 // CI1306 TX/RX/GND <-> ESP32-C3 running wifi_c3. No CTS/RTS is required.
 // Peripheral service compatible with the CI1306Central example.
-#include <ESPLink.h>
 #include <BLE.h>
-#include <BLEESPLink.h>
 
 BLEService counterService("19B10000-E8F2-537E-4F6C-D104768A1214");
 BLEUnsignedIntCharacteristic counter("19B10001-E8F2-537E-4F6C-D104768A1214",
@@ -15,7 +13,7 @@ unsigned int value = 0;
 
 void setup() {
   Serial.begin(115200);
-  if (!ESPLink.begin(Serial2, 115200) || !BLE.begin()) {
+  if (!BLE.begin()) {
     Serial.println("BLE controller initialization failed");
     Serial.println(BLEESPLink.lastError());
     return;

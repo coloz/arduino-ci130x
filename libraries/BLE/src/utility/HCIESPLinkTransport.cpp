@@ -59,8 +59,8 @@ int HCIESPLinkTransportClass::begin() {
   _position = _count = 0;
   _error = BLE_ESPLINK_OK;
   _controllerDropped = _queued = 0;
-  // The application must bind its UART with ESPLink.begin(uart, baud)
-  // before BLE.begin(). Parameterless begin only reconnects that binding.
+  // Start the default UART on first use, or reuse the application's explicit
+  // ESPLink.begin(uart, baud) binding without changing its configuration.
   if (!ESPLink.ready() && !ESPLink.begin()) {
     fail(BLE_ESPLINK_NOT_STARTED);
     return 0;

@@ -1,11 +1,9 @@
-// CI1306 wiring example: Serial2 is the dedicated C3 UART.
-// For STM32 or another Arduino core see PortableWiFi; select your own UART.
+// Connect ESP32-C3 to the board's last hardware UART; link baud is 921600.
 #include <WiFi.h>
 
 WiFiClientSecure client;
 void setup() {
   Serial.begin(115200);
-  if (!ESPLink.begin(Serial2, 115200)) return;
   WiFi.begin("YOUR_SSID", "YOUR_PASSWORD");
   if (WiFi.waitForConnectResult(20000) != WL_CONNECTED) return;
   WiFi.configTime(0, 0, "pool.ntp.org", "time.cloudflare.com");

@@ -22,7 +22,8 @@ Local changes:
   architecture-independent discovery; not an official Arduino-maintained package.
 - Canonical `BLE.h`, compatibility `ArduinoBLE.h` forwarder, and `BLEConfig.h`: all
   architectures select the external ESPLink controller. Upstream board-specific
-  transport and reset handling are retained but disabled.
+  transport and reset handling are retained but disabled. `BLE.h` also exports
+  ESPLink and BLEESPLink so sketches use one include and automatic link startup.
 - `BLEESPLink.h` and `utility/HCIESPLinkTransport.*`: reliable HCI transport,
   bounded reads/writes, diagnostics and controller-session invalidation.
 - ESPLink HCI/ATT lifecycle and timeout guards: bounded credit and
@@ -40,6 +41,9 @@ Local changes:
 - Generic and STM32 examples, retained CI1306 variants, architecture-neutral
   transport fault tests and port documentation.
 - Cooperative ESPLink polling in HCI transport session checks.
+- Shared bounded BLE address formatting without variadic `sprintf`, avoiding the
+  CI1306 vendor ROM wrapper's argument clobber and the resulting 18-byte buffer
+  overflow. Both local and discovered-device addresses use the same formatter.
 
 Compare with the pinned upstream when updating. This port is not an Arduino
 upstream release and the Arduino-host/ESP32-C3 combination has not been Bluetooth SIG

@@ -649,6 +649,8 @@ size_t HardwareSerial::writeDma(const uint8_t *buffer, size_t size,
 
         UART_TypeDef *uart = uartForNumber(_uartNumber);
         UART_IntMaskConfig(uart, UART_TXInt, ENABLE);
+        // DMA byte mode is separate from the CPU TX FIFO byte mode.
+        UART_DMAByteWordConfig(uart, ENABLE);
         UART_TXRXDMAConfig(uart, UART_TXDMA);
         DMAC_ChannelDisable(DMACChannel1);
         DMAC_ChannelPowerDown(DMACChannel1, DISABLE);

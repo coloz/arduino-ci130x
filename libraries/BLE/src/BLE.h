@@ -21,6 +21,8 @@
 #ifndef _ESPLINK_BLE_H_
 #define _ESPLINK_BLE_H_
 
+#include <ESPLink.h>
+#include "BLEESPLink.h"
 #include "local/BLELocalDevice.h"
 #include "BLEProperty.h"
 #include "BLEStringCharacteristic.h"

@@ -1,28 +1,10 @@
-// Arduino host + ESP32-C3 over TX/RX/GND; choose the available UART below.
-// Keep the console UART separate. Both link ends must use 115200 baud.
+// Arduino host + ESP32-C3 over TX/RX/GND, last hardware UART at 921600 baud.
+// Keep the console UART separate from the C3 link.
 // Install ArduinoMqttClient 0.1.8 (or a compatible version) from Library Manager.
 // MQTT and BLE application callbacks execute on this Arduino host.
-#include <ESPLink.h>
 #include <WiFi.h>
 #include <ArduinoMqttClient.h>
 #include <BLE.h>
-#include <BLEESPLink.h>
-
-#if defined(ARDUINO_ARCH_STM32)
-// STM32duino USART1 RX=PA10 / TX=PA9, including NUCLEO-F411RE.
-#if __has_include(<Serial.h>)
-#include <Serial.h>
-Uart LinkSerial(PA10, PA9);  // STM32duino 3.x.
-#else
-HardwareSerial LinkSerial(PA10, PA9);  // STM32duino 2.x.
-#endif
-#define LINK_UART LinkSerial
-#elif defined(ARDUINO_ARCH_CI13XX)
-#define LINK_UART Serial2
-#else
-// Replace Serial1 if another UART is available on your Arduino board.
-#define LINK_UART Serial1
-#endif
 
 WiFiClient network;
 MqttClient mqtt(network);
@@ -44,7 +26,6 @@ void onMqttMessage(int messageSize) {
 
 void setup() {
   Serial.begin(115200);
-  if (!ESPLink.begin(LINK_UART, 115200)) return;
   WiFi.begin("YOUR_SSID", "YOUR_PASSWORD");
   if (WiFi.waitForConnectResult(20000) != WL_CONNECTED) return;
   mqtt.setId("arduino-esplink-mqtt-ble");
@@ -64,7 +45,6 @@ void setup() {
 }
 
 void loop() {
-  ESPLink.poll();
   WiFi.poll();
   mqtt.poll(); // Invokes onMqttMessage on this Arduino host.
   if (!bleStarted) { delay(10); return; }

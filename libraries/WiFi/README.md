@@ -6,15 +6,13 @@ Arduino networking through an ESP32-C3 serial coprocessor and `ESPLink`. Include
 
 ## Connection and startup
 
-Cross TX/RX and connect GND. Use 3.3 V UART signals at the C3 (add level translation for a 5 V host). Select the UART explicitly before using WiFi: `ESPLink.begin(yourSerial, 115200)`. There is no library-wide default `Serial2`. You may also configure a custom serial stream yourself and bind it using `ESPLink.begin(static_cast<Stream &>(yourSerial))`. The no-argument `ESPLink.begin()` only reconnects an already bound transport. Both ends must use the same baud; changing the host rate does not reconfigure the C3. TX/RX/GND provides no hardware reset or flow-control signal.
+Cross TX/RX and connect GND. Use 3.3 V UART signals at the C3 (add level translation for a 5 V host). `WiFi.begin()` automatically starts ESPLink on the board's last available hardware UART at **921600 baud**, or reuses a previously configured link. CI1306 uses `Serial2` (TX=PB1, RX=PB2); STM32 selects the highest-numbered UART with usable board TX/RX mappings. Keep the console separate from the link UART. Both ends must use the same baud; changing the host rate does not reconfigure the C3. TX/RX/GND provides no hardware reset or flow-control signal.
 
 ```cpp
 #include <WiFi.h>
 
 void setup() {
   Serial.begin(115200);
-  // Example board UART; choose the available hardware UART and pins on your board.
-  if (!ESPLink.begin(Serial1, 115200)) return;
   WiFi.begin("SSID", "PASSWORD");
   if (WiFi.waitForConnectResult(20000) == WL_CONNECTED)
     Serial.println(WiFi.localIP());
@@ -26,7 +24,11 @@ void loop() {
 }
 ```
 
-Call `WiFi.poll()` regularly in `loop()`; it also advances the cooperative ESPLink transport and dispatches events on the calling application context. On CI1306 the existing Arduino loop additionally invokes a platform-specific poll hook; portable sketches should still poll explicitly. Network calls pump ESPLink while waiting for responses. With BLE, call `BLE.poll()` as well. Serialize library calls in one application context on cooperative platforms, and keep long application work divided into bounded steps. See `examples/PortableWiFi` for explicit STM32 UART pin selection.
+`WiFi.h` includes `ESPLink.h`. To change the UART or baud, call `ESPLink.begin(Serial2, 115200)` before `WiFi.begin()` or `BLE.begin()`; no additional include is needed. You may also configure custom UART pins yourself and bind the initialized stream with `ESPLink.begin(static_cast<Stream &>(yourSerial))`. Build-wide `ESPLINK_DEFAULT_SERIAL` and `ESPLINK_DEFAULT_BAUD` overrides are described in the [ESPLink README](../ESPLink/README.md).
+
+On NUCLEO-F411RE with STM32duino 3.0.0, the default is USART6 with TX=PA11 and RX=PA12. Other STM32 boards follow their UART pin maps.
+
+Call `WiFi.poll()` regularly in `loop()`; it also advances the cooperative ESPLink transport and dispatches events on the calling application context. On CI1306 the existing Arduino loop additionally invokes a platform-specific poll hook; portable sketches should still poll explicitly. Network calls pump ESPLink while waiting for responses. With BLE, call `BLE.poll()` as well. Serialize library calls in one application context on cooperative platforms, and keep long application work divided into bounded steps.
 
 ## Implemented API
 
@@ -77,13 +79,13 @@ ESP-NOW, enterprise WiFi authentication, WPS, SmartConfig, promiscuous packet ca
 
 ## Examples and validation
 
-- `PortableWiFi`: explicit UART selection for STM32, CI1306 and other 32-bit Arduino cores, station events and a TCP HTTP request.
-- `WiFiBasics`: CI1306 wiring example for a WiFi station and TCP HTTP request.
+- `PortableWiFi`: automatic UART setup for STM32, CI1306 and other supported 32-bit Arduino cores, station events and a TCP HTTP request.
+- `WiFiBasics`: WiFi station and TCP HTTP request using the default link.
 - `WiFiTLSTest`: explicit time synchronization and HTTPS with certificate validation.
 - `WiFiUDP`: UDP datagram echo.
 - `MQTTClient`: MQTT using the official ArduinoMqttClient library, installed separately.
-- `MQTTBLE`: MQTT callbacks and `BLE.h` GATT processing on the host (CI1306 wiring example); establish the network before starting BLE.
-- [PortableMQTTBLE](examples/PortableMQTTBLE/PortableMQTTBLE.ino): the same MQTT/GATT interaction with explicit STM32, CI1306 or other Arduino UART selection; uses `esplink/output` and `esplink/ble-value` topics.
+- `MQTTBLE`: MQTT callbacks and `BLE.h` GATT processing on the host, using CI1306 topic names; establish the network before starting BLE.
+- [PortableMQTTBLE](examples/PortableMQTTBLE/PortableMQTTBLE.ino): the same MQTT/GATT interaction using the default UART and `esplink/output` and `esplink/ble-value` topics.
 
 The `tests` directory contains a fake-modem suite for shared ownership, buffered reads, exact partial-write counts, session invalidation, UDP packet boundaries, credential cleanup and polling events. Run `sh libraries/WiFi/tests/run.sh` with Linux/WSL and GCC. It builds the real WiFi source with IPv4-only, IPv6 without zones, and IPv6 with zones Arduino interfaces, using AddressSanitizer and UndefinedBehaviorSanitizer. MCU example builds use `tools/test_wireless.ps1` from the repository root.
 

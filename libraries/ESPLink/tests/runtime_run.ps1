@@ -1,4 +1,4 @@
-param([string]$BuildDirectory = '', [ValidateSet('optimized','fallback','configured')][string]$Variant = 'optimized')
+param([string]$BuildDirectory = '', [ValidateSet('optimized','fallback','configured','drain-disabled')][string]$Variant = 'optimized')
 $ErrorActionPreference = 'Stop'
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 if (!$BuildDirectory) { $BuildDirectory = Join-Path $repo ('.build/wireless-portable/runtime-native/' + $Variant) }
@@ -30,6 +30,8 @@ if ($Variant -eq 'fallback') {
 } elseif ($Variant -eq 'configured') {
     $defines = @('/DESPLINK_CI13XX_RX_BUFFER_SIZE=2048', '/DESPLINK_CI13XX_RX_CHUNK_SIZE=32',
         '/DESPLINK_CI13XX_DMA_THRESHOLD=128', '/DESPLINK_CI13XX_TASK_STACK_WORDS=1536', '/DESPLINK_CI13XX_TASK_PRIORITY=2')
+} elseif ($Variant -eq 'drain-disabled') {
+    $defines = @('/DESPLINK_CI13XX_TX_DRAIN=0')
 }
 Write-Host "ESPLink RTOS variant: $Variant"
 & $compiler.Source /nologo /std:c++17 /EHsc /W4 /WX /utf-8 @defines "/I$fakes" "/I$include" $source "/Fe$binary" "/Fo$BuildDirectory/"

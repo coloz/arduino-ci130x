@@ -9,6 +9,7 @@ case "$variant" in
   optimized) defines='' ;;
   fallback) defines='-DESPLINK_CI13XX_UART_BULK_RX=0 -DESPLINK_CI13XX_TX_DMA=0 -DESPLINK_CI13XX_TASK_NOTIFY=0' ;;
   configured) defines='-DESPLINK_CI13XX_RX_BUFFER_SIZE=2048 -DESPLINK_CI13XX_RX_CHUNK_SIZE=32 -DESPLINK_CI13XX_DMA_THRESHOLD=128 -DESPLINK_CI13XX_TASK_STACK_WORDS=1536 -DESPLINK_CI13XX_TASK_PRIORITY=2' ;;
+  drain-disabled) defines='-DESPLINK_CI13XX_TX_DRAIN=0' ;;
   *) printf 'Unknown variant: %s\n' "$variant" >&2; exit 2 ;;
 esac
 printf 'ESPLink RTOS variant: %s\n' "$variant"

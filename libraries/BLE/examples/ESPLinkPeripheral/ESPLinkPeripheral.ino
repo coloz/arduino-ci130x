@@ -1,12 +1,6 @@
 // ESPLink TX/RX/GND <-> ESP32-C3 running wifi_c3. No CTS/RTS is required.
 // Peripheral service compatible with the ESPLinkCentral example.
-#include <ESPLink.h>
 #include <BLE.h>
-#include <BLEESPLink.h>
-
-// Select the hardware UART wired to C3 RX/TX/GND. Change Serial1 for your board.
-// UART pins, baud and RX buffering remain the application/core responsibility.
-#define LINK_UART Serial1
 
 BLEService counterService("19B10000-E8F2-537E-4F6C-D104768A1214");
 BLEUnsignedIntCharacteristic counter("19B10001-E8F2-537E-4F6C-D104768A1214",
@@ -19,8 +13,7 @@ unsigned int value = 0;
 
 void setup() {
   Serial.begin(115200);
-  LINK_UART.begin(115200);
-  if (!ESPLink.begin(static_cast<Stream&>(LINK_UART)) || !BLE.begin()) {
+  if (!BLE.begin()) {
     Serial.println("BLE controller initialization failed");
     Serial.println(BLEESPLink.lastError());
     return;

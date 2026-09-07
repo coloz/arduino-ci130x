@@ -2,6 +2,7 @@
 // Compile the real HCIESPLinkTransport.cpp against an injected RPC endpoint.
 #include <ESPLink.h>
 #include "../src/utility/HCIESPLinkTransport.h"
+#include "../src/utility/BLEAddress.h"
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
@@ -206,7 +207,38 @@ static void testWait() {
   CHECK(nowMs == 3 && t.peek() == 4);
 }
 
+static void testAddressFormatting() {
+  char text[18];
+  const uint8_t mixed[6] = {0xb4, 0xd3, 0x02, 0xb4, 0x45, 0x44};
+  ble_detail::formatAddress(mixed, text);
+  CHECK(std::string(text) == "44:45:b4:02:d3:b4");
+  const uint8_t zeros[6] = {};
+  ble_detail::formatAddress(zeros, text);
+  CHECK(std::string(text) == "00:00:00:00:00:00");
+  const uint8_t ones[6] = {255, 255, 255, 255, 255, 255};
+  ble_detail::formatAddress(ones, text);
+  CHECK(std::string(text) == "ff:ff:ff:ff:ff:ff");
+  for (unsigned position = 0; position < 6; ++position) {
+    for (unsigned value = 0; value < 256; ++value) {
+      const uint8_t before = 0xa5, after = 0x5a;
+      struct { uint8_t before; char text[18]; uint8_t after; } guarded = {before, {}, after};
+      uint8_t address[6] = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab};
+      address[position] = uint8_t(value);
+      ble_detail::formatAddress(address, guarded.text);
+      CHECK(guarded.before == before && guarded.after == after);
+      CHECK(std::string(guarded.text).size() == 17 && guarded.text[17] == '\0');
+      for (unsigned part = 0; part < 6; ++part) {
+        const std::string token(guarded.text + 3 * part, 2);
+        CHECK(token.find_first_not_of("0123456789abcdef") == std::string::npos);
+        CHECK(std::strtoul(token.c_str(), nullptr, 16) == address[5 - part]);
+        if (part < 5) CHECK(guarded.text[3 * part + 2] == ':');
+      }
+    }
+  }
+}
+
 int main() {
+  testAddressFormatting();
   testLifecycle(); testStream(); testWrites(); testSessionChange(); testFaults(); testWait();
   std::cout << "BLE ESPLink transport: " << checks << " assertions passed\n";
 }
