@@ -33,14 +33,14 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前开发版本 | `1.0.15` |
+| 当前开发版本 | `1.0.16` |
 | Arduino IDE | Arduino IDE 2.x |
 | Arduino CLI | 已使用 1.5.0 验证 |
 | 主机系统 | 完整固件流程：Windows 10/11 x64、macOS 15+ Apple Silicon；Linux x86_64 已通过编译/链接验证，完整回归待补充 |
 | 编译器 | Nuclei RISC-V GCC 9.2.0（`rv32imafc / ilp32f`）；macOS 由官方 `nuclei_9.2_fixjalr_forhw` 源码构建 |
 | Algorithm Profile（算法） | CI1306 芯片默认标准 ASR + AEC；CI-D06GT01D 默认标准 ASR（无 AEC）；均可选择四种 profile |
 | Microphone Input（麦克风） | 支持模拟单/双麦和 PDM 数字单/双麦；CI1306 默认模拟单麦，CI-D06GT01D 默认模拟双麦 |
-| 公共 Boards Manager 发布 | `v1.0.15`（Windows x64、Linux x86_64、macOS Apple Silicon） |
+| 公共 Boards Manager 发布 | `v1.0.16`（Windows x64、Linux x86_64、macOS Apple Silicon） |
 | 硬件运行验证 | CI1303：Windows/macOS Standard 启动和音频、CWSL 启动、核心外设、I2C/SSD1306 已通过；CI1306：Wire/I2C 与 U8g2/SSD1306 已通过；其余待验证 |
 
 当前版本在编译前检查 sketch 根目录的 profile 资源；标准 ASR/AEC 使用
@@ -111,7 +111,7 @@ CI1306 编译和链接，完整后处理与实体板回归仍待补充。
 固定版本的索引也随 GitHub Release 发布：
 
 ```text
-https://github.com/coloz/arduino-ci130x/releases/download/v1.0.15/package_chipintelli_index.json
+https://github.com/coloz/arduino-ci130x/releases/download/v1.0.16/package_chipintelli_index.json
 ```
 
 ## 快速开始
@@ -536,22 +536,7 @@ Arduino 兼容 core 中继承的代码按 [LGPL-2.1 或更高版本]提供。
 
 ## 外接 ESP32-C3 WiFi 与 BLE
 
-WiFi、BLE 和共享 ESPLink 是面向 Arduino 主控的外接 ESP32-C3 库，可通过 TX/RX/GND
-为没有无线功能的开发板添加网络和蓝牙。CI1306 与 STM32 是首批适配目标，库的接口和协议
-不限定 ChipIntelli。Wi-Fi/TCP/IP/TLS 在 C3，MQTT 等应用协议、
-基于 ArduinoBLE 的 BLE Host 和用户回调在主控。首版为开发预览，无线互通、语音共存及
-高速串口稳定性仍待实机验收；BLE 当前限制单连接。
-
-入口头文件为 `<WiFi.h>`、`<BLE.h>` 和 `<ESPLink.h>`。应用必须显式选择链路串口，例如
-`ESPLink.begin(Serial2, 115200)`；其他板替换为实际可用的串口对象（STM32duino 3.x 使用 `Uart`）。也可以先自行
-配置串口，再调用 `ESPLink.begin(static_cast<Stream&>(port))`。没有隐式绑定 `Serial2`；
-无参数 `begin()` 仅重新使用已有绑定。通用后端在 `loop()` 中定期调用 `ESPLink.poll()`、
-`WiFi.poll()` 和 `BLE.poll()`；CI13XX 另有 FreeRTOS 串口后端。
-
-- [WiFi 使用说明](libraries/WiFi/README.md) · [BLE 使用说明](libraries/BLE/README.md)
-- [ESPLink 使用说明与 CI1306 性能配置](libraries/ESPLink/README.md) · [通信协议](libraries/ESPLink/PROTOCOL.md)
-- [CI1306 构建脚本](tools/test_wireless.ps1) · [STM32 构建脚本](tools/test_wireless_stm32.ps1)
-- [串口最大帧诊断](libraries/ESPLink/examples/LinkDiagnostics/LinkDiagnostics.ino) · [通用主控 MQTT/BLE 回调示例](libraries/WiFi/examples/PortableMQTTBLE/PortableMQTTBLE.ino)
-
-配套固件项目在相邻 `../wifi_c3`，提供 115200 与 921600 两套镜像及构建/烧录脚本。
-两端必须使用同一波特率。长时间同步 TCP/TLS 建连会延迟 HCI 读取，具体限制见库的使用说明。MQTT 示例另外依赖官方 ArduinoMqttClient 0.1.8。
+当前平台发布包不包含 WiFi、BLE 和 ESPLink 外接模块库。使用外接 ESP32-C3
+时，需要另外提供配套主控库和模块固件，并按其文档配置串口及波特率。
+仓库保留的 `tools/test_wireless*.ps1` 是维护者测试脚本，依赖另外提供的库，
+不能直接作为本发布包的开箱即用示例运行。

@@ -9,7 +9,7 @@ on:
       release_tag:
         description: Existing release tag to update
         required: true
-        default: v1.0.15
+        default: v1.0.16
 
 permissions:
   contents: write
@@ -63,6 +63,18 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: Run host regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/tests/test_hardware_serial_rx.py
+          mkdir -p "$RUNNER_TEMP/ci13xx-tests"
+          g++ -std=c++14 -Wall -Wextra -Werror -pedantic \
+            -Ilibraries/EEPROM/tests/fakes -Itools/sdk/include \
+            libraries/EEPROM/tests/runtime_test.cpp \
+            -o "$RUNNER_TEMP/ci13xx-tests/eeprom"
+          "$RUNNER_TEMP/ci13xx-tests/eeprom"
 
       - name: Build release archive
         shell: bash
@@ -302,18 +314,25 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## 主要更新
 
-          - 新增 `easyVoice 1306 dev` 开发板变体，提供对应的 LED、Wire、软件 SPI、UART、ADC、PDM、IIS、USB-UART 与功放 MUTE 引脚映射。
-          - 提升 CI130X SD/SPI 可靠性：增加 FreeRTOS 互斥、资源与引脚释放、自定义 SD 软件 SPI 引脚，以及有效的 SD CRC7/CRC16 校验。
-          - 新增 CI1306 自定义 SD 引脚读写示例，并完善 SD/SPI 使用与资源冲突说明。
+          - 新增美的空调离线语音遥控示例 `ChipIntelliIR > MideaVoiceAirConditioner`，附带语音及红外码库资源，支持“小智小智”唤醒、开关机、制冷制热、温度、风速、睡眠和本地一小时关机定时；串口匹配的美的码组可保存到 Flash。
+          - `ChipIntelliIR` 增加 NEC 接收解码和重复帧识别，完善板级默认引脚、空调异步发送状态、码组校验以及红外数据库完整性检查。
+          - 改进 `ChipIntelliCWSL` 自学习操作、事件队列、状态与错误诊断，并完善示例及资源。
+          - 修复 EEPROM 缓冲调整、失败后的数据保留与重试，并对 NVDM 提交执行回读验证。
+          - 为 CI1306、CI-D06GT01D 和 easyVoice 开发板增加内置 RC / 外部晶振时钟源菜单，改善串口批量接收及溢出诊断。
           - 继续复用 `v1.0.10` 发布的 Nuclei GCC 9.2.0 三平台工具包和 `citool-cli-v1.2.2` 工具包；本 release 不重复上传编译器或 CLI 资产。
 
           ## 验证
 
-          - `easyvoice_1306_dev` 默认模拟单麦 + AEC 与 PDM 单麦无 AEC 配置均已完成 SDK 编译、链接和离线固件合成；专用断言覆盖板级引脚与菜单配置。
-          - SD/SPI 更新包含 CI1306 自定义引脚硬件读写测试，以及事务互斥、资源释放和 CRC 路径验证。
+          - 美的示例已在 Windows 完成 easyVoice 默认配置编译、固件分区及资源校验、COM30 烧录和 CRC 校验；串口确认语音及美的码库初始化成功。空调实际接收、语音声学效果和不同机型兼容性仍需现场验证。
+          - EEPROM 主机回归通过 18 组、97,626 次检查；发布工作流重新执行 EEPROM 与串口批量接收回归。
           - Arduino 平台版本、归档结构与运行时脚本由发布工作流校验。
           - Windows x86_64、macOS Universal（Intel + Apple Silicon）和 Linux x86_64 公共工具包由发布工作流校验版本、结构和 SHA-256。
           - Arduino 平台归档、公共工具依赖和 Boards Manager 索引由发布工作流统一校验后生成。
+
+          ## 使用提示
+
+          - 美的示例红外发射模块接 PA2，串口为 115200；说“小智小智”唤醒后，再说“打开空调”“开启制冷”或“设置二十六度”。首次无响应时，通过串口 `s` 搜索、`y` 保存、`x` 取消。
+          - 本平台仍为开发预览版。该发布包不包含 WiFi、BLE 和 ESPLink 外接模块库。
           EOF
 
           release_assets=(

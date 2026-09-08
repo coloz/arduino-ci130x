@@ -5,6 +5,7 @@
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
+#include <stdlib.h>  // Load the C compatibility wrapper before allocator macros.
 #include <cstring>
 #include <limits>
 #include <map>

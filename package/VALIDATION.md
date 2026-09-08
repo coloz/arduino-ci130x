@@ -1,5 +1,32 @@
 # Boards Manager validation
 
+## v1.0.16 release validation (2026-09-08)
+
+The `MideaVoiceAirConditioner` example passed the Windows Nuclei GCC 9.2.0
+compile/link/compose path for `easyvoice_1306_dev` with its default analog
+single-microphone, AEC and external-crystal configuration. Reported program
+storage was 181,943 / 382,121 bytes and RAM was 134,040 / 532,480 bytes.
+The complete 2,093,097-byte image passed `citool-cli inspect`; its ASR, DNN
+and voice partitions matched the bundled example resources byte for byte.
+The merged user-file partition contained the official 70,716-byte IR database
+with SHA-256 `f7e3680b45f9abe56c6d3e16d1bbffd7336e286d0b0dabed20e1d2b4854b97d0`.
+
+Uploading that image through CH343 on COM30 completed with firmware CRC
+verification. A 115200-baud status query returned
+`MIDEA_READY code=8817652 tx=2 rx=3 searching=0 sending=0 timer=0`, confirming
+application, ASR/audio and IR database initialization. No physical AC reception,
+spoken-command recognition, model-search compatibility or one-hour timer
+duration claim is made by this startup check.
+
+The EEPROM host regression was rerun on Windows with MSVC 14.50: all 18
+groups and 97,626 checks passed. The release workflow also runs EEPROM and
+the AddressSanitizer/UndefinedBehaviorSanitizer HardwareSerial batch-RX test
+on Linux before packaging and publishing. Existing compiler and citool-cli
+assets remain unchanged; the workflow validates their hashes and archive
+layouts before generating the new platform index.
+
+The historical validation records below retain their original dates and scope.
+
 Validation date: 2026-07-20
 Host: Windows x64
 Arduino IDE: 2.3.7  
