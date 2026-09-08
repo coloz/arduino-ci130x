@@ -1,5 +1,22 @@
 # Boards Manager validation
 
+## v1.0.17 IR resource preparation regression (2026-09-08)
+
+`python -B tools/tests/test_prepare_ir_database.py` passed all 48 tests on
+Windows with Python 3.12 and Windows PowerShell. Both implementations were
+exercised with the same fixture contract, including extensionless Aily source
+paths, persistent and temporary resource synchronization, literal macro
+parsing, disabled-mode no-op behavior, managed-file cleanup and recovery,
+user-file preservation, reserved-ID/hash conflicts and CI1302 rejection.
+The suite also checks cross-implementation manifest compatibility and confirms
+that interrupted managed publication can be repaired without temporary files.
+
+The optional database matches the SDK's 70,716-byte payload and SHA-256
+`f7e3680b45f9abe56c6d3e16d1bbffd7336e286d0b0dabed20e1d2b4854b97d0`.
+The local package builder now checks this payload before archiving and includes
+both IR preparation hooks. This host regression does not claim new hardware
+burn-in or air-conditioner reception validation.
+
 ## v1.0.16 release validation (2026-09-08)
 
 The `MideaVoiceAirConditioner` example passed the Windows Nuclei GCC 9.2.0

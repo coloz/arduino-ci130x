@@ -7,7 +7,9 @@ param(
     [string]$EntriesDirectory,
 
     [Parameter(Mandatory = $true)]
-    [string]$Output
+    [string]$Output,
+
+    [string]$AdditionalEntriesDirectory
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,6 +28,18 @@ function Get-AlignedOffset {
     return [long]([Math]::Floor(($Value + $alignment - 1) / $alignment) * $alignment)
 }
 
+function Get-DataSha256 {
+    param([Parameter(Mandatory = $true)][byte[]]$Data)
+
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return [BitConverter]::ToString($sha256.ComputeHash($Data)).Replace('-', '')
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
+
 function Assert-ReservedEntry {
     param(
         [Parameter(Mandatory = $true)][int]$Id,
@@ -37,13 +51,7 @@ function Assert-ReservedEntry {
         return
     }
 
-    $sha256 = [System.Security.Cryptography.SHA256]::Create()
-    try {
-        $digest = [BitConverter]::ToString($sha256.ComputeHash($Data)).Replace('-', '')
-    }
-    finally {
-        $sha256.Dispose()
-    }
+    $digest = Get-DataSha256 -Data $Data
     if ($Data.Length -ne $arduinoIrDatabaseSize -or $digest -ne $arduinoIrDatabaseSha256) {
         throw "User-file ID $arduinoIrDatabaseId is reserved for the ChipIntelliIR V2.7.14 air-conditioner database; '$Source' has size $($Data.Length) and SHA-256 $digest, expected size $arduinoIrDatabaseSize and SHA-256 $arduinoIrDatabaseSha256."
     }
@@ -100,11 +108,21 @@ function Get-UserFileEntries {
 
 $basePath = (Resolve-Path -LiteralPath $BaseUserFile -ErrorAction Stop).Path
 $entriesPath = (Resolve-Path -LiteralPath $EntriesDirectory -ErrorAction Stop).Path
+$entriesPaths = [System.Collections.Generic.List[string]]::new()
+$entriesPaths.Add($entriesPath)
+if (-not [string]::IsNullOrWhiteSpace($AdditionalEntriesDirectory)) {
+    $additionalPath = (Resolve-Path -LiteralPath $AdditionalEntriesDirectory -ErrorAction Stop).Path
+    if (-not [string]::Equals($entriesPath, $additionalPath, [StringComparison]::OrdinalIgnoreCase)) {
+        $entriesPaths.Add($additionalPath)
+    }
+}
 if (-not (Test-Path -LiteralPath $basePath -PathType Leaf)) {
     throw "Base user-file path is not a file: $basePath"
 }
-if (-not (Test-Path -LiteralPath $entriesPath -PathType Container)) {
-    throw "User-file entries path is not a directory: $entriesPath"
+foreach ($directory in $entriesPaths) {
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+        throw "User-file entries path is not a directory: $directory"
+    }
 }
 
 $outputPath = [IO.Path]::GetFullPath($Output)
@@ -121,33 +139,48 @@ for ($index = 0; $index -lt $entries.Count; $index++) {
 
 $overlayIds = @{}
 $overlays = [System.Collections.ArrayList]::new()
-$entryFiles = @(Get-ChildItem -LiteralPath $entriesPath -File -Filter '*.bin')
-foreach ($file in $entryFiles) {
-    if ($file.Name -notmatch '^\[(?<id>[0-9]+)\].*\.bin$') {
-        throw "User-file entry name must start with a numeric [id]: $($file.Name)"
-    }
+foreach ($directory in $entriesPaths) {
+    $directoryIds = @{}
+    $entryFiles = @(Get-ChildItem -LiteralPath $directory -File -Filter '*.bin' | Sort-Object -Property Name)
+    foreach ($file in $entryFiles) {
+        if ($file.Name -notmatch '^\[(?<id>[0-9]+)\].*\.bin$') {
+            throw "User-file entry name must start with a numeric [id]: $($file.Name)"
+        }
 
-    [uint32]$parsedId = 0
-    if (-not [uint32]::TryParse($Matches.id, [ref]$parsedId) -or $parsedId -gt [uint16]::MaxValue) {
-        throw "User-file entry ID must be between 0 and 65535: $($file.Name)"
-    }
-    $id = [int]$parsedId
-    $idKey = [string]$id
-    if ($overlayIds.ContainsKey($idKey)) {
-        throw "Duplicate user-file overlay ID $id in '$($overlayIds[$idKey])' and '$($file.Name)'."
-    }
+        [uint32]$parsedId = 0
+        if (-not [uint32]::TryParse($Matches.id, [ref]$parsedId) -or $parsedId -gt [uint16]::MaxValue) {
+            throw "User-file entry ID must be between 0 and 65535: $($file.Name)"
+        }
+        $id = [int]$parsedId
+        $idKey = [string]$id
+        if ($directoryIds.ContainsKey($idKey)) {
+            throw "Duplicate user-file overlay ID $id in '$($directoryIds[$idKey])' and '$($file.Name)'."
+        }
+        $directoryIds[$idKey] = $file.Name
 
-    $data = [IO.File]::ReadAllBytes($file.FullName)
-    if ($data.Length -eq 0) {
-        throw "User-file overlay entry is empty: $($file.Name)"
+        $data = [IO.File]::ReadAllBytes($file.FullName)
+        if ($data.Length -eq 0) {
+            throw "User-file overlay entry is empty: $($file.Name)"
+        }
+        Assert-ReservedEntry -Id $id -Data $data -Source $file.FullName
+        $digest = Get-DataSha256 -Data $data
+        if ($overlayIds.ContainsKey($idKey)) {
+            $previous = $overlayIds[$idKey]
+            if ($previous.Sha256 -ne $digest) {
+                throw "Conflicting user-file overlay ID $id in '$($previous.Source)' and '$($file.FullName)'."
+            }
+            continue
+        }
+
+        $overlay = [PSCustomObject]@{
+            Id = $id
+            Data = $data
+            Source = $file.FullName
+            Sha256 = $digest
+        }
+        [void]$overlays.Add($overlay)
+        $overlayIds[$idKey] = $overlay
     }
-    Assert-ReservedEntry -Id $id -Data $data -Source $file.FullName
-    [void]$overlays.Add([PSCustomObject]@{
-        Id = $id
-        Data = $data
-        Source = $file.FullName
-    })
-    $overlayIds[$idKey] = $file.Name
 }
 
 $replaced = 0

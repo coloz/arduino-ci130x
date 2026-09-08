@@ -1,5 +1,5 @@
 name=ChipIntelli CI130X Arduino
-version=1.0.16
+version=1.0.17
 build.ci_service_url=https://gen.yiyu.pro/ci
 build.aily_builder_progress=true
 
@@ -55,13 +55,16 @@ compiler.c.elf.libs=-lasr_dis_deepse_v2 -lir_data -lnlp -lnewlib_port -lfreertos
 
 # Windows PowerShell hooks
 recipe.hooks.prebuild.1.pattern.windows=powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{runtime.platform.path}/tools/prepare_resources.ps1" -ProjectPath "{build.source.path}" -PackageResources "{runtime.platform.path}/recursos" -Algorithm "{build.algorithm}"
-recipe.hooks.prebuild.2.pattern.windows=powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{runtime.platform.path}/tools/compile_sdk_sources.ps1" -PlatformPath "{runtime.platform.path}" -BuildPath "{build.path}" -Compiler "{compiler.path}{compiler.c.cmd}" -VariantPath "{build.variant.path}" -BuildExtraFlags "{build.extra_flags} {build.mic_flags} {build.clock_flags}"
+recipe.hooks.prebuild.2.pattern.windows=powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{runtime.platform.path}/tools/prepare_ir_database.ps1" -Source "{build.source.path}/{build.project_name}" -PlatformPath "{runtime.platform.path}" -Chip "{build.chip}"
+recipe.hooks.prebuild.3.pattern.windows=powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{runtime.platform.path}/tools/compile_sdk_sources.ps1" -PlatformPath "{runtime.platform.path}" -BuildPath "{build.path}" -Compiler "{compiler.path}{compiler.c.cmd}" -VariantPath "{build.variant.path}" -BuildExtraFlags "{build.extra_flags} {build.mic_flags} {build.clock_flags}"
 
 # macOS/Linux Python hooks
 recipe.hooks.prebuild.1.pattern.linux=python3 "{runtime.platform.path}/tools/prepare_resources.py" --project-path "{build.source.path}" --package-resources "{runtime.platform.path}/recursos" --algorithm "{build.algorithm}"
-recipe.hooks.prebuild.2.pattern.linux=python3 "{runtime.platform.path}/tools/compile_sdk_sources.py" --platform-path "{runtime.platform.path}" --build-path "{build.path}" --compiler "{compiler.path}{compiler.c.cmd}" --variant-path "{build.variant.path}" --build-extra-flags "{build.extra_flags} {build.mic_flags} {build.clock_flags}"
+recipe.hooks.prebuild.2.pattern.linux=python3 "{runtime.platform.path}/tools/prepare_ir_database.py" --source "{build.source.path}/{build.project_name}" --platform-path "{runtime.platform.path}" --chip "{build.chip}"
+recipe.hooks.prebuild.3.pattern.linux=python3 "{runtime.platform.path}/tools/compile_sdk_sources.py" --platform-path "{runtime.platform.path}" --build-path "{build.path}" --compiler "{compiler.path}{compiler.c.cmd}" --variant-path "{build.variant.path}" --build-extra-flags "{build.extra_flags} {build.mic_flags} {build.clock_flags}"
 recipe.hooks.prebuild.1.pattern.macosx=python3 "{runtime.platform.path}/tools/prepare_resources.py" --project-path "{build.source.path}" --package-resources "{runtime.platform.path}/recursos" --algorithm "{build.algorithm}"
-recipe.hooks.prebuild.2.pattern.macosx=python3 "{runtime.platform.path}/tools/compile_sdk_sources.py" --platform-path "{runtime.platform.path}" --build-path "{build.path}" --compiler "{compiler.path}{compiler.c.cmd}" --variant-path "{build.variant.path}" --build-extra-flags "{build.extra_flags} {build.mic_flags} {build.clock_flags}"
+recipe.hooks.prebuild.2.pattern.macosx=python3 "{runtime.platform.path}/tools/prepare_ir_database.py" --source "{build.source.path}/{build.project_name}" --platform-path "{runtime.platform.path}" --chip "{build.chip}"
+recipe.hooks.prebuild.3.pattern.macosx=python3 "{runtime.platform.path}/tools/compile_sdk_sources.py" --platform-path "{runtime.platform.path}" --build-path "{build.path}" --compiler "{compiler.path}{compiler.c.cmd}" --variant-path "{build.variant.path}" --build-extra-flags "{build.extra_flags} {build.mic_flags} {build.clock_flags}"
 
 recipe.c.o.pattern="{compiler.path}{compiler.c.cmd}" {compiler.c.flags} {compiler.c.extra_flags} -DF_CPU={build.f_cpu} -DARDUINO={runtime.ide.version} -DARDUINO_{build.board} -DARDUINO_ARCH_CI13XX {compiler.sdk.defines} {build.extra_flags} {build.mic_flags} {build.clock_flags} {compiler.sdk.includes} {includes} -c "{source_file}" -o "{object_file}"
 recipe.cpp.o.pattern="{compiler.path}{compiler.cpp.cmd}" {compiler.cpp.flags} {compiler.cpp.extra_flags} -DF_CPU={build.f_cpu} -DARDUINO={runtime.ide.version} -DARDUINO_{build.board} -DARDUINO_ARCH_CI13XX {compiler.sdk.defines} {build.extra_flags} {build.mic_flags} {build.clock_flags} {compiler.sdk.includes} {includes} -c "{source_file}" -o "{object_file}"

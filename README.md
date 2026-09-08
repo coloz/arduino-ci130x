@@ -33,14 +33,14 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 
 | 项目 | 状态 |
 | --- | --- |
-| 当前开发版本 | `1.0.16` |
+| 当前开发版本 | `1.0.17` |
 | Arduino IDE | Arduino IDE 2.x |
 | Arduino CLI | 已使用 1.5.0 验证 |
 | 主机系统 | 完整固件流程：Windows 10/11 x64、macOS 15+ Apple Silicon；Linux x86_64 已通过编译/链接验证，完整回归待补充 |
 | 编译器 | Nuclei RISC-V GCC 9.2.0（`rv32imafc / ilp32f`）；macOS 由官方 `nuclei_9.2_fixjalr_forhw` 源码构建 |
 | Algorithm Profile（算法） | CI1306 芯片默认标准 ASR + AEC；CI-D06GT01D 默认标准 ASR（无 AEC）；均可选择四种 profile |
 | Microphone Input（麦克风） | 支持模拟单/双麦和 PDM 数字单/双麦；CI1306 默认模拟单麦，CI-D06GT01D 默认模拟双麦 |
-| 公共 Boards Manager 发布 | `v1.0.16`（Windows x64、Linux x86_64、macOS Apple Silicon） |
+| 公共 Boards Manager 发布 | `v1.0.17`（Windows x64、Linux x86_64、macOS Apple Silicon） |
 | 硬件运行验证 | CI1303：Windows/macOS Standard 启动和音频、CWSL 启动、核心外设、I2C/SSD1306 已通过；CI1306：Wire/I2C 与 U8g2/SSD1306 已通过；其余待验证 |
 
 当前版本在编译前检查 sketch 根目录的 profile 资源；标准 ASR/AEC 使用
@@ -48,6 +48,13 @@ Arduino 的 `setup()` 和 `loop()` 作为低优先级 FreeRTOS 任务接入原 S
 Arduino package 的对应 profile 补齐。
 精确匹配 1.0.3 及更早版本已知不兼容 Standard 四文件哈希的完整集合会安全升级；
 任何自定义、修改过或混合的资源集都不会被覆盖，并会给出兼容性警告。
+
+空调红外工程可在主草图顶层声明 `#define CHIPINTELLI_IR_DATABASE 1`，编译前自动准备
+官方数据库；aily 工程会同步到 `src/recursos/user_file_entries/` 和当前临时草图。
+公共条目适用于四种算法配置，CWSL/CWSL+AEC 还会叠加 `recursos/cwsl/user_file_entries/`
+中的专用条目；同 ID 内容不同则停止构建。设为 `0` 或删除宏会清理工具创建且未修改的数据库，
+保留用户资源。Raw/NEC 无需启用；空调数据库要求 CI1303/CI1306。
+
 原厂示例中可获得源码的 138 个编译单元随平台发布，并在 Arduino 首次构建时并行
 编译为非 LTO `.o` 后直接链接；同一构建目录后续编译会复用缓存，不再使用
 `libci13xx_sdk.a`。原厂 SDK 未提供源码的 ASR、TTS、BLE、FreeRTOS port、DSU 等
@@ -111,7 +118,7 @@ CI1306 编译和链接，完整后处理与实体板回归仍待补充。
 固定版本的索引也随 GitHub Release 发布：
 
 ```text
-https://github.com/coloz/arduino-ci130x/releases/download/v1.0.16/package_chipintelli_index.json
+https://github.com/coloz/arduino-ci130x/releases/download/v1.0.17/package_chipintelli_index.json
 ```
 
 ## 快速开始

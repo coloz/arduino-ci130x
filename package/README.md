@@ -10,10 +10,10 @@ from Boards Manager:
 https://raw.githubusercontent.com/coloz/arduino-ci130x/main/package/package_chipintelli_index.json
 ```
 
-The version-pinned `v1.0.16` index is also published as a GitHub Release asset:
+The version-pinned `v1.0.17` index is also published as a GitHub Release asset:
 
 ```text
-https://github.com/coloz/arduino-ci130x/releases/download/v1.0.16/package_chipintelli_index.json
+https://github.com/coloz/arduino-ci130x/releases/download/v1.0.17/package_chipintelli_index.json
 ```
 
 The package index uses the public `citool-cli@1.2.2` assets mirrored in this
@@ -28,7 +28,7 @@ archives hosted by the same release. The historical
 The repaired archives retain the Arduino tool identity `riscv-gcc@9.2.0` and
 were rebuilt and cross-host tested before publication.
 
-For version 1.0.16, `.github/workflows/deploy-release.yml` downloads
+For version 1.0.17, `.github/workflows/deploy-release.yml` downloads
 and verifies the public `citool-cli@1.2.2` archives from this repository's
 `citool-cli-v1.2.2` release and the three compiler archives from the
 historical dedicated toolchain release. It publishes
@@ -140,8 +140,8 @@ than a `dist/` subdirectory, add `-FlatAssetUrls`:
   -ToolchainRoot C:\path\to\riscv-nuclei-elf-gcc-9.2.0 `
   -ToolchainArchives $downloadedHostToolchains `
   -RequireAllHostTools `
-  -Version 1.0.16 `
-  -BaseUrl https://github.com/OWNER/arduino-ci130x/releases/download/v1.0.16 `
+  -Version 1.0.17 `
+  -BaseUrl https://github.com/OWNER/arduino-ci130x/releases/download/v1.0.17 `
   -ToolchainBaseUrl https://github.com/coloz/arduino-ci130x/releases/download/v1.0.10 `
   -CitoolCliBaseUrl https://github.com/coloz/arduino-ci130x/releases/download/citool-cli-v1.2.2 `
   -FlatAssetUrls
@@ -150,7 +150,7 @@ than a `dist/` subdirectory, add `-FlatAssetUrls`:
 Upload the generated platform archive and `package_chipintelli_index.json` to
 the new public Arduino GitHub Release. Reuse the three repaired GCC archives
 from `v1.0.10`; do not reuse `nuclei-gcc-v9.2.0-host1`. The Arduino tool version
-remains `9.2.0`. Version 1.0.16 requires public
+remains `9.2.0`. Version 1.0.17 requires public
 `citool-cli@1.2.2` archives at `-CitoolCliBaseUrl`; publish those three host
 archives once and let the Boards Manager index reference them rather than
 uploading duplicates with later platform releases.
@@ -167,7 +167,7 @@ index. Replace every `__...__` value after release artifacts are hosted and
 redistribution permission has been confirmed.
 
 The platform archive must have exactly one top-level directory, for example
-`arduino-ci130x-1.0.16/`. Put the contents of `arduino-ci130x`
+`arduino-ci130x-1.0.17/`. Put the contents of `arduino-ci130x`
 directly inside that directory (including `boards.txt`, `platform.txt`,
 `cores/` and the generated `tools/sdk/`); do not add another architecture
 directory. Arduino's package manager ignores files placed directly at the ZIP
@@ -180,11 +180,20 @@ assembly. The ZIP retains only the board metadata, core, variants, libraries,
 examples, verified resource payloads and scripts/SDK files invoked by
 `platform.txt`.
 
+Version 1.0.17 includes both `prepare_ir_database.py` and
+`prepare_ir_database.ps1` runtime hooks. An explicit
+`#define CHIPINTELLI_IR_DATABASE 1` in the main sketch opts into the official
+70,716-byte air-conditioner database; the package builder verifies its SDK
+SHA-256 before archiving. The database remains inside the bundled
+`ChipIntelliIR/examples/AirConditioner/recursos/user_file_entries/` directory
+and is copied into the project only when enabled. Standard and CWSL profiles
+share the common user-file overlay, and CWSL-specific entries remain supported.
+
 Each `citool-cli` archive must contain one top-level `citool-cli/` directory.
 The Windows ZIP contains `citool-cli.exe`; the macOS/Linux tar.gz archives
 contain executable `citool-cli`. The macOS archive is universal and is mapped
 to both `x86_64-apple-darwin` and `arm64-apple-darwin`; Linux maps to
-`x86_64-pc-linux-gnu`. Version 1.0.16 declares `citool-cli@1.2.2`
+`x86_64-pc-linux-gnu`. Version 1.0.17 declares `citool-cli@1.2.2`
 as a tool dependency. When source resource macros are present, post-build first
 generates or reuses ASR/TTS resources through ci-service. Each build then composes
 the generated `user_code.bin` and effective four resource partitions into a

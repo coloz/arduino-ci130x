@@ -98,6 +98,26 @@ function Find-UserFileOverlay {
     return $null
 }
 
+function Get-UserFileOverlayDirectories {
+    param(
+        [Parameter(Mandatory = $true)][string]$ResourcesBase,
+        [Parameter(Mandatory = $true)][string]$ProfileResources
+    )
+
+    $seen = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($root in @($ResourcesBase, $ProfileResources)) {
+        $directory = [IO.Path]::GetFullPath((Join-Path $root 'user_file_entries'))
+        if (-not $seen.Add($directory)) {
+            continue
+        }
+        if ((Test-Path -LiteralPath $directory) -and
+            -not (Test-Path -LiteralPath $directory -PathType Container)) {
+            throw "Project user_file_entries path is not a directory: $directory"
+        }
+        $directory
+    }
+}
+
 function Test-UserFileContainsEntry {
     param(
         [Parameter(Mandatory = $true)][string]$UserFile,
@@ -212,15 +232,15 @@ foreach ($resource in $resourceFiles.GetEnumerator()) {
     }
 }
 
-$userFileEntries = Join-Path $projectResourcesRoot 'user_file_entries'
-if ((Test-Path -LiteralPath $userFileEntries) -and
-    -not (Test-Path -LiteralPath $userFileEntries -PathType Container)) {
-    throw "Project user_file_entries path is not a directory: $userFileEntries"
+$userFileEntryDirectories = @(Get-UserFileOverlayDirectories `
+    -ResourcesBase $projectResourcesBase `
+    -ProfileResources $projectResourcesRoot)
+foreach ($entriesDirectory in $userFileEntryDirectories) {
+    Assert-Ci1302IrDatabaseLayout `
+        -SelectedChip $Chip `
+        -BaseUserFile $resourceFiles.UserFile `
+        -EntriesDirectory $entriesDirectory
 }
-Assert-Ci1302IrDatabaseLayout `
-    -SelectedChip $Chip `
-    -BaseUserFile $resourceFiles.UserFile `
-    -EntriesDirectory $userFileEntries
 
 $outputFullPath = [System.IO.Path]::GetFullPath($Output)
 $firmwareOutputFullPath = [System.IO.Path]::GetFullPath($FirmwareOutput)
@@ -290,22 +310,32 @@ if ($needsGeneratedResources) {
             throw "citool-cli generate did not create the expected $($resource.Key) resource: $($resource.Value)"
         }
     }
-    Assert-Ci1302IrDatabaseLayout `
-        -SelectedChip $Chip `
-        -BaseUserFile $resourceFiles.UserFile `
-        -EntriesDirectory $userFileEntries
+    foreach ($entriesDirectory in $userFileEntryDirectories) {
+        Assert-Ci1302IrDatabaseLayout `
+            -SelectedChip $Chip `
+            -BaseUserFile $resourceFiles.UserFile `
+            -EntriesDirectory $entriesDirectory
+    }
 }
 else {
     Write-Host 'CI13XX generated resources are not required; using the sketch resource set.'
 }
 
 $effectiveUserFile = $resourceFiles.UserFile
-if (Test-Path -LiteralPath $userFileEntries) {
+$existingEntryDirectories = @($userFileEntryDirectories | Where-Object {
+    Test-Path -LiteralPath $_ -PathType Container
+})
+if ($existingEntryDirectories.Count -gt 0) {
     $effectiveUserFile = Join-Path $stagingRoot 'user_file.bin'
-    & $mergeUserFileEntries `
-        -BaseUserFile $resourceFiles.UserFile `
-        -EntriesDirectory $userFileEntries `
-        -Output $effectiveUserFile
+    $mergeArguments = @{
+        BaseUserFile = $resourceFiles.UserFile
+        EntriesDirectory = $existingEntryDirectories[0]
+        Output = $effectiveUserFile
+    }
+    if ($existingEntryDirectories.Count -gt 1) {
+        $mergeArguments.Add('AdditionalEntriesDirectory', $existingEntryDirectories[1])
+    }
+    & $mergeUserFileEntries @mergeArguments
 }
 
 $hostImage = Join-Path $staging '[0]code.bin'

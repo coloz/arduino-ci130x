@@ -98,6 +98,9 @@ if (ChipIntelliIRClass::decodeNEC(learned, count, decoded)) {
 分块读取 Flash，并用 SDK 的 CRC32 核对 `0x07BCB65F`，以发现打包后或存储介质上的损坏。
 
 ```cpp
+#define CHIPINTELLI_IR_DATABASE 1
+#include <ChipIntelliIR.h>
+
 if (ChipIntelliIR.beginAirConditioner() &&
     ChipIntelliIR.selectAirBrand(ChipIntelliIRClass::AirBrand::Gree)) {
   if (ChipIntelliIR.power(true)) {
@@ -106,15 +109,18 @@ if (ChipIntelliIR.beginAirConditioner() &&
 }
 ```
 
-编译 `AirConditioner` 示例时，构建系统会将
-`recursos/user_file_entries/[50000]ir_data_2024_08_16.bin` 叠加进最终固件。物理 ID
+使用 **Arduino 核心 1.0.17 或更新兼容版本**，在主 `.ino` 文件顶层添加
+`#define CHIPINTELLI_IR_DATABASE 1` 后，构建系统会自动从核心随附的官方数据库
+准备 `recursos/user_file_entries/[50000]ir_data_2024_08_16.bin`，并叠加进最终固件。
+这项开关独立于 `#include <ChipIntelliIR.h>` 和所选算法；Raw/NEC 草图无需开启。
+物理 ID
 50000 永久留给 Arduino IR 数据库；默认 TTS 字典继续使用 ID0。初始化空调库时，
 仅当前任务在一次原厂 `ir_init()` 调用期间临时看到 `0 -> 50000`，因此 TTS 和其他
 任务不会受到影响。高级用户若使用原厂“IR 数据库直接位于 ID0”的旧固件布局，可
 显式传 `beginAirConditioner(tx, rx, timer, 0)`。
 
-新建自己的空调草图时，需要把示例中的数据库文件复制到草图目录；仅写
-`#include <ChipIntelliIR.h>` 不会自动增加这个可选的 70 KB 资源：
+新建空调草图只需声明上述宏，不必手工复制数据库。普通 Arduino 草图自动使用以下
+公共路径，CWSL 算法也使用相同路径，不另建 `recursos/cwsl/user_file_entries`：
 
 ```text
 MyAirSketch/
@@ -124,11 +130,32 @@ MyAirSketch/
       [50000]ir_data_2024_08_16.bin
 ```
 
+aily 工程编译时，钩子识别 `<project>/.temp/sketch`，并确认根目录存在有效
+`package.json`（含非空 `name`）和 `project.abi`。同一次构建会同步
+`<project>/src/recursos/user_file_entries/` 与
+`<project>/.temp/sketch/recursos/user_file_entries/`；即使 `src` 尚未创建也支持。
+普通草图只写自身资源目录，不根据父目录名称猜测工程根。
+
+宏解析约定：只读取主草图源文件，接受**单个、顶层、无条件、字面量 `0` 或 `1`**
+定义。允许尾随注释；注释、普通字符串、字符和 C++ raw 字符串中的同名文本均忽略。
+未定义或定义为 `0` 关闭自动准备。包含该宏的 `#if/#ifdef` 条件定义、重复定义、
+`#undef`、表达式、别名和字符串值会直接报错，并提示改用主文件中的简单声明。
+头文件、其他草图标签页或编译参数中的宏不属于此资源开关的输入；该钩子不模拟完整
+C 预处理器。请把开关放在主 `.ino` 文件的 `#include` 之前。
+
+构建会验证官方源的大小和 SHA-256，并检查两个目标的资源 ID 50000 后才复制。
+同 ID 的现有文件若内容与官方一致则直接使用；内容冲突会报错，不覆盖用户文件。
+自动创建的文件由同目录 `.chipintelli-ir-database.json` 管理，重复构建不重写。
+删除宏或改为 `0` 后，只清理清单所记录且内容仍匹配的自动文件；用户预先放置或
+后来修改的文件保留。若需要移除这类用户文件，请自行备份并从资源目录移走。
+示例原有资源也属于用户保留内容；开关不会删除它们。
+
 不要复制或替换示例构建时自动生成的 `asr.bin`、`dnn.bin`、`voice.bin` 和
 `user_file.bin`；平台会在缺少它们时补齐默认版本。
 
 CI1302 的 2 MB Flash 无法同时容纳标准 Arduino 语音资源、原厂空调静态库和这份
-数据库。构建工具会给出针对性错误；请改用 CI1303/CI1306。若产品必须使用 CI1302，
+数据库。CI1302 开启宏时会在编译前给出容量错误；未开启不影响 Raw/NEC。
+请改用 CI1303/CI1306。若产品必须使用 CI1302，
 需要另行制作精简的专用固件资源布局，不能只靠更换本库解决。
 
 `selectAirBrand()` 会选择该品牌的首个码并重置空调状态。搜索得到的 code ID 是不透明

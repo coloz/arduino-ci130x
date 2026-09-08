@@ -11,7 +11,7 @@ param(
     [string]$ToolchainBaseUrl,
     [string]$CitoolCliBaseUrl,
     [switch]$FlatAssetUrls,
-    [string]$Version = '1.0.16',
+    [string]$Version = '1.0.17',
     [string]$OutputDirectory,
     [string]$IndexOutputPath,
     [switch]$RequireAllHostTools
@@ -273,6 +273,8 @@ function Copy-PlatformTree {
         'merge_user_file_entries.ps1',
         'postbuild.py',
         'postbuild.ps1',
+        'prepare_ir_database.py',
+        'prepare_ir_database.ps1',
         'prepare_resources.py',
         'prepare_resources.ps1'
     )) {
@@ -419,6 +421,15 @@ foreach ($profile in @(
             throw "$($profile.Name) resource SHA-256 does not match manifest: $resourcePath"
         }
     }
+}
+
+$irDatabasePath = Join-Path $PlatformRoot 'libraries/ChipIntelliIR/examples/AirConditioner/recursos/user_file_entries/[50000]ir_data_2024_08_16.bin'
+if (-not (Test-Path -LiteralPath $irDatabasePath -PathType Leaf)) {
+    throw "Missing bundled ChipIntelliIR database: $irDatabasePath"
+}
+if ((Get-Item -LiteralPath $irDatabasePath).Length -ne 70716 -or
+    (Get-FileHash -LiteralPath $irDatabasePath -Algorithm SHA256).Hash -ne 'F7E3680B45F9ABE56C6D3E16D1BBFFD7336E286D0B0DABED20E1D2B4854B97D0') {
+    throw "Bundled ChipIntelliIR database does not match the V2.7.14 SDK size/SHA-256: $irDatabasePath"
 }
 
 $platformVersion = (Select-String -LiteralPath (Join-Path $PlatformRoot 'platform.txt') -Pattern '^version=(.+)$').Matches.Groups[1].Value

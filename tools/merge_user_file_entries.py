@@ -84,17 +84,24 @@ def main():
     parser = argparse.ArgumentParser(description='Merge CI13XX user_file entries')
     parser.add_argument('--base-user-file', required=True, help='Base user_file.bin path')
     parser.add_argument('--entries-directory', required=True, help='Entries directory')
+    parser.add_argument('--additional-entries-directory', help='Additional entries directory')
     parser.add_argument('--output', required=True, help='Output file path')
     args = parser.parse_args()
 
     base_path = Path(args.base_user_file).resolve()
     entries_path = Path(args.entries_directory).resolve()
+    entries_paths = [entries_path]
+    if args.additional_entries_directory:
+        additional_path = Path(args.additional_entries_directory).resolve()
+        if additional_path not in entries_paths:
+            entries_paths.append(additional_path)
     output_path = Path(args.output).resolve()
 
     if not base_path.is_file():
         raise ValueError(f"Base user-file path is not a file: {base_path}")
-    if not entries_path.is_dir():
-        raise ValueError(f"User-file entries path is not a directory: {entries_path}")
+    for directory in entries_paths:
+        if not directory.is_dir():
+            raise ValueError(f"User-file entries path is not a directory: {directory}")
 
     if str(base_path).lower() == str(output_path).lower():
         raise ValueError('Output must not overwrite the base user_file.bin.')
@@ -110,31 +117,43 @@ def main():
     overlay_ids = {}
     overlays = []
 
-    entry_files = sorted(entries_path.glob('*.bin'))
-    for file in entry_files:
-        match = re.match(r'^\[(?P<id>[0-9]+)\].*\.bin$', file.name)
-        if not match:
-            raise ValueError(f"User-file entry name must start with a numeric [id]: {file.name}")
+    for directory in entries_paths:
+        directory_ids = {}
+        entry_files = sorted(path for path in directory.iterdir()
+                             if path.is_file() and path.suffix.lower() == '.bin')
+        for file in entry_files:
+            match = re.match(r'^\[(?P<id>[0-9]+)\].*\.bin$', file.name, re.IGNORECASE)
+            if not match:
+                raise ValueError(f"User-file entry name must start with a numeric [id]: {file.name}")
 
-        parsed_id = int(match.group('id'))
-        if parsed_id > 65535:
-            raise ValueError(f"User-file entry ID must be between 0 and 65535: {file.name}")
+            parsed_id = int(match.group('id'))
+            if parsed_id > 65535:
+                raise ValueError(f"User-file entry ID must be between 0 and 65535: {file.name}")
 
-        id_key = str(parsed_id)
-        if id_key in overlay_ids:
-            raise ValueError(f"Duplicate user-file overlay ID {parsed_id} in '{overlay_ids[id_key]}' and '{file.name}'.")
+            id_key = str(parsed_id)
+            if id_key in directory_ids:
+                raise ValueError(f"Duplicate user-file overlay ID {parsed_id} in '{directory_ids[id_key]}' and '{file.name}'.")
+            directory_ids[id_key] = file.name
 
-        data = file.read_bytes()
-        if len(data) == 0:
-            raise ValueError(f"User-file overlay entry is empty: {file.name}")
-        validate_reserved_entry(parsed_id, data, str(file))
+            data = file.read_bytes()
+            if len(data) == 0:
+                raise ValueError(f"User-file overlay entry is empty: {file.name}")
+            validate_reserved_entry(parsed_id, data, str(file))
+            digest = hashlib.sha256(data).digest()
+            if id_key in overlay_ids:
+                previous = overlay_ids[id_key]
+                if previous['sha256'] != digest:
+                    raise ValueError(f"Conflicting user-file overlay ID {parsed_id} in '{previous['source']}' and '{file}'.")
+                continue
 
-        overlays.append({
-            'id': parsed_id,
-            'data': data,
-            'source': str(file)
-        })
-        overlay_ids[id_key] = file.name
+            overlay = {
+                'id': parsed_id,
+                'data': data,
+                'source': str(file),
+                'sha256': digest,
+            }
+            overlays.append(overlay)
+            overlay_ids[id_key] = overlay
 
     # Apply overlays
     replaced = 0

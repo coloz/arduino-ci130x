@@ -75,6 +75,19 @@ def find_user_file_overlay(entries_directory, entry_id):
     return None
 
 
+def user_file_overlay_directories(resources_base, profile_resources):
+    """Collect public and legacy profile overlays without visiting a path twice."""
+    directories = []
+    for root in (resources_base, profile_resources):
+        directory = (root / 'user_file_entries').resolve()
+        if directory in directories:
+            continue
+        if directory.exists() and not directory.is_dir():
+            raise ValueError(f"Project user_file_entries path is not a directory: {directory}")
+        directories.append(directory)
+    return directories
+
+
 def user_file_contains_entry(user_file_path, entry_id):
     """Inspect a valid-looking CI13XX user-file table for a numeric ID."""
     buffer = user_file_path.read_bytes()
@@ -262,15 +275,16 @@ def main():
         if not path.is_file():
             raise ValueError(f"Missing project {args.algorithm} profile {name} resource: {path}")
 
-    user_file_entries = project_resources_root / 'user_file_entries'
-    if user_file_entries.exists() and not user_file_entries.is_dir():
-        raise ValueError(f"Project user_file_entries path is not a directory: {user_file_entries}")
-
-    reject_ci1302_ir_database(
-        args.chip,
-        resource_files['UserFile'],
-        user_file_entries,
+    user_file_entry_directories = user_file_overlay_directories(
+        project_resources_base,
+        project_resources_root,
     )
+    for entries_directory in user_file_entry_directories:
+        reject_ci1302_ir_database(
+            args.chip,
+            resource_files['UserFile'],
+            entries_directory,
+        )
 
     output_full_path = Path(args.output).resolve()
 
@@ -335,25 +349,33 @@ def main():
                     f"citool-cli generate did not create the expected {name} "
                     f"resource: {resource_path}"
                 )
-        reject_ci1302_ir_database(
-            args.chip,
-            resource_files['UserFile'],
-            user_file_entries,
-        )
+        for entries_directory in user_file_entry_directories:
+            reject_ci1302_ir_database(
+                args.chip,
+                resource_files['UserFile'],
+                entries_directory,
+            )
     else:
         print('CI13XX generated resources are not required; using the sketch resource set.')
 
     # Handle user_file_entries
     effective_user_file = resource_files['UserFile']
 
-    if user_file_entries.exists():
+    existing_entry_directories = [directory for directory in user_file_entry_directories
+                                  if directory.is_dir()]
+    if existing_entry_directories:
         effective_user_file = staging_root / 'user_file.bin'
-        run_command([
+        merge_arguments = [
             sys.executable, str(merge_user_file_entries),
             '--base-user-file', str(resource_files['UserFile']),
-            '--entries-directory', str(user_file_entries),
+            '--entries-directory', str(existing_entry_directories[0]),
             '--output', str(effective_user_file)
-        ], "merge_user_file_entries")
+        ]
+        if len(existing_entry_directories) > 1:
+            merge_arguments.extend([
+                '--additional-entries-directory', str(existing_entry_directories[1]),
+            ])
+        run_command(merge_arguments, "merge_user_file_entries")
 
     # Host image - extract from ELF
     host_image = staging / '[0]code.bin'

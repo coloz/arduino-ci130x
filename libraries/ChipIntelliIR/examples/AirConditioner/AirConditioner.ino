@@ -1,3 +1,5 @@
+// Core 1.0.17+ prepares the optional official database before compilation.
+#define CHIPINTELLI_IR_DATABASE 1
 #include <ChipIntelliIR.h>
 
 static void printResult(bool ok) {

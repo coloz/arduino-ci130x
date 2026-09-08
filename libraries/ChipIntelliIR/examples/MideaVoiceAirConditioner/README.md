@@ -49,13 +49,20 @@
 
 ## 编译与烧录
 
-使用包含当前 ChipIntelliIR 及配套 SDK 的平台源码/安装包：
+使用 **1.0.17 或更新兼容版本**的 ChipIntelli Arduino 核心及配套 SDK。
+主草图已声明 `#define CHIPINTELLI_IR_DATABASE 1`，构建钩子自动准备并校验官方
+空调数据库，使用公共 `recursos/user_file_entries` 路径，与算法配置无关：
 
 ```powershell
 arduino-cli compile --fqbn chipintelli:ci13xx:easyvoice_1306_dev --build-path .build/midea libraries/ChipIntelliIR/examples/MideaVoiceAirConditioner
 arduino-cli upload --fqbn chipintelli:ci13xx:easyvoice_1306_dev --port COM30 --input-dir .build/midea libraries/ChipIntelliIR/examples/MideaVoiceAirConditioner
 ```
 
-保留 recursos 下四个语音资源文件以及 `recursos/user_file_entries/[50000]ir_data_2024_08_16.bin`，不要替换为平台通用资源。
+保留 recursos 下四个语音资源文件，不要替换为平台通用资源。示例已有的
+`recursos/user_file_entries/[50000]ir_data_2024_08_16.bin` 会校验后直接使用；新建自己的
+工程时无需另行复制数据库，保留主 `.ino` 中的顶层字面量宏即可。`0` 或未定义关闭
+自动准备，只清理由钩子自动创建且未修改的数据库，保留示例原有或用户修改的资源。
+aily 工程会同时准备 `src/recursos/user_file_entries` 与本轮
+`.temp/sketch/recursos/user_file_entries`。宏格式及文件托管规则见库 README。
 ASR/DNN 来自仓库 `ChipIntelliASR/examples/SimpleCommandPlayback` 的 CI1306 资源，命令 ID 与上表逐项对应。
 TTS 保留其中的启动、唤醒、定时反馈和蜂鸣音。
