@@ -12,12 +12,12 @@
         {
           "name": "ChipIntelli CI130X Arduino",
           "architecture": "ci13xx",
-          "version": "1.0.15",
+          "version": "1.0.16",
           "category": "Contributed",
-          "url": "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.15/arduino-ci130x-1.0.15.zip",
-          "archiveFileName": "arduino-ci130x-1.0.15.zip",
-          "checksum": "SHA-256:cb60d51f78684a9e4569cbbc4fd1fd5ffc887709d006ff13877ad4e1abb4f991",
-          "size": "40375575",
+          "url": "https://github.com/coloz/arduino-ci130x/releases/download/v1.0.16/arduino-ci130x-1.0.16.zip",
+          "archiveFileName": "arduino-ci130x-1.0.16.zip",
+          "checksum": "SHA-256:4952948ebad81cf8c55b47b97b54fc6ff78e83840c38899e148fab01a6ac2c0e",
+          "size": "45310838",
           "boards": [
             {
               "name": "ChipIntelli CI1302 (SSOP24, 2 MB)"
