@@ -59,7 +59,8 @@ function Test-IRDatabaseEnabled {
 function Test-OfficialIRDatabase {
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $false }
-    if ((Get-Item -LiteralPath $Path).Length -ne $databaseSize) { return $false }
+    # PowerShell treats our dot-prefixed staging files as hidden on Unix.
+    if ((Get-Item -LiteralPath $Path -Force).Length -ne $databaseSize) { return $false }
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash -ceq $databaseHash
 }
 
@@ -117,7 +118,7 @@ function Publish-IRDatabase {
     }
     finally {
         foreach ($path in @($temporary, $receipt)) {
-            if (Test-Path -LiteralPath $path -PathType Leaf) { Remove-Item -LiteralPath $path }
+            if (Test-Path -LiteralPath $path -PathType Leaf) { Remove-Item -LiteralPath $path -Force }
         }
     }
 }
@@ -195,13 +196,13 @@ try {
         }
         elseif ($plan.Managed) {
             if (Test-OfficialIRDatabase -Path $plan.Target) {
-                Remove-Item -LiteralPath $plan.Target
+                Remove-Item -LiteralPath $plan.Target -Force
                 Write-Host "CI13XX disabled managed IR database removed: $($plan.Target)"
             }
             elseif (Test-Path -LiteralPath $plan.Target) {
                 Write-Host "CI13XX modified IR database preserved as user-owned: $($plan.Target)"
             }
-            Remove-Item -LiteralPath $plan.Manifest
+            Remove-Item -LiteralPath $plan.Manifest -Force
         }
     }
 }
